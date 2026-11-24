@@ -90,7 +90,7 @@ export function navigationLinks(navigation: ShellNavigation) {
  */
 export function createClientNavigation(assistantName: string): ShellNavigation {
   return {
-    profileHref: '/profile',
+    profileHref: '/settings/account',
     primary: [
       { label: 'Home', href: '/home', icon: 'dashboard' },
       { label: 'Brand & Store', href: '/brand', icon: 'brand' },

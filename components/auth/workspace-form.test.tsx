@@ -31,7 +31,7 @@ describe('Workspace setup', () => {
       ' Store'
     )
     expect(slug).toHaveValue('wellness-team')
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(screen.getByRole('button', { name: 'Create workspace' }))
     await waitFor(() => expect(createWorkspace).toHaveBeenCalledOnce())
     const form = createWorkspace.mock.calls[0][1] as FormData
     expect(form.get('timezone')).toBe(

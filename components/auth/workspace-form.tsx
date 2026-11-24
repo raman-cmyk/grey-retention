@@ -1,8 +1,8 @@
 'use client'
 
 import { useActionState, useState, useSyncExternalStore } from 'react'
-import { Button } from '@/components/ui/button'
-import { TextField } from '@/components/ui/text-field'
+import { Button } from '@/components/gros/button'
+import { Field } from '@/components/gros/input'
 import { initialWorkspaceActionState } from '@/features/auth/domain/types'
 import { createWorkspace } from '@/features/auth/presentation/actions'
 
@@ -20,6 +20,12 @@ const deviceTimezone = () =>
   Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 const serverTimezone = () => 'UTC'
 
+/**
+ * Create a workspace (UI-AUTH): the brand's name, and behind Workspace
+ * details (a mist tile, open when one of its fields is refused) the
+ * suggested address and the device's timezone, both changeable. One
+ * Create workspace button; the server's answer under it.
+ */
 export function WorkspaceForm() {
   const [state, action, pending] = useActionState(
     createWorkspace,
@@ -37,90 +43,66 @@ export function WorkspaceForm() {
   const slug = customSlug ?? workspaceSlug(name)
   const errors = state.fieldErrors
   return (
-    <form action={action} className="mt-8 space-y-6" aria-busy={pending}>
-      <label className="block">
-        <span className="mb-2 block text-sm font-medium">
-          What is your brand called?
-        </span>
-        <TextField
+    <form
+      action={action}
+      aria-busy={pending}
+      className="flex w-full flex-col items-start gap-[var(--space-5)]"
+    >
+      <div className="flex w-full flex-col gap-[var(--space-4)]">
+        <Field
+          label="What is your brand called?"
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoComplete="organization"
-          placeholder="Your brand name"
           minLength={2}
           maxLength={120}
           required
-          aria-invalid={!!errors?.name}
+          error={errors?.name?.[0]}
         />
-        {errors?.name && (
-          <span className="mt-2 block text-sm text-[var(--danger-ink)]">
-            {errors.name[0]}
-          </span>
-        )}
-      </label>
-      <details
-        open={
-          errors?.slug || errors?.timezone || state.message ? true : undefined
-        }
-        className="rounded-xl border border-[var(--line)] p-4"
-      >
-        <summary className="cursor-pointer text-sm text-[var(--text-muted)]">
-          Workspace details{' '}
-          <span className="text-[var(--text-faint)]">· optional</span>
-        </summary>
-        <div className="mt-5 space-y-4">
-          <p className="text-xs leading-5 text-[var(--text-muted)]">
-            We suggest a workspace address and use your device’s timezone. You
-            can change them here.
-          </p>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium">
-              Workspace URL
-            </span>
-            <TextField
+        <details
+          open={
+            errors?.slug || errors?.timezone || state.message ? true : undefined
+          }
+          className="gros-tile rounded-[var(--radius-md)] bg-[var(--mist)]"
+        >
+          <summary className="type-body-strong cursor-pointer">
+            Workspace details
+          </summary>
+          <div className="mt-[var(--space-4)] flex flex-col gap-[var(--space-4)]">
+            <Field
+              onPage
+              label="Workspace URL"
               name="slug"
               value={slug}
               onChange={(e) => setCustomSlug(e.target.value)}
               inputMode="url"
               pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-              placeholder="your-brand"
-              aria-invalid={!!errors?.slug}
+              error={errors?.slug?.[0]}
             />
-            {errors?.slug && (
-              <span className="mt-2 block text-sm text-[var(--danger-ink)]">
-                {errors.slug[0]}
-              </span>
-            )}
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium">Timezone</span>
-            <TextField
+            <Field
+              onPage
+              label="Timezone"
               name="timezone"
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
               autoComplete="off"
-              aria-invalid={!!errors?.timezone}
+              error={errors?.timezone?.[0]}
             />
-            {errors?.timezone && (
-              <span className="mt-2 block text-sm text-[var(--danger-ink)]">
-                {errors.timezone[0]}
-              </span>
-            )}
-          </label>
-        </div>
-      </details>
-      {state.message && (
-        <p role="alert" className="text-sm text-[var(--danger-ink)]">
+          </div>
+        </details>
+      </div>
+      <Button
+        type="submit"
+        label="Create workspace"
+        size="focus"
+        disabled={pending}
+      />
+      {state.message ? (
+        <p role="alert" className="type-caption text-[var(--signal-ink)]">
           {state.message}
         </p>
-      )}
-      <Button className="w-full" type="submit" disabled={pending}>
-        {pending ? 'Creating workspace…' : 'Continue'}
-      </Button>
-      <p className="text-center text-xs leading-5 text-[var(--text-faint)]">
-        Next, add your store and explore your first email.
-      </p>
+      ) : null}
     </form>
   )
 }

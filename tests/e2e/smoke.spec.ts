@@ -4,7 +4,7 @@ import { login } from './accounts'
 test('client login presents a labelled access form', async ({ page }) => {
   await page.goto('/login')
   await expect(
-    page.getByRole('heading', { name: 'Return to the work.' })
+    page.getByRole('heading', { level: 1, name: 'Welcome back' })
   ).toBeVisible()
   await expect(page.getByLabel('Email')).toBeVisible()
   await expect(page.getByLabel('Password')).toBeVisible()

@@ -1,9 +1,11 @@
 import { SignInPanel } from '@/components/auth/sign-in-panel'
+import { FocusShell } from '@/components/gros/steps'
 import { safeNext } from '@/features/auth/domain/next'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Sign in' }
 
+/** Sign in to a store's workspace (UI-AUTH), on the GROS focused shell. */
 export default async function ClientLoginPage({
   searchParams
 }: {
@@ -11,11 +13,12 @@ export default async function ClientLoginPage({
 }) {
   const { next } = await searchParams
   return (
-    <SignInPanel
-      title="Return to the work."
-      description="Open your campaign calendar, current proofs, and retention evidence."
-      surface="client"
-      next={safeNext('client', next)}
-    />
+    <FocusShell>
+      <SignInPanel
+        title="Welcome back"
+        surface="client"
+        next={safeNext('client', next)}
+      />
+    </FocusShell>
   )
 }

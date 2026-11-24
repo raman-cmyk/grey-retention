@@ -1,23 +1,25 @@
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
+import { ButtonLink } from '@/components/gros/button'
+import { grosRoot } from '@/components/gros/font'
+import { EmptyState } from '@/components/gros/states'
 
+/**
+ * The app's Not found page (UI-AUTH), for every address no page serves
+ * and every retired one (the proxy answers those with a 404 here): the
+ * GROS empty state on the mist page, a title and one button to Home.
+ */
 export default function NotFound() {
   return (
-    <main className="grid min-h-screen place-items-center bg-[var(--surface)] px-6 text-[var(--text)]">
-      <div className="max-w-lg text-center">
-        <p className="font-[family-name:var(--font-data)] text-xs text-[var(--text-faint)]">
-          404 / MISFILED PROOF
-        </p>
-        <h1 className="tracking-display mt-4 font-[family-name:var(--font-display)] text-5xl font-normal">
-          Nothing is pinned here.
-        </h1>
-        <p className="mt-4 leading-7 text-[var(--text-muted)]">
-          Route does not exist or moved to another workspace.
-        </p>
-        <Button asChild className="mt-8">
-          <Link href="/home">Return to workspace</Link>
-        </Button>
-      </div>
-    </main>
+    <div
+      className={grosRoot(
+        'flex min-h-dvh items-center justify-center px-[var(--space-6)] py-[var(--space-12)]'
+      )}
+    >
+      <main className="w-full max-w-[640px]">
+        <EmptyState
+          title="Page not found"
+          action={<ButtonLink href="/home" label="Back to Home" />}
+        />
+      </main>
+    </div>
   )
 }

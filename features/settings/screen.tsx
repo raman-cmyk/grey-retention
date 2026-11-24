@@ -510,7 +510,12 @@ function AccountCard({ view }: { view: SettingsView }) {
           </div>
         )}
         <div className="flex flex-wrap gap-[var(--space-3)]">
-          <ButtonLink href="/profile" label="Change" kind="quiet" size="row" />
+          <ButtonLink
+            href="/settings/account"
+            label="Change"
+            kind="quiet"
+            size="row"
+          />
           <form action={signOut}>
             <Button type="submit" label="Log out" kind="quiet" size="row" />
           </form>

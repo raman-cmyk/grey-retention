@@ -8,9 +8,10 @@ import {
   type RefObject
 } from 'react'
 import Link from 'next/link'
-import { Lock } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { TextField } from '@/components/ui/text-field'
+import { Button } from '@/components/gros/button'
+import { Card } from '@/components/gros/card'
+import { Field } from '@/components/gros/input'
+import { cn } from '@/lib/utils'
 import { changePassword, updateAccount, type ProfileResult } from './actions'
 import { PASSWORD_MIN } from './rules'
 
@@ -25,83 +26,37 @@ function useFocusFirstError(
   }, [state, form])
 }
 
-const labelClass =
-  'tracking-label block font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase'
-
-function Card({
-  title,
-  description,
-  children
-}: {
-  title: string
-  description: string
-  children: ReactNode
-}) {
-  const id = useId()
+/** A white GROS card with its one heading (BRAND.md: no subtitle). */
+function FormCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section
-      aria-labelledby={id}
-      className="space-y-5 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-6"
-    >
-      <div>
-        <h2 id={id} className="text-lg font-semibold">
-          {title}
-        </h2>
-        <p className="text-sm text-[var(--text-muted)]">{description}</p>
+    <Card size="small" label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <h2 className="type-heading">{title}</h2>
+        {children}
       </div>
-      {children}
-    </section>
+    </Card>
   )
 }
 
-/** Label, input, help or error; the error is linked to the input. */
-function Input({
-  name,
-  label,
-  error,
-  help,
-  ...props
-}: {
-  name: string
-  label: ReactNode
-  error?: string
-  help?: ReactNode
-} & React.InputHTMLAttributes<HTMLInputElement>) {
-  const id = useId()
-  return (
-    <div className="space-y-2">
-      <label htmlFor={id} className={labelClass}>
-        {label}
-      </label>
-      <TextField
-        id={id}
-        name={name}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error || help ? `${id}-note` : undefined}
-        {...props}
-      />
-      {(error || help) && (
-        <p
-          id={`${id}-note`}
-          className={`text-xs ${error ? 'text-[var(--danger-ink)]' : 'text-[var(--text-muted)]'}`}
-        >
-          {error ?? help}
-        </p>
-      )}
-    </div>
-  )
-}
-
+/** The form's answer beside its button: signal ink when refused. */
 function Status({ state }: { state: ProfileResult }) {
   return (
     <p
       aria-live="polite"
-      className={`text-sm empty:hidden ${state.status === 'error' ? 'text-[var(--danger-ink)]' : 'text-[var(--text-muted)]'}`}
+      className={cn(
+        'type-caption empty:hidden',
+        state.status === 'error'
+          ? 'text-[var(--signal-ink)]'
+          : 'text-[var(--ink)]'
+      )}
     >
       {state.message}
     </p>
   )
 }
+
+const formClass = 'flex flex-col items-start gap-[var(--space-5)]'
+const fieldsClass = 'flex w-full flex-col gap-[var(--space-4)]'
 
 export function AccountForm({
   name,
@@ -117,75 +72,68 @@ export function AccountForm({
   const [state, action, pending] = useActionState(updateAccount, {})
   const errors = state.fieldErrors ?? {}
   const formRef = useRef<HTMLFormElement>(null)
+  const lockedId = useId()
   useFocusFirstError(state, formRef)
   return (
-    <Card
-      title="Account information"
-      description="Name, job title, and contact phone."
-    >
+    <FormCard title="Account information">
       {/* Keep what the owner typed after an error (React resets forms after an action). */}
       <form
         ref={formRef}
         action={action}
-        className="space-y-5"
+        className={formClass}
         aria-busy={pending}
         onReset={(event) => event.preventDefault()}
       >
-        <Input
-          name="name"
-          label="Name"
-          defaultValue={name}
-          autoComplete="name"
-          required
-          minLength={2}
-          maxLength={120}
-          error={errors.name}
-        />
-        <Input
-          name="email"
-          label={
-            <span className="inline-flex items-center gap-1.5">
-              Email <Lock className="size-3" aria-hidden="true" />
-            </span>
-          }
-          value={email}
-          disabled
-          readOnly
-          help={
-            <>
+        <div className={fieldsClass}>
+          <Field
+            name="name"
+            label="Name"
+            defaultValue={name}
+            autoComplete="name"
+            required
+            minLength={2}
+            maxLength={120}
+            error={errors.name}
+          />
+          <div className="flex flex-col gap-[var(--space-2)]">
+            <Field
+              name="email"
+              label="Email"
+              value={email}
+              disabled
+              readOnly
+              aria-describedby={lockedId}
+            />
+            <p id={lockedId} className="type-caption text-[var(--stone)]">
               Email is locked. Contact{' '}
               <Link href="/settings#support" className="underline">
                 support
               </Link>{' '}
               if you need to change it.
-            </>
-          }
-        />
-        <Input
-          name="jobTitle"
-          label="Job title"
-          defaultValue={jobTitle}
-          autoComplete="organization-title"
-          maxLength={120}
-          error={errors.jobTitle}
-        />
-        <Input
-          name="phone"
-          label="Phone"
-          type="tel"
-          defaultValue={phone}
-          autoComplete="tel"
-          maxLength={40}
-          error={errors.phone}
-        />
-        <div className="flex flex-wrap items-center gap-4">
-          <Button type="submit" disabled={pending}>
-            {pending ? 'Saving…' : 'Save changes'}
-          </Button>
-          <Status state={state} />
+            </p>
+          </div>
+          <Field
+            name="jobTitle"
+            label="Job title"
+            defaultValue={jobTitle}
+            autoComplete="organization-title"
+            maxLength={120}
+            error={errors.jobTitle}
+          />
+          <Field
+            name="phone"
+            label="Phone"
+            type="tel"
+            defaultValue={phone}
+            autoComplete="tel"
+            maxLength={40}
+            error={errors.phone}
+          />
         </div>
+        <Button type="submit" label="Save changes" disabled={pending} />
+        <Status state={state} />
       </form>
-    </Card>
+    </FormCard>
   )
 }
 
@@ -195,15 +143,12 @@ export function PasswordForm({ email }: { email: string }) {
   const formRef = useRef<HTMLFormElement>(null)
   useFocusFirstError(state, formRef)
   return (
-    <Card
-      title="Change password"
-      description={`At least ${PASSWORD_MIN} characters. We'll verify your current password first.`}
-    >
+    <FormCard title="Change password">
       {/* Password fields are cleared after every attempt (React's default). */}
       <form
         ref={formRef}
         action={action}
-        className="space-y-5"
+        className={formClass}
         aria-busy={pending}
       >
         {/* Lets password managers save the new password for this account. */}
@@ -215,38 +160,36 @@ export function PasswordForm({ email }: { email: string }) {
           readOnly
           hidden
         />
-        <Input
-          name="current"
-          label="Current password"
-          type="password"
-          autoComplete="current-password"
-          required
-          error={errors.current}
-        />
-        <Input
-          name="next"
-          label="New password"
-          type="password"
-          autoComplete="new-password"
-          minLength={PASSWORD_MIN}
-          required
-          error={errors.next}
-        />
-        <Input
-          name="confirm"
-          label="Confirm new password"
-          type="password"
-          autoComplete="new-password"
-          required
-          error={errors.confirm}
-        />
-        <div className="flex flex-wrap items-center gap-4">
-          <Button type="submit" disabled={pending}>
-            {pending ? 'Checking…' : 'Update password'}
-          </Button>
-          <Status state={state} />
+        <div className={fieldsClass}>
+          <Field
+            name="current"
+            label="Current password"
+            type="password"
+            autoComplete="current-password"
+            required
+            error={errors.current}
+          />
+          <Field
+            name="next"
+            label="New password"
+            type="password"
+            autoComplete="new-password"
+            minLength={PASSWORD_MIN}
+            required
+            error={errors.next}
+          />
+          <Field
+            name="confirm"
+            label="Confirm new password"
+            type="password"
+            autoComplete="new-password"
+            required
+            error={errors.confirm}
+          />
         </div>
+        <Button type="submit" label="Update password" disabled={pending} />
+        <Status state={state} />
       </form>
-    </Card>
+    </FormCard>
   )
 }

@@ -319,7 +319,7 @@ describe('account menu', () => {
       within(menu)
         .getAllByRole('link')
         .map((link) => [link.textContent, link.getAttribute('href')])
-    ).toEqual([['Profile Update', '/profile']])
+    ).toEqual([['Profile Update', '/settings/account']])
     expect(
       within(menu).getByRole('button', { name: 'Log out' })
     ).toBeInTheDocument()
@@ -370,7 +370,9 @@ describe('account menu', () => {
       expect(
         within(menu).getByRole('button', { name: 'Log out' })
       ).toBeInTheDocument()
-      expect(document.querySelector('dialog a[href="/profile"]')).toBeNull()
+      expect(
+        document.querySelector('dialog a[href="/settings/account"]')
+      ).toBeNull()
       unmount()
     }
   })

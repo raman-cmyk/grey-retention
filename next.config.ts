@@ -91,6 +91,13 @@ const nextConfig: NextConfig = {
       // UI-SETd: support and feature requests are cards on Settings.
       { source: '/support', destination: '/settings', permanent: false },
       { source: '/feedback', destination: '/settings', permanent: false },
+      // UI-AUTH: the old Profile page is Account, a GROS page under Settings.
+      {
+        source: '/profile',
+        destination: '/settings/account',
+        // Not cached by browsers while the GROS routes settle.
+        permanent: false
+      },
       // UI-AUDc: a segment's and a list's page are under Audiences, on the
       // GROS screens; old links (and bookmarks) open the new page.
       {

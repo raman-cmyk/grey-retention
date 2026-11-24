@@ -367,7 +367,7 @@ describe('Settings screen (UI-SETa)', () => {
     expect(account).toHaveTextContent('owner@cedarlane.example')
     expect(
       within(account).getByRole('link', { name: 'Change' })
-    ).toHaveAttribute('href', '/profile')
+    ).toHaveAttribute('href', '/settings/account')
     expect(
       within(account).getByRole('button', { name: 'Log out' })
     ).toBeVisible()
