@@ -387,7 +387,10 @@ describe('a hero the design studio drew (DST-006a)', () => {
     // The eyebrow is in the picture too, and no heading is drawn.
     const outside = html.replace(/ alt="[^"]*"/g, '')
     if (base.eyebrow) expect(outside).not.toContain(String(base.eyebrow))
-    expect(html).not.toMatch(/<h[12]/)
+    // Owner pick #96: the picture is the email's first heading, named by
+    // its words; no other heading is drawn.
+    expect(html.match(/<h[1-6]\b/g)).toEqual(['<h1'])
+    expect(html).toMatch(/<h1 [^>]*><a [^>]*><img [^>]*alt="[^"]+"/)
   })
 
   it('counts as the email’s first headline: the next is an h2', () => {
@@ -403,7 +406,8 @@ describe('a hero the design studio drew (DST-006a)', () => {
       brand: httpsBrand,
       mode: 'klaviyo'
     })
-    expect(html).not.toMatch(/<h1/)
+    // The studio's picture is the one h1 (owner pick #96).
+    expect(html.match(/<h1\b/g)).toHaveLength(1)
     expect(html).toMatch(/<h2/)
   })
 

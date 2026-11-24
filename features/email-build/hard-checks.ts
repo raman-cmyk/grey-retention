@@ -1,6 +1,7 @@
 import { EMAIL_WIDTH } from '@/features/blocks/render'
 import { footerProblems } from '@/features/klaviyo-push/html'
 import { gmailClipBytes } from '@/features/release-qa/checks'
+import { accessibilityProblems } from './accessibility'
 import { drawnText } from './drawn-text'
 import { spamProblem, spamScore } from './spam-score'
 
@@ -22,14 +23,18 @@ import { spamProblem, spamScore } from './spam-score'
  *   percent; product names and approved claims left out).
  * - Spam (owner pick #93): under `spamLimit` points on the spam check,
  *   read with the subject and preview line (`spamScore`).
+ * - Accessibility (owner pick #96): its language and title, layout tables
+ *   marked as layout, real headings (not in a letter), readable contrast
+ *   as drawn, links a screen reader can name, pictures' words that
+ *   describe them (`accessibilityProblems`).
  *
- * Contrast is kept by construction: the blocks draw text in a colour
- * readable on its background (WCAG 4.5, 3 for large text, `readableOn`),
- * and the Design critic scores a studio picture's contrast.
+ * The blocks draw text in a colour readable on its background (WCAG 4.5,
+ * 3 for large text, `readableOn`), and the access check measures it again
+ * as drawn; the Design critic scores the contrast inside a studio picture.
  */
 
 export type HardCheck =
-  'weight' | 'width' | 'alt' | 'links' | 'footer' | 'offer' | 'spam'
+  'weight' | 'width' | 'alt' | 'links' | 'footer' | 'offer' | 'spam' | 'access'
 
 export type HardProblem = { check: HardCheck; problem: string }
 
@@ -99,6 +104,8 @@ export function hardProblems(
      */
     storeText?: readonly string[]
     brandName?: string
+    /** A letter (D26): no headings by design. */
+    letter?: boolean
   }
 ): HardProblem[] {
   const problems: HardProblem[] = []
@@ -189,5 +196,10 @@ export function hardProblems(
     )
   )
   if (spam) add('spam', spam)
+  for (const { problem } of accessibilityProblems(html, {
+    letter: input.letter,
+    own: [...(input.brandName ? [input.brandName] : []), ...(input.known ?? [])]
+  }))
+    add('access', problem)
   return problems
 }

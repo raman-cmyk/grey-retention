@@ -9,7 +9,11 @@ runtime, shared memory, run logs and the metered `runAi` gateway.
 
 Paid planning is off by default. Only the exact server value
 `STRATEGY_AGENTS=on`, together with ready live models for both `plan` and
-`review`, lets the owner's Plan action supply the runtime. A Gemini key or
+`review` and live Klaviyo reading (`KLAVIYO_MODE=live`: sample Klaviyo
+data reads as the store's own, so it never spends paid AI), lets the
+owner's Plan action supply the runtime. The Brief writer and Calendar
+planner think at `low` until the paid golden run measures 3.8 Flash. The
+admin Operations page shows the switch as "AI team in “Plan next 15 days”". A Gemini key or
 `EMAIL_BUILD_AGENTS=on` alone does not enable planning. Explicit fake mode,
 an absent key or an unpriced model keeps the code-only path.
 
@@ -31,7 +35,9 @@ requires the owner's separate approval and an authorized live test.
 Home and Plan both permit 120 seconds, including their background Server
 Actions, and a strategy claim lasts five minutes. The action gives the worker
 at most 100 seconds. Each provider call
-is capped at 10 seconds; a full call plus 5 seconds of save slack must fit
+is capped at 25 seconds, as the Brand strategist's on the same plan model
+(3.8 Flash thinks before it answers; a call cut off by its limit is still
+charged); a full call plus 5 seconds of save slack must fit
 before another model call starts. The check runs for every call, including
 retries and critic rounds, so exhausting time cannot create a paid-call loop.
 

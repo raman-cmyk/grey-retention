@@ -23,6 +23,7 @@ const env = (over: Record<string, string> = {}) =>
     NODE_ENV: 'test',
     STRATEGY_AGENTS: 'on',
     GEMINI_API_KEY: 'synthetic-only',
+    KLAVIYO_MODE: 'live',
     ...over
   }) as NodeJS.ProcessEnv
 const call: Parameters<AiCall>[0] = {
@@ -66,6 +67,20 @@ describe('owner-controlled strategy agents', () => {
       })
     ).toBeNull()
     expect(runAi).not.toHaveBeenCalled()
+  })
+
+  it('never spends paid AI on sample Klaviyo data', () => {
+    for (const mode of ['', 'fake', 'sample', 'LIVE'])
+      expect(strategyAgentsFor(db, env({ KLAVIYO_MODE: mode }))).toBeNull()
+    expect(strategyAgentsFor(db, env())).not.toBeNull()
+    expect(runAi).not.toHaveBeenCalled()
+  })
+
+  it('gives each call the plan model’s 25 s, as the Brand strategist’s', () => {
+    expect(strategyCallMs).toBe(25_000)
+    expect(strategyBudgetMs).toBeGreaterThanOrEqual(
+      3 * (strategyCallMs + strategySlackMs)
+    )
   })
 
   it('requires ready live models for both planning and review, never bypassing fake mode', () => {
