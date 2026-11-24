@@ -36,7 +36,7 @@ import { recordNeverWords } from '@/features/copy-qa/never-words-store'
 import { readOwnerEdits, type EditsRead } from './edits'
 import { findingInput, type FindingInput } from '../findings'
 import { klaviyoCallMs } from '../catalog/worker'
-import { matchReturns, netReport, orderIds } from '../catalog/returns'
+import { matchReturns, netReport, orderId } from '../catalog/returns'
 import {
   audienceList,
   bestEmails,
@@ -367,10 +367,11 @@ export async function readBrandHistory(
               {
                 attributions: true,
                 until: (read) => {
-                  const ids = new Set(read.flatMap((o) => orderIds(o.props)))
-                  return asked.every((e) =>
-                    orderIds(e.props).some((id) => ids.has(id))
-                  )
+                  const ids = new Set(read.map((o) => orderId(o.props)))
+                  return asked.every((e) => {
+                    const id = orderId(e.props)
+                    return id !== null && ids.has(id)
+                  })
                 }
               }
             )

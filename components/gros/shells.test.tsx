@@ -219,6 +219,47 @@ describe('ListRow (UI-DS)', () => {
     )
     expect(within(second!).getByText('Planned')).toBeInTheDocument()
   })
+
+  // UI-AUDb: Home, Plan and Results keep one-line rows on a laptop; only
+  // `wrap` rows (Audiences, Inspiration, Learned, Settings) show all words.
+  it('cuts a title and its details to one line, unless the row wraps', () => {
+    render(
+      <RowList label="Rows">
+        <ListRow
+          thumbnail={<TextThumb />}
+          title="Autumn boots are back in three new colours"
+          details={['Tue 24 Nov', 'Engaged 30 days']}
+          end={<Button size="row" label="Create email" />}
+        />
+        <ListRow
+          wrap
+          thumbnail={<TextThumb />}
+          title="Placed an order at least twice in the last 90 days"
+          details={['4,210 people', 'Opened an email in the last 30 days']}
+          end={<Button size="row" kind="outline" label="Open" />}
+        />
+      </RowList>
+    )
+    const [cut, whole] = within(
+      screen.getByRole('list', { name: 'Rows' })
+    ).getAllByRole('listitem')
+    for (const [row, title, details, words] of [
+      [cut!, 'Autumn boots', 'Tue 24 Nov', 'truncate'],
+      [whole!, 'Placed an order', '4,210 people', 'break-words']
+    ] as const) {
+      const shown = within(row).getByText(new RegExp(`^${title}`))
+      const said = within(row).getByText(new RegExp(`^${details}`))
+      expect(shown).toHaveClass(words)
+      expect(said).toHaveClass(words)
+      expect(said).not.toHaveClass(
+        words === 'truncate' ? 'break-words' : 'truncate'
+      )
+      // The words keep their least width (`.gros-row-words`): no `min-w-0`,
+      // whose utility would squeeze them beside a wide action.
+      expect(shown.parentElement).toHaveClass('gros-row-words', 'flex-1')
+      expect(shown.parentElement).not.toHaveClass('min-w-0')
+    }
+  })
 })
 
 describe('StepCards and FocusShell (UI-DS)', () => {
@@ -406,5 +447,40 @@ describe('Progress (UI-DS)', () => {
     expect(retry).toHaveLength(1)
     expect(alert).not.toContainElement(retry[0]!)
     expect(screen.getByText('Done')).toBeInTheDocument()
+  })
+
+  it('shows a step not started yet with Try again, never as an alert', () => {
+    render(
+      <Progress
+        title="Reading your store"
+        steps={[
+          {
+            text: 'Your ads are not read yet',
+            state: 'failed',
+            reason: 'Press Try again to read them.',
+            notice: true
+          },
+          {
+            text: 'Your reviews are not read yet',
+            state: 'failed',
+            reason: 'Press Try again to read them.',
+            notice: true
+          },
+          { text: 'Reading your reviews stopped', state: 'failed' }
+        ]}
+        retry={<Button label="Try again" />}
+      />
+    )
+    // Only the real failure is read out at once.
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Reading your reviews stopped'
+    )
+    expect(screen.getByText('Your ads are not read yet')).toBeVisible()
+    // The one Try again sits on the first of them.
+    const retry = screen.getByRole('button', { name: 'Try again' })
+    expect(
+      screen.getByText('Your ads are not read yet').closest('li')
+    ).toContainElement(retry)
   })
 })

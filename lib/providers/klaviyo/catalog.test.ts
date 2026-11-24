@@ -94,26 +94,43 @@ describe('the catalog read, against recorded Klaviyo answers', () => {
         always
       )
     ).toMatchObject({ cancelledOrder: 'CnclOr', refundedOrder: 'RfndOr' })
-    const metric = (id: string, name: string) => ({
+    const metric = (id: string, name: string, from = 'API') => ({
       type: 'metric',
       id,
-      attributes: { name, integration: { name: 'API' } }
+      attributes: { name, integration: { name: from } }
     })
-    const transport: KlaviyoTransport = async () => ({
-      status: 200,
-      headers: {},
-      body: JSON.stringify({
-        data: [
-          metric('PlcdOr', 'Placed Order'),
-          metric('Cncl1', 'Canceled Order')
-        ],
-        links: { next: null }
+    const answer =
+      (data: unknown[]): KlaviyoTransport =>
+      async () => ({
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ data, links: { next: null } })
       })
-    })
-    expect(await findStoreMetrics(client(transport), always)).toMatchObject({
-      cancelledOrder: 'Cncl1',
-      refundedOrder: null
-    })
+    expect(
+      await findStoreMetrics(
+        client(
+          answer([
+            metric('PlcdOr', 'Placed Order'),
+            metric('Cncl1', 'Canceled Order')
+          ])
+        ),
+        always
+      )
+    ).toMatchObject({ cancelledOrder: 'Cncl1', refundedOrder: null })
+    // Shopify's own metric over one sent through the API, whatever the order.
+    expect(
+      await findStoreMetrics(
+        client(
+          answer([
+            metric('Cncl1', 'Canceled Order'),
+            metric('CnclSh', 'Cancelled Order', 'Shopify'),
+            metric('RfndAp', 'Refunded Order'),
+            metric('RfndSh', 'Refunded Order', 'Shopify')
+          ])
+        ),
+        always
+      )
+    ).toMatchObject({ cancelledOrder: 'CnclSh', refundedOrder: 'RfndSh' })
   })
 
   it('reads the cancels and refunds of the window in Shopify’s shape, and none without the metrics', async () => {
@@ -155,32 +172,81 @@ describe('the catalog read, against recorded Klaviyo answers', () => {
     expect(none.calls).toEqual([])
   })
 
-  it('leaves a refused cancels read unread, but never waits out the pace', async () => {
+  it('leaves a cancels read that fails unread, but stops for a refused key or the pace', async () => {
     const since = new Date(now.getTime() - 90 * 86_400_000)
     const metrics = { cancelledOrder: 'CnclOr', refundedOrder: 'RfndOr' }
-    const refused = recordedCatalogTransport({
-      now,
-      returns: true,
-      fail: {
-        on: 'returns',
-        with: { status: 400, headers: {}, body: '{"errors":[{"status":400}]}' }
+    const status = (s: number) => ({ status: s, headers: {}, body: '{}' })
+    const hang: KlaviyoTransport = async () => {
+      throw new DOMException('The operation timed out.', 'TimeoutError')
+    }
+    for (const transport of [
+      ...[status(503), status(403), status(400), status(200)].map((with_) =>
+        recordedCatalogTransport({
+          now,
+          returns: true,
+          fail: { on: 'returns', with: with_ }
+        })
+      ),
+      hang
+    ]) {
+      const read = await readOrderReturns(
+        client(transport),
+        metrics,
+        since,
+        always
+      )
+      expect(read.cancels).toEqual({ records: [], complete: false, skipped: 0 })
+      expect(read.refunds.complete).toBe(false)
+    }
+    for (const [response, kind] of [
+      [recorded.throttled(5), 'rate_limited'],
+      [recorded.badKey, 'bad_key']
+    ] as const) {
+      const transport = recordedCatalogTransport({
+        now,
+        returns: true,
+        fail: { on: 'returns', with: response }
+      })
+      expect(
+        (
+          await failure(
+            readOrderReturns(client(transport), metrics, since, always)
+          )
+        ).kind
+      ).toBe(kind)
+    }
+  })
+
+  it('skips a cancel of an unknown shape and keeps an event Klaviyo sends twice once', async () => {
+    const cancel = (id: string, extra: object = {}) => ({
+      type: 'event',
+      id,
+      attributes: {
+        datetime: '2026-11-10T10:00:00+00:00',
+        event_properties: { $event_id: id },
+        ...extra
       }
     })
-    const read = await readOrderReturns(client(refused), metrics, since, always)
-    expect(read.cancels.complete).toBe(false)
-    expect(read.refunds.complete).toBe(false)
-    const throttled = recordedCatalogTransport({
-      now,
-      returns: true,
-      fail: { on: 'returns', with: recorded.throttled(5) }
+    const pages = [
+      {
+        data: [cancel('C1'), cancel('C2', { datetime: 'yesterday' })],
+        links: { next: 'https://a.klaviyo.com/api/events/?page[cursor]=p2' }
+      },
+      { data: [cancel('C1'), cancel('C3')], links: { next: null } }
+    ]
+    const transport: KlaviyoTransport = async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify(pages.shift())
     })
-    expect(
-      (
-        await failure(
-          readOrderReturns(client(throttled), metrics, since, always)
-        )
-      ).kind
-    ).toBe('rate_limited')
+    const read = await readOrderReturns(
+      client(transport),
+      { cancelledOrder: 'CnclOr', refundedOrder: null },
+      new Date(now.getTime() - 90 * 86_400_000),
+      always
+    )
+    expect(read.cancels).toMatchObject({ complete: true, skipped: 1 })
+    expect(read.cancels.records.map((e) => e.id)).toEqual(['C1', 'C3'])
   })
 
   it('reads orders with the emails and flows Klaviyo credits them to, and stops once enough are read', async () => {

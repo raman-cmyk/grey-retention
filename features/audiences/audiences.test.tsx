@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
@@ -7,6 +8,8 @@ vi.mock('@/features/klaviyo-data/reader', () => ({
   klaviyoData: mocks.klaviyoData
 }))
 
+import AudiencesError from '@/app/(gros)/audiences/error'
+import AudiencesLoading from '@/app/(gros)/audiences/loading'
 import type { KlaviyoData } from '@/features/klaviyo-data/reader'
 import { audiencesReadModel, audiencesView } from './read-model'
 import { AudiencesScreen } from './screen'
@@ -194,6 +197,10 @@ describe('Audiences screen (UI-AUDa)', () => {
     cleanup()
     render(<AudiencesScreen view={{ state: 'not_connected' }} owner={false} />)
     expect(screen.queryByRole('link', { name: 'Connect Klaviyo' })).toBeNull()
+    // The same words for staff, who are told who connects it instead.
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Klaviyo not connected' })
+    ).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Klaviyo' })).toHaveTextContent(
       'The store’s owner connects Klaviyo.'
     )
@@ -248,5 +255,73 @@ describe('Audiences screen (UI-AUDa)', () => {
     )
     expect(screen.getByRole('alert')).not.toHaveTextContent('Try again')
     expect(screen.queryByRole('link', { name: 'Try again' })).toBeNull()
+  })
+})
+
+describe('Audiences states (UI-AUDb)', () => {
+  it('shows a long segment name and its rules whole, for the owner and staff', () => {
+    const name = 'Bought twice in the spring sale and opened every email since'
+    const rules =
+      'Placed an order at least twice in the last 90 days and opened an email in the last 30 days'
+    const data = sample()
+    if (data.state !== 'sample') throw new Error(data.state)
+    data.snapshot.segments.push(segment('SEGlong', name, 99_999, { rules }))
+    for (const owner of [true, false]) {
+      render(<AudiencesScreen view={audiencesView(data, now)} owner={owner} />)
+      const row = within(
+        screen.getByRole('region', { name: 'Segments' })
+      ).getByText(name)
+      // Never cut to one line: a phone shows every word.
+      expect(row).not.toHaveClass('truncate')
+      expect(row).toHaveClass('break-words')
+      const details = screen.getByText(
+        `99,999 people · ${rules.replace(/\.$/, '')}`
+      )
+      expect(details).not.toHaveClass('truncate')
+      expect(details).toHaveClass('break-words')
+      // Opening a segment is for everyone who can see it.
+      expect(
+        screen.getAllByRole('link', { name: 'Open' }).length
+      ).toBeGreaterThan(0)
+      cleanup()
+    }
+  })
+
+  it('opens on the loading page: the bar with Audiences current, its words, busy, and no main', () => {
+    const { container } = render(<AudiencesLoading />)
+    expect(
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole(
+        'link',
+        { name: 'Audiences' }
+      )
+    ).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByText('Opening Audiences')).toHaveAttribute(
+      'aria-live',
+      'polite'
+    )
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
+    // The page brings the one main while it streams in.
+    expect(container.querySelector('main')).toBeNull()
+  })
+
+  it('says plainly when the page did not open, with Try again and the bar as a way out', async () => {
+    const retry = vi.fn()
+    render(<AudiencesError retry={retry} />)
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Audiences did not open')
+    expect(alert).toHaveTextContent('Nothing was changed.')
+    expect(alert).not.toHaveTextContent(/Something went wrong|error/i)
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(retry).toHaveBeenCalledTimes(1)
+    const menu = within(screen.getByRole('navigation', { name: 'Main' }))
+    expect(menu.getByRole('link', { name: 'Home' })).toHaveAttribute(
+      'href',
+      '/home'
+    )
+    expect(menu.getByRole('link', { name: 'Audiences' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    )
   })
 })

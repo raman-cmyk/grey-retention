@@ -31,7 +31,7 @@ import {
   salesWindowDays,
   withSales
 } from './clean'
-import { matchReturns } from './returns'
+import { matchReturns, returnsState } from './returns'
 
 type Db = SupabaseClient<Database>
 type Job = Database['public']['Tables']['job_runs']['Row']
@@ -166,7 +166,9 @@ export async function readBrandCatalog(
         ? unread
         : none
   // ONB-ORD: cancelled and refunded orders sell nothing (a partial refund
-  // only its units); a store without those metrics has none.
+  // only its units); a store without those metrics has none. They only
+  // correct the sales: how much was read is its own flag, never whether
+  // the catalog read was whole (which retires the products not seen).
   const returns =
     orders.records.length && (metrics.cancelledOrder || metrics.refundedOrder)
       ? await readOrderReturns(deps.client, metrics, since, more)
@@ -176,19 +178,20 @@ export async function readBrandCatalog(
     returns.cancels.records,
     returns.refunds.records
   )
-  const skipped =
-    items.skipped +
-    orders.skipped +
-    views.skipped +
-    returns.cancels.skipped +
-    returns.refunds.skipped
+  const returnsRead = returnsState(
+    [
+      ...(metrics.cancelledOrder ? [returns.cancels] : []),
+      ...(metrics.refundedOrder ? [returns.refunds] : [])
+    ],
+    undone,
+    orders.complete
+  )
+  const skipped = items.skipped + orders.skipped + views.skipped
   const read =
     items.complete &&
     metrics.complete &&
     orders.complete &&
     views.complete &&
-    returns.cancels.complete &&
-    returns.refunds.complete &&
     skipped === 0
 
   const orderMoney = orderCurrency(orders.records)
@@ -313,7 +316,12 @@ export async function readBrandCatalog(
     views: views.records.length,
     // The orders taken out, when the store has the metrics.
     ...(metrics.cancelledOrder || metrics.refundedOrder
-      ? { cancelled: undone.cancelled, refunded: undone.refunded }
+      ? {
+          returns: returnsRead,
+          cancelled: undone.cancelled,
+          refunded: undone.refunded,
+          unmatched: undone.unmatched
+        }
       : {}),
     ...(oldest(orders.records) ? { oldestOrder: oldest(orders.records) } : {}),
     ...(oldest(views.records) ? { oldestView: oldest(views.records) } : {})
@@ -342,6 +350,10 @@ export async function readBrandCatalog(
     skipped,
     complete,
     currencyCheck: check,
+    returns:
+      metrics.cancelledOrder || metrics.refundedOrder ? returnsRead : 'none',
+    cancelled: undone.cancelled,
+    refunded: undone.refunded,
     live: deps.live
   })
   if (state === 'empty')

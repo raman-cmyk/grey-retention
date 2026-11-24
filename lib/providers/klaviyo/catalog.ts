@@ -47,6 +47,8 @@ export type CatalogItem = {
 }
 
 export type StoreEvent = {
+  /** Klaviyo's id of the event, when it sends one. */
+  id?: string
   /** ISO time of the event. */
   at: string
   props: Record<string, unknown>
@@ -361,7 +363,7 @@ export async function findStoreMetrics(
 
 const eventRecord = z.object({
   type: z.literal('event'),
-  id: z.string().nullish(),
+  id: z.string().max(200).nullish(),
   attributes: z.object({
     datetime: z.iso.datetime({ offset: true }),
     // Klaviyo may send no properties: the event then says nothing.
@@ -391,9 +393,11 @@ const kid = (id: string | undefined) =>
   id && /^[A-Za-z0-9]{1,64}$/.test(id) ? [id] : []
 
 /**
- * One metric's events since `since`, newest first. With `attributions`,
- * each event names the campaign messages and flows Klaviyo credits with
- * it; `until` asks for no next page once the events read are enough.
+ * One metric's events since `since`, newest first; an event Klaviyo sends
+ * again (its id repeated, on a later page) is kept once. With
+ * `attributions`, each event names the campaign messages and flows Klaviyo
+ * credits with it; `until` asks for no next page once the events read
+ * (kept once) are enough.
  */
 export function readEvents(
   client: KlaviyoClient,
@@ -407,6 +411,7 @@ export function readEvents(
   } = {}
 ): Promise<PagedRead<StoreEvent>> {
   const read: StoreEvent[] = []
+  const seen = new Set<string>()
   return readPages(
     client,
     eventsPath(metricId, since) +
@@ -421,13 +426,17 @@ export function readEvents(
         const a = attributionRecord.safeParse(raw)
         if (a.success) credits.set(a.data.id, a.data)
       }
-      const records = body.data.flatMap((raw) => {
+      const records = body.data.flatMap((raw): StoreEvent[] => {
         const e = eventRecord.safeParse(raw)
         if (!e.success) {
           skipped++
           return []
         }
+        const id = e.data.id ?? undefined
+        if (id && seen.has(id)) return []
+        if (id) seen.add(id)
         const event: StoreEvent = {
+          ...(id ? { id } : {}),
           at: new Date(e.data.attributes.datetime).toISOString(),
           props: e.data.attributes.event_properties ?? {}
         }
@@ -450,11 +459,21 @@ export function readEvents(
         }
         return [event]
       })
+      // After the dedupe, so `until` sees each event once.
       read.push(...records)
       return { records, skipped }
     }
   )
 }
+
+/**
+ * ONB-ORD: whether a failed read that only corrects the counts is left out
+ * (any Klaviyo failure but a refused key or its pace, which stop the job).
+ */
+export const correctionLeftOut = (error: unknown) =>
+  error instanceof KlaviyoError &&
+  error.kind !== 'bad_key' &&
+  error.kind !== 'rate_limited'
 
 export type OrderReturnsRead = {
   cancels: PagedRead<StoreEvent>
@@ -464,9 +483,9 @@ export type OrderReturnsRead = {
 /**
  * ONB-ORD: the store's Cancelled and Refunded Order events since `since`,
  * each within the events' page cap. A store without one of the metrics has
- * none of them (not an error). Klaviyo refusing one of the reads (a query
- * or an answer it does not take) leaves it unread, so the read is not
- * whole; its pace, a bad key or a missing scope still throw.
+ * none of them (not an error). These reads only correct the counts: any
+ * failure (an outage, a timeout, a 403, a refusal, an odd answer) leaves
+ * that one unread; only a refused key or Klaviyo's pace still throw.
  */
 export async function readOrderReturns(
   client: KlaviyoClient,
@@ -481,12 +500,8 @@ export async function readOrderReturns(
     try {
       return await readEvents(client, metricId, since, more)
     } catch (error) {
-      if (
-        error instanceof KlaviyoError &&
-        ['rejected', 'invalid_response'].includes(error.kind)
-      )
-        return unread
-      throw error
+      if (!correctionLeftOut(error)) throw error
+      return unread
     }
   }
   return {

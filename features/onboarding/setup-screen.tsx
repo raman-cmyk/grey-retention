@@ -147,6 +147,12 @@ const skippedWords: Partial<Record<StepKey, string>> = {
   ads: 'No ads to read',
   reviews: 'No reviews to read'
 }
+/** A website reader with no read of the website saved now, and what it is. */
+const unreadWords: Partial<Record<StepKey, [string, 'it' | 'them']>> = {
+  site: ['Your website is not read yet', 'it'],
+  ads: ['Your ads are not read yet', 'them'],
+  reviews: ['Your reviews are not read yet', 'them']
+}
 /** Where each reader reads, for its reason. */
 const sourceWords: Partial<Record<StepKey, string>> = {
   site: 'Your website',
@@ -181,22 +187,31 @@ export function readerReason(key: StepKey, failure?: string): string {
 
 /**
  * The readers as Progress rows: the website's three always, the Klaviyo
- * ones once started. A website never read is a failed row (Try again).
+ * ones once started. A website reader with no read of the website saved
+ * now (never read, or only an old website's: ONB-SITEa) says it is not
+ * read yet: a row with the one Try again for the owner (staff have none,
+ * so they are told only the owner can start it), and never an alert, as
+ * it is no error.
  */
 export function readerSteps(view: SetupView): ProgressStep[] {
   return (view.reading?.steps ?? []).flatMap((s): ProgressStep[] => {
     const words = readerWords[s.key]
     if (!words) return []
-    const own = s.key === 'site' || s.key === 'ads' || s.key === 'reviews'
-    if (!own && s.state === 'not_started') return []
-    if (s.key === 'site' && s.state === 'not_started')
+    const unread = unreadWords[s.key]
+    if (s.state === 'not_started') {
+      if (!unread) return []
+      const [text, what] = unread
       return [
         {
-          text: 'Your website is not read yet',
+          text,
           state: 'failed',
-          reason: 'Press Try again to read it.'
+          notice: true,
+          reason: view.owner
+            ? `Press Try again to read ${what}.`
+            : `Only the workspace owner can start reading ${what}.`
         }
       ]
+    }
     const state = readerState[s.state]
     return [
       {

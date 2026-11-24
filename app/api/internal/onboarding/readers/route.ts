@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { cronAuthorized } from '@/features/cron/gate'
 import { runSourceReadings } from '@/features/onboarding/readers'
+import {
+  booksNeedingStrategy,
+  strategistReady
+} from '@/features/onboarding/strategist-run'
 import { createServiceClient } from '@/lib/supabase/service'
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -11,7 +15,9 @@ const noStore = { 'cache-control': 'no-store' }
  * Actions job calls this with `Authorization: Bearer <CRON_SECRET>`. GET
  * `?peek=1` only says how many source reads (site and catalog) are waiting;
  * GET reads them (each within 30 seconds, every model and Klaviyo call
- * capped) and answers with counts only.
+ * capped) and answers with counts only. ONB-106c: with a live plan model,
+ * a Brand book waiting for its strategist counts as one more waiting, so
+ * the job still calls the run after a workspace's last read.
  */
 export async function GET(request: NextRequest) {
   if (
@@ -32,12 +38,21 @@ export async function GET(request: NextRequest) {
     )
   if (request.nextUrl.searchParams.get('peek') === '1') {
     const waiting = await db.rpc('source_readings_waiting')
-    return waiting.error
-      ? NextResponse.json(
-          { error: 'Waiting reads unavailable' },
-          { status: 500, headers: noStore }
+    if (waiting.error)
+      return NextResponse.json(
+        { error: 'Waiting reads unavailable' },
+        { status: 500, headers: noStore }
+      )
+    const strategies = strategistReady()
+      ? await booksNeedingStrategy(db, { limit: 1 }).then(
+          (t) => t.length,
+          () => 0
         )
-      : NextResponse.json({ waiting: waiting.data ?? 0 }, { headers: noStore })
+      : 0
+    return NextResponse.json(
+      { waiting: (waiting.data ?? 0) + strategies },
+      { headers: noStore }
+    )
   }
   const run = await runSourceReadings(db)
   return NextResponse.json(run, {

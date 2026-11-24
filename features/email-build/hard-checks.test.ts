@@ -57,7 +57,12 @@ describe('the hard checks on a drawn email (DST-005)', () => {
   it('refuse anything wider than the email', async () => {
     const html = await built()
     expect(
-      checks(add(html, '<table width="700"><tr><td>x</td></tr></table>'))
+      checks(
+        add(
+          html,
+          '<table role="presentation" width="700"><tr><td>x</td></tr></table>'
+        )
+      )
     ).toEqual(['width'])
     expect(checks(add(html, '<div style="width:640px">x</div>'))).toEqual([
       'width'
