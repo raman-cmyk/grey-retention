@@ -26,6 +26,11 @@ export type ChosenEmail = {
   at: string
   /** The email's stored, sanitized markup. */
   html: string
+  /**
+   * The build cannot follow it (yet): the inbox is still reading it, or it
+   * is over a year old. The email is then made from scratch.
+   */
+  unready: 'reading' | 'old' | null
 }
 
 export type FreeEmail = {

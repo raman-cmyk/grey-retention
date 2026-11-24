@@ -1,5 +1,5 @@
 begin;
-select plan(27);
+select plan(29);
 
 -- UI-USE: "Use this design" on Inspiration runs Create email on a planned
 -- email with the inspiration email the owner chose (Copy or Remix).
@@ -40,6 +40,7 @@ select set_config('test.followed',pg_temp.email_of('use-followed.example'),true)
 select set_config('test.hidden',pg_temp.email_of('use-hidden.example'),true);
 select set_config('test.dropped',pg_temp.email_of('use-dropped.example'),true);
 select set_config('test.other',pg_temp.email_of('use-other.example'),true);
+select set_config('test.followed_brand',(select id::text from public.competitor_captures where domain='use-followed.example'),true);
 
 -- A planned run: four designed emails and a text one.
 select set_config('test.today',((now() at time zone (select timezone from public.tenants where id='00000000-0000-4000-8000-000000000101'))::date)::text,true);
@@ -98,6 +99,9 @@ select is(pg_temp.hint_of('00000000-0000-4000-8000-000000000101','00000000-0000-
 select is(pg_temp.hint_of('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e201',1,'copy',current_setting('test.followed')::uuid),'build_mode_text','a text email is not copied from a chosen email either');
 select is(pg_temp.hint_of('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e201',3,'paste',current_setting('test.followed')::uuid),'build_mode_unknown','an unknown mode is refused first');
 select is((select count(*) from public.email_builds where run_id='00000000-0000-4000-8000-00000000e201' and slot in (1,3)),0::bigint,'no refused click made a build');
+-- The owner hides the brand he chose from: its email is no longer his to use.
+select lives_ok($$select public.hide_competitor('00000000-0000-4000-8000-000000000101',current_setting('test.followed_brand')::uuid)$$,'the owner hides the brand');
+select is(pg_temp.hint_of('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e201',3,'copy',current_setting('test.followed')::uuid),'build_reference_unknown','after hiding it, its email is refused');
 reset role;
 
 -- Staff choose nothing: the owner check comes first.

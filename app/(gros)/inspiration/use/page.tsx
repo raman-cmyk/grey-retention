@@ -51,7 +51,7 @@ export default async function UseDesignPage({
     )
   }
   const attempt = z.uuid().safeParse(params.attempt)
-  const workspace = await firstDraftWorkspace(undefined, imported)
+  const workspace = await firstDraftWorkspace(imported)
   if (!attempt.success) {
     const query = new URLSearchParams({ attempt: workspace.requestKey })
     if (imported) query.set('imported', imported)
@@ -65,7 +65,7 @@ export default async function UseDesignPage({
           owner: context.tenantRole === 'owner',
           // The chosen email's own list must have been read to find it.
           readable: !!data && !(imported && workspace.importError),
-          references: workspace.references,
+          references: [],
           imported: workspace.imported,
           requestKey: attempt.data,
           brandName: data?.brand?.brand_name ?? context.tenantName,

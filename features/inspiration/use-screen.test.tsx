@@ -21,7 +21,7 @@ import UseDesignError from '@/app/(gros)/inspiration/use/error'
 import UseDesignLoading from '@/app/(gros)/inspiration/use/loading'
 import type { PlanRun } from '@/features/strategy/load'
 import { planScreen } from '@/features/strategy/plan-screen'
-import { readUseEmail } from './use-read'
+import { readUseEmail, unready } from './use-read'
 import { UseEmailScreen } from './use-screen'
 import {
   inspirationUseView,
@@ -37,7 +37,8 @@ const email: ChosenEmail = {
   subject: 'The cedar sale',
   from: 'Pine & Co',
   at: '2026-11-10T09:00:00Z',
-  html: '<p>Hello</p><script>alert(1)</script><a href="https://x.example">x</a>'
+  html: '<p>Hello</p><script>alert(1)</script><a href="https://x.example">x</a>',
+  unready: null
 }
 
 const slot = (date: string, over: Record<string, unknown> = {}) => ({
@@ -204,12 +205,8 @@ describe('the "Use this design" screen (UI-USE)', () => {
       name: 'Bestseller: Cedar candle, Wed 18, 6:00 pm, Past buyers'
     })
     expect(first).toBeChecked()
-    expect(
-      within(pick).getByLabelText('Copy an inspiration email')
-    ).toBeChecked()
-    expect(
-      within(pick).getByLabelText('Remix an inspiration email')
-    ).not.toBeChecked()
+    expect(within(pick).getByLabelText('Copy this email')).toBeChecked()
+    expect(within(pick).getByLabelText('Remix this email')).not.toBeChecked()
     expect(within(pick).queryByLabelText('From scratch')).toBeNull()
     const create = within(pick).getByRole('button', { name: 'Create email' })
     expect(screen.getAllByRole('button')).toHaveLength(1)
@@ -218,6 +215,32 @@ describe('the "Use this design" screen (UI-USE)', () => {
         new FormData(create.closest('form')!) as unknown as [string, string][]
       )
     ).toEqual({ run: 'run-1', reference: email.id, slot: '1', mode: 'copy' })
+  })
+
+  it('says before Create email when the email cannot be followed, and starts on Remix', () => {
+    for (const [why, words] of [
+      [
+        'reading',
+        'This email is still being read, so GROS will make the email from scratch.'
+      ],
+      [
+        'old',
+        'This email is over a year old, so GROS will make the email from scratch.'
+      ]
+    ] as const) {
+      draw(input(run(), { email: { ...email, unready: why } }))
+      const pick = screen.getByRole('region', {
+        name: 'Choose a planned email'
+      })
+      expect(within(pick).getByText(words)).toBeInTheDocument()
+      expect(within(pick).getByLabelText('Remix this email')).toBeChecked()
+      expect(within(pick).getByLabelText('Copy this email')).not.toBeChecked()
+      cleanup()
+    }
+    draw(input())
+    expect(
+      screen.queryByText(/so GROS will make the email from scratch/)
+    ).toBeNull()
   })
 
   it('gives staff the email and one line, with no button', () => {
@@ -308,8 +331,26 @@ describe('what "Use this design" reads (UI-USE)', () => {
     capture_id: 'pine',
     subject: 'The cedar sale',
     safe_html: '<p>Hello</p>',
-    received_at: '2026-11-10T09:00:00Z'
+    received_at: '2026-11-10T09:00:00Z',
+    labels_state: 'tagged',
+    inbox_message_id: '00000000-0000-4000-8000-0000000000f1'
   }
+  const now = Date.parse('2026-11-24T12:00:00Z')
+
+  it('knows when the build cannot follow the email yet', () => {
+    expect(unready(row, now)).toBeNull()
+    // Not tagged by the inbox yet, or not an inbox email.
+    expect(unready({ ...row, labels_state: null }, now)).toBe('reading')
+    expect(unready({ ...row, labels_state: 'untagged' }, now)).toBe('reading')
+    expect(unready({ ...row, inbox_message_id: null }, now)).toBe('reading')
+    // Over the build's age limit (366 days).
+    expect(unready({ ...row, received_at: '2025-11-22T12:00:00Z' }, now)).toBe(
+      'old'
+    )
+    expect(
+      unready({ ...row, received_at: '2025-11-24T12:00:00Z' }, now)
+    ).toBeNull()
+  })
 
   it('reads the email of a brand this workspace follows, and the latest plan', async () => {
     const { client, seen } = db({
@@ -319,7 +360,7 @@ describe('what "Use this design" reads (UI-USE)', () => {
     })
     mocks.createClient.mockResolvedValue(client)
     mocks.latestPlanRun.mockResolvedValue({ ok: true, run: null })
-    const read = await readUseEmail(context, email.id)
+    const read = await readUseEmail(context, email.id, now)
     expect(read).toMatchObject({
       ok: true,
       owner: true,
@@ -327,7 +368,8 @@ describe('what "Use this design" reads (UI-USE)', () => {
         id: email.id,
         from: 'Pine & Co',
         subject: 'The cedar sale',
-        html: '<p>Hello</p>'
+        html: '<p>Hello</p>',
+        unready: null
       },
       plan: { kind: 'empty' }
     })

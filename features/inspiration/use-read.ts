@@ -1,9 +1,10 @@
 import 'server-only'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
+import { maxAgeDays } from '@/features/studio/reference'
 import { latestPlanRun } from '@/features/strategy/load'
 import { planScreen } from '@/features/strategy/plan-screen'
 import { createClient } from '@/lib/supabase/server'
-import type { UseEmailInput } from './use-view'
+import type { ChosenEmail, UseEmailInput } from './use-view'
 
 /**
  * UI-USE: what "Use this design" reads, with the member's own session (RLS
@@ -15,7 +16,8 @@ import type { UseEmailInput } from './use-view'
  */
 export async function readUseEmail(
   context: Pick<ClientRequestContext, 'tenantId' | 'tenantRole' | 'timezone'>,
-  reference: string | null
+  reference: string | null,
+  now = Date.now()
 ): Promise<UseEmailInput> {
   const db = await createClient()
   if (!db) return { ok: false }
@@ -24,7 +26,9 @@ export async function readUseEmail(
     reference
       ? db
           .from('competitor_emails')
-          .select('id,capture_id,subject,safe_html,received_at')
+          .select(
+            'id,capture_id,subject,safe_html,received_at,labels_state,inbox_message_id'
+          )
           .eq('id', reference)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -60,8 +64,29 @@ export async function readUseEmail(
       subject: row.subject,
       from: followed.data.label,
       at: row.received_at,
-      html: row.safe_html
+      html: row.safe_html,
+      unready: unready(row, now)
     },
     plan
   }
+}
+
+/**
+ * Why the build cannot follow this email yet, as the worker reads the
+ * inbox (`readReferenceRows`): not tagged by the inbox (still being read),
+ * or older than the build's age limit. Null: it can (the build still
+ * checks its layout, heights and offer when it runs).
+ */
+export function unready(
+  row: {
+    labels_state: string | null
+    inbox_message_id: string | null
+    received_at: string
+  },
+  now: number
+): ChosenEmail['unready'] {
+  const at = Date.parse(row.received_at)
+  if (Number.isFinite(at) && now - at > maxAgeDays * 86_400_000) return 'old'
+  if (row.labels_state !== 'tagged' || !row.inbox_message_id) return 'reading'
+  return null
 }

@@ -2,44 +2,35 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import { draftDefaultDate } from './default-date'
 import { campaignWorkspace } from '@/features/campaigns/data'
-import { referenceWorkspace } from '@/features/references/data'
 import {
   pastedReference,
   pastedReferences
 } from '@/features/references/pasted-data'
 
+/**
+ * The draft form's reads (UI-OLDc): the workspace, its emails it added and
+ * the one chosen. UI-USE: a followed brand's email runs Create email on a
+ * planned email instead, so the form reads no competitor emails.
+ */
 export async function firstDraftWorkspace(
-  selectedReference?: string,
   selectedImport?: string,
   /** A day picked on the Campaigns calendar (`?date=YYYY-MM-DD`). */
   plannedDay?: string
 ) {
-  const [workspace, references] = await Promise.all([
-    campaignWorkspace(),
-    referenceWorkspace()
-  ])
+  const workspace = await campaignWorkspace()
   const tenantId = workspace.context.tenantId
   const [imports, chosenImport] = await Promise.all([
     pastedReferences(tenantId, 12),
     selectedImport ? pastedReference(tenantId, selectedImport) : null
   ])
-  const emails = references.data?.emails ?? []
-  const selected = emails.find((email) => email.id === selectedReference)
   const chosen = chosenImport?.data
   return {
     ...workspace,
     requestKey: randomUUID(),
     defaultDate: draftDefaultDate(plannedDay, workspace.context.timezone),
-    references: selected
-      ? [
-          selected,
-          ...emails.filter((email) => email.id !== selected.id).slice(0, 11)
-        ]
-      : emails.slice(0, 12),
     imported: chosen
       ? [chosen, ...imports.data.filter((item) => item.id !== chosen.id)]
       : imports.data,
-    referenceError: references.error,
     importError: imports.error ?? chosenImport?.error ?? null
   }
 }

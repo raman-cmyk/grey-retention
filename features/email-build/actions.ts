@@ -174,7 +174,7 @@ export async function createEmailFromInspiration(
   const db = await createClient()
   if (!db) return { error: 'Creating emails is unavailable right now.' }
   // The command's `reference` is newer than the generated types (UI-USE;
-  // BUILD_LEDGER Known issues): the one place it is named by hand.
+  // BUILD_LEDGER Known issues): named by hand here and in the read below.
   const args: CreateEmailBuildArgs & { reference: string } = {
     t: context.tenantId,
     run: parsed.data.run,
@@ -190,10 +190,34 @@ export async function createEmailFromInspiration(
   if (refused) return refused
   if (typeof data !== 'string')
     return { error: 'We could not create the email. Try again.' }
+  // Clicking on a planned email already being made returns that build (a
+  // stale page, another tab): it keeps the mode and email it was started
+  // with, so the owner is told instead of landing on it silently.
+  const made = (await db
+    .from('email_builds')
+    .select('mode,reference_id')
+    .eq('id', data)
+    .eq('tenant_id', context.tenantId)
+    .maybeSingle()) as unknown as {
+    data: { mode: string; reference_id: string | null } | null
+    error: unknown
+  }
+  if (
+    made.data &&
+    (made.data.mode !== parsed.data.mode ||
+      made.data.reference_id !== parsed.data.reference)
+  ) {
+    revalidatePath('/plan')
+    return { error: alreadyMade }
+  }
   buildSoon(data)
   revalidatePath('/plan')
   redirect(`/plan/email/${data}` as Route)
 }
+
+/** A planned email already being made from another design, or another way. */
+const alreadyMade =
+  'This email is already being made from another design. Open it on your plan.'
 
 type CreateEmailBuildArgs =
   Database['public']['Functions']['create_email_build']['Args']

@@ -8,7 +8,6 @@ import { EmptyState, ErrorState } from '@/components/gros/states'
 import { createEmailFromInspiration } from '@/features/email-build/actions'
 import { toSafePreview } from '@/features/email-generation/to-safe-preview'
 import { startPlan } from '@/features/strategy/actions'
-import { modeChoices } from '@/features/strategy/mode-pick'
 import type { ChosenEmail, UseEmailView } from './use-view'
 
 /**
@@ -36,8 +35,18 @@ export function UseEmailScreen({
 const inspirationHref: Route = '/inspiration'
 const planHref: Route = '/plan'
 
-/** Copy and Remix, worded as on the Plan and Home (UI-HOMEc). */
-export const inspirationModes = modeChoices.filter((c) => c.value !== 'scratch')
+/** Copy or Remix the chosen email (Scratch follows no email). */
+export const inspirationModes = [
+  { value: 'copy', label: 'Copy this email' },
+  { value: 'remix', label: 'Remix this email' }
+] as const
+
+/** Why the build cannot follow the chosen email, in one line. */
+export const unreadyWords = {
+  reading:
+    'This email is still being read, so GROS will make the email from scratch.',
+  old: 'This email is over a year old, so GROS will make the email from scratch.'
+} as const
 
 function Body({ view, timezone }: { view: UseEmailView; timezone: string }) {
   switch (view.kind) {
@@ -111,6 +120,11 @@ function Pick({ view }: { view: Extract<UseEmailView, { kind: 'pick' }> }) {
     <Card label={title}>
       <div className="flex flex-col gap-[var(--space-5)]">
         <h2 className="type-heading">{title}</h2>
+        {view.email.unready ? (
+          <p className="type-body text-[var(--signal-ink)]">
+            {unreadyWords[view.email.unready]}
+          </p>
+        ) : null}
         <ActionButton
           action={createEmailFromInspiration}
           label="Create email"
@@ -144,7 +158,7 @@ function Pick({ view }: { view: Extract<UseEmailView, { kind: 'pick' }> }) {
             <legend className="gros-field-label mb-[var(--space-2)] text-[var(--ink)]">
               How to make it
             </legend>
-            {inspirationModes.map((m, i) => (
+            {inspirationModes.map((m) => (
               <label
                 key={m.value}
                 className="type-body flex items-center gap-[var(--space-3)]"
@@ -153,7 +167,10 @@ function Pick({ view }: { view: Extract<UseEmailView, { kind: 'pick' }> }) {
                   type="radio"
                   name="mode"
                   value={m.value}
-                  defaultChecked={i === 0}
+                  // Copy unless the email cannot be followed yet.
+                  defaultChecked={
+                    m.value === (view.email.unready ? 'remix' : 'copy')
+                  }
                   className="size-5 accent-[var(--forest)]"
                 />
                 {m.label}

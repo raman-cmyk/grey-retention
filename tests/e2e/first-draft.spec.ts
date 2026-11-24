@@ -147,7 +147,7 @@ test('Use this design runs Create email on a planned email, with the chosen insp
   await page.goto(useUrl)
   const pick = page.getByRole('region', { name: 'Choose a planned email' })
   await expect(pick.getByRole('radio').first()).toBeChecked()
-  await expect(pick.getByLabel('Copy an inspiration email')).toBeChecked()
+  await expect(pick.getByLabel('Copy this email')).toBeChecked()
   if (info.project.name.startsWith('mobile'))
     await page.setViewportSize({ width: 320, height: 800 })
   expect(

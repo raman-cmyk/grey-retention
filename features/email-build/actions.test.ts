@@ -160,6 +160,54 @@ describe('creating an email from an inspiration email (UI-USE)', () => {
   const reference = '00000000-0000-4000-8000-0000000000cc'
   const use = (over: Record<string, string> = {}) =>
     form({ run, slot: '3', mode: 'copy', reference, ...over })
+  // The build the command returned, read back with the owner's session.
+  const made = vi.fn()
+  const reads: unknown[][] = []
+  beforeEach(() => {
+    reads.length = 0
+    made.mockResolvedValue({
+      data: { mode: 'copy', reference_id: reference },
+      error: null
+    })
+    const chain: Record<string, unknown> = {}
+    for (const op of ['select', 'eq'])
+      chain[op] = (...a: unknown[]) => {
+        reads.push([op, ...a])
+        return chain
+      }
+    chain.maybeSingle = made
+    supabase.createClient.mockResolvedValue({
+      rpc,
+      from: (table: string) => {
+        reads.push(['from', table])
+        return chain
+      }
+    })
+  })
+
+  it('tells the owner, instead of opening it, when that email is already being made another way', async () => {
+    for (const data of [
+      { mode: 'copy', reference_id: null },
+      { mode: 'copy', reference_id: '00000000-0000-4000-8000-0000000000dd' },
+      { mode: 'remix', reference_id: reference }
+    ]) {
+      made.mockResolvedValue({ data, error: null })
+      expect(await createEmailFromInspiration({}, use())).toEqual({
+        error:
+          'This email is already being made from another design. Open it on your plan.'
+      })
+    }
+    expect(reads).toEqual(
+      expect.arrayContaining([
+        ['from', 'email_builds'],
+        ['select', 'mode,reference_id'],
+        ['eq', 'id', build],
+        ['eq', 'tenant_id', tenantId]
+      ])
+    )
+    expect(redirect).not.toHaveBeenCalled()
+    expect(after).not.toHaveBeenCalled()
+  })
 
   it('creates it for the owner with the chosen email, builds it, and opens its page', async () => {
     expect(await createEmailFromInspiration({}, use())).toBeUndefined()
