@@ -77,10 +77,10 @@ describe('the model retirement watch (owner pick #83)', () => {
       },
       {
         provider: 'gemini',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.5-flash-lite',
         purposes: ['copy', 'review']
       },
-      { provider: 'gemini', model: 'gemini-2.5-pro', purposes: ['plan'] }
+      { provider: 'gemini', model: 'gemini-3.8-flash', purposes: ['plan'] }
     ])
     expect(
       modelsInUseNow(
