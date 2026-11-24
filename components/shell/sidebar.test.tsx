@@ -11,7 +11,6 @@ import {
 } from 'vitest'
 import { installDialogPolyfill } from '@/tests/helpers/dialog-polyfill'
 import {
-  adminNavigation,
   createClientNavigation,
   designerNavigation,
   type ShellNavigation
@@ -365,7 +364,7 @@ describe('account menu', () => {
   })
 
   it('has no Profile Update where the surface has no profile page', async () => {
-    for (const navigation of [adminNavigation, designerNavigation]) {
+    for (const navigation of [designerNavigation]) {
       const { unmount } = shell(undefined, { navigation })
       const trigger = screen.getAllByRole('button', {
         name: 'Open account menu for Rae Owner'
@@ -459,10 +458,7 @@ describe('frame', () => {
     ).toBeInTheDocument()
   })
 
-  it.each([
-    ['Admin console', adminNavigation, 'Clients'],
-    ['Designer workspace', designerNavigation, 'Assignments']
-  ])(
+  it.each([['Designer workspace', designerNavigation, 'Assignments']])(
     'renders the %s with its own links and no groups',
     (label, navigation, link) => {
       location.pathname = '/nowhere'

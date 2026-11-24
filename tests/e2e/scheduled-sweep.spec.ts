@@ -566,9 +566,9 @@ test('INB-004 an admin works the inbox queue and keeps the brand directory', asy
   if (!assigned.data) await expect(unknown).toBeVisible()
 
   // The directory gives each brand the address to subscribe with.
-  const directory = adminPage.getByRole('table', { name: 'Competitor brands' })
+  const directory = adminPage.getByRole('list', { name: 'Competitor brands' })
   const northwind = directory
-    .getByRole('row')
+    .getByRole('listitem')
     .filter({ hasText: 'northwind.example' })
   await expect(northwind).toContainText('capture+northwind@inbox.example')
   await expect(northwind).toContainText('Sample')
@@ -593,7 +593,7 @@ test('INB-004 an admin works the inbox queue and keeps the brand directory', asy
   // and remembers the sender.
   await expect(unknown).toHaveCount(0)
   const cedar = directory
-    .getByRole('row')
+    .getByRole('listitem')
     .filter({ hasText: 'cedar-lane.example' })
   await expect(cedar).toContainText('capture+cedar@inbox.example')
   await expect(cedar).toContainText('news.cedar-lane.example')
