@@ -60,8 +60,8 @@ describe('First draft command', () => {
         })
       })
     )
-    expect(redirect).toHaveBeenCalledWith(`/campaigns/${campaignId}`)
-    expect(revalidatePath).toHaveBeenCalledWith('/get-started')
+    expect(redirect).toHaveBeenCalledWith(`/plan/draft/${campaignId}`)
+    expect(revalidatePath).toHaveBeenCalledWith('/plan')
   })
   it('denies nonowners before creating a database client', async () => {
     requireRequestContext.mockResolvedValue({

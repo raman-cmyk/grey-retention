@@ -90,9 +90,9 @@ export async function brandAction(
           ? 'Brand context changed. Refresh before approving.'
           : 'Could not save. Check permissions and field values.'
     }
-  revalidatePath('/get-started')
+  revalidatePath('/setup')
   revalidatePath('/brand')
-  revalidatePath('/campaign-agent')
+  revalidatePath('/plan')
   return {
     message:
       v.kind === 'approve'

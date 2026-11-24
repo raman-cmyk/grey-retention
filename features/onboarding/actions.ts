@@ -114,7 +114,7 @@ export async function onboardingAction(
           ? result.error.message
           : 'Command denied or unavailable.'
       }
-    for (const path of ['/brand', '/assets', '/connections', '/campaign-agent'])
+    for (const path of ['/brand', '/assets', '/settings', '/plan'])
       revalidatePath(path)
     return {
       message:

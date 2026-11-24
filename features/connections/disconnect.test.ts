@@ -35,7 +35,7 @@ describe('disconnecting Klaviyo', () => {
       provider: 'klaviyo',
       status: 'disconnected'
     })
-    expect(revalidatePath).toHaveBeenCalledWith('/connections')
+    expect(revalidatePath).toHaveBeenCalledWith('/settings')
     expect(revalidatePath).toHaveBeenCalledWith('/home')
   })
 

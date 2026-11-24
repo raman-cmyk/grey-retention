@@ -6,6 +6,7 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { httpsUrl } from '@/features/workflow/domain/contracts'
 import { runFixtureJobs } from '@/features/integrations/worker'
 import type { FormResult } from '@/components/ui/action-form'
+import { plainGuard } from './guard-words'
 const base = { id: z.uuid(), revision: z.coerce.number().int().positive() }
 const schema = z.discriminatedUnion('kind', [
   z.object({
@@ -117,23 +118,26 @@ export async function workflowAction(
       })
     if (v.kind === 'run_jobs') {
       const processed = await runFixtureJobs(db, context.tenantId)
-      revalidatePath('/campaigns', 'layout')
+      revalidatePath('/plan/draft', 'layout')
       revalidatePath('/home')
-      revalidatePath('/campaign-agent')
       return {
         message: `Processed ${processed} fixture job${processed === 1 ? '' : 's'}. Inspect persisted status below.`
       }
     }
     if (result?.error) throw result.error
-    revalidatePath('/campaigns', 'layout')
+    revalidatePath('/plan/draft', 'layout')
     revalidatePath('/home')
-    revalidatePath('/campaign-agent')
-    revalidatePath('/designer/dashboard')
-    revalidatePath('/admin/designers')
     return {
-      message: ['schedule', 'cancel', 'generate_copy'].includes(v.kind)
-        ? 'Intent queued. Run fixture jobs to obtain a confirmed outcome.'
-        : 'Versioned change saved.'
+      message:
+        v.kind === 'generate_copy'
+          ? 'The copy is being written. It shows here in a few minutes.'
+          : v.kind === 'save_copy'
+            ? 'Copy saved.'
+            : v.kind === 'approve_copy'
+              ? 'Copy approved.'
+              : ['schedule', 'cancel'].includes(v.kind)
+                ? 'Intent queued. Run fixture jobs to obtain a confirmed outcome.'
+                : 'Versioned change saved.'
     }
   } catch (error) {
     const e = error as { code?: string; message?: string }
@@ -144,7 +148,7 @@ export async function workflowAction(
           : e.code === '42501'
             ? 'Permission denied.'
             : e.code === '23514'
-              ? e.message
+              ? plainGuard(e.message)
               : 'Operation failed. Inspect persisted job status and retry after resolving the cause.'
     }
   }

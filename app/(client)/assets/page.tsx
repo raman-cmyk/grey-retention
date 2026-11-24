@@ -13,6 +13,7 @@ import { onboardingWorkspace } from '@/features/onboarding/data'
 import { onboardingAction } from '@/features/onboarding/actions'
 import { importAssets } from '@/features/assets/actions'
 import { ReadinessPanel, SetupJobs } from '@/features/onboarding/panels'
+import { SampleDataTools } from '@/features/connections/sample-tools'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Assets' }
@@ -243,6 +244,7 @@ export default async function AssetsPage({
         </Panel>
         <SetupJobs setup={setup} owner={owner} />
         <ReadinessPanel setup={setup} />
+        <SampleDataTools setup={setup} owner={owner} />
       </div>
     </div>
   )

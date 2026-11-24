@@ -64,13 +64,7 @@ function failed(error: { code?: string; message?: string }) {
 }
 
 function refresh() {
-  for (const path of [
-    '/brand',
-    '/connections',
-    '/home',
-    '/get-started',
-    '/campaign-agent'
-  ])
+  for (const path of ['/brand', '/settings', '/home', '/setup', '/plan'])
     revalidatePath(path)
 }
 

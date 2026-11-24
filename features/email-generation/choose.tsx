@@ -13,6 +13,7 @@ import { FileDetails } from '@/features/email-import/details'
 import { EmailPreview } from './preview'
 import { readablePastedText } from '@/features/references/pasted'
 import { httpsLink } from './rewrite'
+import { startDraftHref } from '@/features/drafts/href'
 
 export async function ChooseOutcome({
   tenantId,
@@ -74,10 +75,10 @@ export async function ChooseOutcome({
   return (
     <div>
       <Link
-        href="/get-started?step=reference"
+        href="/inspiration"
         className="text-xs text-[var(--text-muted)] underline"
       >
-        Back to setup
+        Back to Inspiration
       </Link>
       <h1 className="mt-7 text-3xl font-semibold tracking-tight">
         What should we make?
@@ -149,7 +150,7 @@ export async function ChooseOutcome({
                     <p className="text-xs leading-5 text-[var(--text-muted)]">
                       Or{' '}
                       <Link
-                        href="/get-started?step=brand"
+                        href="/setup?step=brand"
                         className="underline underline-offset-4"
                       >
                         add your store website to your brand
@@ -286,7 +287,7 @@ export async function ChooseOutcome({
         </section>
       )}
       <Link
-        href={`/first-draft?imported=${importId}` as Route}
+        href={startDraftHref({ imported: importId })}
         className="mt-6 block text-xs text-[var(--text-muted)] underline underline-offset-4"
       >
         Use only its outline in a new plan

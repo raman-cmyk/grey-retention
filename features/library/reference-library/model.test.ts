@@ -85,14 +85,12 @@ describe('reference library model', () => {
 
   it('starts a draft from a competitor email or an upload', () => {
     expect(referenceHref({ id: 'e1', source: 'competitor' })).toBe(
-      '/first-draft?reference=e1'
+      '/inspiration/use?reference=e1'
     )
     expect(referenceHref({ id: 'i1', source: 'import' })).toBe(
-      '/first-draft?imported=i1'
+      '/inspiration/use?imported=i1'
     )
-    expect(referenceHref({ id: 't1', source: 'template' })).toBe(
-      '/email-library'
-    )
+    expect(referenceHref({ id: 't1', source: 'template' })).toBe('/inspiration')
   })
 
   it('reads a domain the way people type it', () => {

@@ -20,6 +20,7 @@ import { htmlEditable, suggestedPrimary } from './html'
 import { EmailPreview } from './preview'
 import { htmlFingerprint } from './rewrite'
 import { RewriteProgress } from './progress'
+import { draftHref } from '@/features/drafts/href'
 
 const originLabel: Record<string, string> = {
   exact_copy: 'Exact copy',
@@ -210,7 +211,7 @@ export async function EmailResultView({
         {revision &&
           (current ? (
             <Button asChild>
-              <Link href={`/campaigns/${campaign.id}#copy` as Route}>
+              <Link href={draftHref(campaign.id)}>
                 {approved
                   ? 'Open campaign'
                   : synced

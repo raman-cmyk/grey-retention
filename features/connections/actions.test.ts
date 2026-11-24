@@ -307,7 +307,7 @@ describe('connectKlaviyo with live Klaviyo (KLV-001)', () => {
     ])
     // The workspace comes from the sign-in, never from the form; the key is trimmed.
     expect(rpc.mock.calls[1]![1]).toMatchObject({ t: tenant, api_key: key })
-    expect(revalidatePath).toHaveBeenCalledWith('/connections')
+    expect(revalidatePath).toHaveBeenCalledWith('/settings')
     vi.unstubAllGlobals()
   })
 

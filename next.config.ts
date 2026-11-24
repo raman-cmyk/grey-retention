@@ -35,6 +35,32 @@ const securityHeaders = [
       ])
 ]
 
+/**
+ * UI-OLDc: old client pages and the GROS screen that replaces each. A
+ * page whose job a GROS screen does opens it; a page the v2 brief dropped
+ * opens the closest one (the bill optimizer, the old reports).
+ */
+const oldClientPages: [source: string, destination: string][] = [
+  // "Use this design" and the draft it saves.
+  ['/first-draft', '/inspiration/use'],
+  ['/campaigns/:campaignId', '/plan/draft/:campaignId'],
+  // The Klaviyo key is on Settings.
+  ['/connections', '/settings'],
+  // Results replaces "Results & learning".
+  ['/reports', '/results'],
+  // Following brands and their emails are on Inspiration.
+  ['/competitor-agent', '/inspiration'],
+  ['/competitor-agent/:subscriptionId', '/inspiration'],
+  ['/email-library', '/inspiration'],
+  ['/email-library/:emailId', '/inspiration/use?reference=:emailId'],
+  // The old campaign calendar: the next 15 days are the Plan.
+  ['/campaign-agent', '/plan'],
+  // Onboarding is Setup (UI-ONBb..e).
+  ['/get-started', '/setup'],
+  // Not part of v2: the closest GROS screen.
+  ['/optimizer', '/settings']
+]
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
@@ -77,7 +103,17 @@ const nextConfig: NextConfig = {
         source: '/lists/:listId',
         destination: '/audiences/lists/:listId',
         permanent: false
-      }
+      },
+      // UI-OLDc: the last old client pages, each opening the GROS screen
+      // that does its job now (old links, bookmarks and the old shell's
+      // menu land there; query strings are passed on).
+      ...oldClientPages.map(([source, destination]) => ({
+        source,
+        destination,
+        // Temporary, like /support and /feedback: a browser never keeps
+        // them, so a page that comes back later is not hidden.
+        permanent: false
+      }))
     ]
   },
   async headers() {

@@ -75,7 +75,7 @@ const statusLinks = (brandName: string | null, productCount: number) =>
       value: productCount ? `${productCount} saved` : 'None saved yet',
       href: '/brand'
     },
-    { label: 'Footer', value: 'Not set up yet', href: '/connections' }
+    { label: 'Footer', value: 'Not set up yet', href: '/settings' }
   ] satisfies { label: string; value: string; href: Route }[]
 
 /**
