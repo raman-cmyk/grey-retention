@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireRequestContext } from '@/features/auth/application/request-context'
-import { Notice, Panel } from '@/components/ui/workspace'
-import { DataTable } from '@/components/ui/data-table'
+import { ButtonLink } from '@/components/gros/button'
+import { Card } from '@/components/gros/card'
+import { ListRow, RowList } from '@/components/gros/list-row'
+import { ErrorState } from '@/components/gros/states'
 
 /** How many entries the Operations page shows, newest first. */
 export const fallbackRows = 50
@@ -13,6 +15,7 @@ const when = (iso: string) =>
  * Decision D16 (RET-002): the people queue became this log. Agents that
  * keep failing a check fall back to a safer option and write one entry;
  * nobody has to act on it. Platform admins only (the read command checks).
+ * A GROS card of rows, newest first (UI-ADM).
  */
 export async function FallbackLogPanel() {
   await requireRequestContext('admin')
@@ -21,45 +24,43 @@ export async function FallbackLogPanel() {
   const { data, error } = await db.rpc('admin_fallback_log', {
     max_rows: fallbackRows
   })
+  if (error)
+    return (
+      <ErrorState
+        title="Fallback log did not open"
+        reason="The fallback log is unavailable. Reload the page to try again."
+        action={<ButtonLink href="/admin/operations" label="Try again" />}
+      />
+    )
+  const title = 'Fallback log'
   return (
-    <Panel title="Fallback log">
-      <p className="mb-4 text-sm text-[var(--text-muted)]">
-        When an agent&apos;s check keeps failing, the system uses a safer option
-        and writes it here. Nobody needs to act; repeated problems become rules
-        later.
-      </p>
-      {error ? (
-        <Notice error>The fallback log is unavailable.</Notice>
-      ) : !data?.length ? (
-        <Notice>No fallbacks yet.</Notice>
-      ) : (
-        <DataTable
-          caption="Latest fallbacks, newest first"
-          headers={[
-            'Last seen',
-            'Workspace',
-            'Agent',
-            'What went wrong',
-            'What we did instead',
-            'Tries',
-            'Times'
-          ]}
-        >
-          {data.map((f) => (
-            <tr key={f.id} className="align-top">
-              <td className="px-3 py-2 whitespace-nowrap">
-                {when(f.last_seen_at)}
-              </td>
-              <td className="px-3 py-2">{f.workspace ?? 'Platform'}</td>
-              <td className="px-3 py-2 font-mono text-xs">{f.agent}</td>
-              <td className="min-w-64 px-3 py-2 break-words">{f.reason}</td>
-              <td className="min-w-48 px-3 py-2 break-words">{f.fallback}</td>
-              <td className="px-3 py-2">{f.attempts}</td>
-              <td className="px-3 py-2">{f.occurrences}</td>
-            </tr>
-          ))}
-        </DataTable>
-      )}
-    </Panel>
+    <Card label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <h2 className="type-heading">{title}</h2>
+        {!data?.length ? (
+          <p className="type-body text-[var(--stone)]">No fallbacks yet.</p>
+        ) : (
+          <RowList label="Latest fallbacks, newest first">
+            {data.map((f) => (
+              <ListRow
+                key={f.id}
+                thumbnail={null}
+                title={f.reason}
+                wrap
+                details={[
+                  when(f.last_seen_at),
+                  f.workspace ?? 'Platform',
+                  f.agent,
+                  `Did instead: ${f.fallback}`,
+                  `${f.attempts} ${f.attempts === 1 ? 'try' : 'tries'}`,
+                  `${f.occurrences} ${f.occurrences === 1 ? 'time' : 'times'}`
+                ]}
+                end={null}
+              />
+            ))}
+          </RowList>
+        )}
+      </div>
+    </Card>
   )
 }

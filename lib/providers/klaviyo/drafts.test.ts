@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 import {
@@ -32,6 +32,11 @@ const failure = async (call: Promise<unknown>) => {
 }
 
 describe('the Klaviyo draft writes', () => {
+  // KLV-LOCK-001: these writes go to a recorded account, with the write
+  // lock released for this block only (locked everywhere else).
+  beforeEach(() => vi.stubEnv('KLAVIYO_WRITE_LOCK', 'unlocked'))
+  afterEach(() => vi.unstubAllEnvs())
+
   it('writes only to the addresses that make or change a draft, never a schedule or a send', async () => {
     const sent: string[] = []
     const transport: KlaviyoTransport = async (request) => {

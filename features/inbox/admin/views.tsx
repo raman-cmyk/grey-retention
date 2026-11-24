@@ -1,8 +1,9 @@
-import { ActionForm, SubmitButton } from '@/components/ui/action-form'
-import { DataTable } from '@/components/ui/data-table'
-import { Pill } from '@/components/ui/pill'
-import { TextField } from '@/components/ui/text-field'
-import { Field, Panel, controlClass } from '@/components/ui/workspace'
+import { ActionAnswers, ActionButton } from '@/components/gros/action'
+import { Card } from '@/components/gros/card'
+import { Field } from '@/components/gros/input'
+import { ListRow, RowList } from '@/components/gros/list-row'
+import { Status } from '@/components/gros/status'
+import { SelectField } from '@/features/admin/fields'
 import { inboxAdminAction } from './actions'
 import type { DirectoryBrand, OpsTask } from './data'
 
@@ -99,13 +100,109 @@ export function taskWords(
   }
 }
 
-const subscriptionTone = (status: string) =>
-  status === 'subscribed'
-    ? 'success'
-    : status === 'unsubscribed'
-      ? 'danger'
-      : 'warning'
+/** A brand's subscription in words, for its row. */
+const subscriptionWord = (status: string) => {
+  const words = status.replaceAll('_', ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
 
+/**
+ * A brand's subscription as a status: unsubscribed needs a person (its
+ * task is in the queue), anything not yet subscribed is waiting, and a
+ * working subscription needs no pill (its word is in the details).
+ */
+function SubscriptionStatus({ status }: { status: string }) {
+  if (status === 'unsubscribed') return <Status kind="needs_you" />
+  if (status === 'subscribed') return null
+  return <Status kind="working" word="Waiting" />
+}
+
+/** A task's tile: what it asks, since when, and its actions. */
+function TaskTile({
+  task,
+  brands
+}: {
+  task: OpsTask
+  brands: DirectoryBrand[]
+}) {
+  const words = taskWords(task, brands)
+  const sender = text(task.detail.fromDomain) ?? task.email?.fromDomain
+  // Sample senders (.example) go to sample brands only, real senders to
+  // real brands (the database checks it too).
+  const choices = sender
+    ? brands.filter((b) => b.sample === sender.endsWith('.example'))
+    : []
+  return (
+    <li className="gros-tile flex flex-col gap-[var(--space-4)] rounded-[var(--radius-md)] bg-[var(--mist)]">
+      <div className="flex flex-col gap-[var(--space-1)]">
+        <h3 className="type-body-strong break-words">{words.title}</h3>
+        <p className="type-body break-words">{words.help}</p>
+        <p className="type-caption text-[var(--stone)]">
+          Since {day(task.createdAt)}
+        </p>
+      </div>
+      {task.kind === 'inbox_unknown_sender' && sender && choices.length > 0 ? (
+        <ActionButton
+          action={inboxAdminAction}
+          label="Assign to this brand"
+          kind="outline"
+          size="row"
+          fields={{ kind: 'assign_sender', sender }}
+        >
+          <SelectField
+            label={`Brand for ${sender}`}
+            name="brand"
+            required
+            defaultValue=""
+            onTile
+            options={[
+              { value: '', label: 'Choose a brand', disabled: true },
+              ...choices.map((b) => ({
+                value: b.id,
+                label: `${b.name} (${b.domain})`
+              }))
+            ]}
+          />
+        </ActionButton>
+      ) : null}
+      <div className="flex flex-wrap items-end gap-[var(--space-3)]">
+        <ActionButton
+          action={inboxAdminAction}
+          label="Mark done"
+          kind="outline"
+          size="row"
+          fields={{ kind: 'resolve_task', task: task.id, outcome: 'resolved' }}
+        >
+          <Field
+            label="Note (optional)"
+            name="note"
+            maxLength={500}
+            placeholder="What you did"
+            autoComplete="off"
+            onPage
+          />
+        </ActionButton>
+        <ActionButton
+          action={inboxAdminAction}
+          label="Dismiss"
+          kind="quiet"
+          size="row"
+          fields={{
+            kind: 'resolve_task',
+            task: task.id,
+            outcome: 'dismissed'
+          }}
+        />
+      </div>
+    </li>
+  )
+}
+
+/**
+ * What the inbox could not handle on its own (INB-004), as GROS tiles in
+ * one card (UI-ADM). The answer of a button shows in the card's one line,
+ * so it stays when its task leaves the list.
+ */
 export function OpsQueue({
   tasks,
   brands
@@ -113,206 +210,136 @@ export function OpsQueue({
   tasks: OpsTask[]
   brands: DirectoryBrand[]
 }) {
+  const title = `Needs a person (${tasks.length})`
   return (
-    <Panel
-      title={`Needs a person (${tasks.length})`}
-      description="What the inbox could not handle on its own."
-    >
-      {tasks.length === 0 ? (
-        <p className="text-sm text-[var(--text-muted)]">
-          Nothing to do. The inbox is handling everything.
-        </p>
-      ) : (
-        <ul className="space-y-3" aria-label="Inbox tasks">
-          {tasks.map((task) => {
-            const words = taskWords(task, brands)
-            const sender =
-              text(task.detail.fromDomain) ?? task.email?.fromDomain
-            // Sample senders (.example) go to sample brands only, real
-            // senders to real brands (the database checks it too).
-            const choices = sender
-              ? brands.filter((b) => b.sample === sender.endsWith('.example'))
-              : []
-            return (
-              <li
-                key={task.id}
-                className="space-y-3 rounded-[var(--radius-control)] border border-[var(--line)] p-4"
-              >
-                <div className="space-y-1">
-                  <h3 className="text-sm font-semibold">{words.title}</h3>
-                  <p className="text-sm text-[var(--text-muted)]">
-                    {words.help}
-                  </p>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    Since {day(task.createdAt)}
-                  </p>
-                </div>
-                {task.kind === 'inbox_unknown_sender' &&
-                  sender &&
-                  choices.length > 0 && (
-                    <ActionForm
-                      action={inboxAdminAction}
-                      className="flex flex-wrap items-end gap-2"
-                    >
-                      <input type="hidden" name="kind" value="assign_sender" />
-                      <input type="hidden" name="sender" value={sender} />
-                      <Field label={`Brand for ${sender}`}>
-                        <select
-                          name="brand"
-                          required
-                          className={controlClass}
-                          defaultValue=""
-                        >
-                          <option value="" disabled>
-                            Choose a brand
-                          </option>
-                          {choices.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.name} ({b.domain})
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <SubmitButton pendingLabel="Assigning…">
-                        Assign to this brand
-                      </SubmitButton>
-                    </ActionForm>
-                  )}
-                <div className="flex flex-wrap items-end gap-2">
-                  <ActionForm
-                    action={inboxAdminAction}
-                    className="flex flex-wrap items-end gap-2"
-                  >
-                    <input type="hidden" name="kind" value="resolve_task" />
-                    <input type="hidden" name="task" value={task.id} />
-                    <input type="hidden" name="outcome" value="resolved" />
-                    <Field label="Note (optional)">
-                      <TextField
-                        name="note"
-                        maxLength={500}
-                        placeholder="What you did"
-                      />
-                    </Field>
-                    <SubmitButton variant="outline" pendingLabel="Saving…">
-                      Mark done
-                    </SubmitButton>
-                  </ActionForm>
-                  <ActionForm action={inboxAdminAction}>
-                    <input type="hidden" name="kind" value="resolve_task" />
-                    <input type="hidden" name="task" value={task.id} />
-                    <input type="hidden" name="outcome" value="dismissed" />
-                    <SubmitButton variant="quiet" pendingLabel="Dismissing…">
-                      Dismiss
-                    </SubmitButton>
-                  </ActionForm>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </Panel>
+    <Card label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <ActionAnswers>
+          <h2 className="type-heading">{title}</h2>
+          {tasks.length === 0 ? (
+            <p className="type-body text-[var(--stone)]">
+              Nothing to do. The inbox is handling everything.
+            </p>
+          ) : (
+            <ul
+              aria-label="Inbox tasks"
+              className="flex flex-col gap-[var(--space-3)]"
+            >
+              {tasks.map((task) => (
+                <TaskTile key={task.id} task={task} brands={brands} />
+              ))}
+            </ul>
+          )}
+        </ActionAnswers>
+      </div>
+    </Card>
   )
 }
 
+/**
+ * The competitor brands, one row each: where to subscribe, its niche,
+ * subscription, last email, how many emails and its sender domains.
+ */
 export function BrandDirectory({ brands }: { brands: DirectoryBrand[] }) {
+  const title = `Brand directory (${brands.length})`
   return (
-    <Panel
-      title={`Brand directory (${brands.length})`}
-      description="Subscribe to each brand's newsletter with its own address; its emails then arrive here by themselves."
-    >
-      {brands.length === 0 ? (
-        <p className="text-sm text-[var(--text-muted)]">
-          No brands yet. Add the first one below.
-        </p>
-      ) : (
-        <DataTable
-          caption="Competitor brands"
-          headers={[
-            'Brand',
-            'Subscribe with',
-            'Niche',
-            'Status',
-            'Last email',
-            'Emails',
-            'Sender domains'
-          ]}
+    <Card label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <h2 className="type-heading">{title}</h2>
+        {brands.length === 0 ? (
+          <p className="type-body text-[var(--stone)]">
+            No brands yet. Add the first one below.
+          </p>
+        ) : (
+          <RowList label="Competitor brands">
+            {brands.map((b) => (
+              <ListRow
+                key={b.id}
+                thumbnail={null}
+                title={b.name}
+                wrap
+                details={[
+                  b.domain,
+                  b.sample ? 'Sample' : '',
+                  b.address
+                    ? `Subscribe with ${b.address}`
+                    : 'Set INBOX_IMAP_USER in Vercel to see its address',
+                  b.niche ?? '',
+                  subscriptionWord(b.subscription),
+                  `Last email ${day(b.lastEmailAt)}`,
+                  `${b.emails} ${b.emails === 1 ? 'email' : 'emails'}`,
+                  b.senders.length
+                    ? `Senders ${b.senders.join(', ')}`
+                    : 'No sender domains'
+                ]}
+                end={<SubscriptionStatus status={b.subscription} />}
+              />
+            ))}
+          </RowList>
+        )}
+      </div>
+    </Card>
+  )
+}
+
+/**
+ * Add a competitor brand: subscribe to its newsletter with its own
+ * +alias address and its emails then arrive by themselves.
+ */
+export function AddBrand() {
+  const title = 'Add a brand'
+  return (
+    <Card label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <h2 className="type-heading">{title}</h2>
+        <ActionButton
+          action={inboxAdminAction}
+          label="Save brand"
+          fields={{ kind: 'save_brand' }}
         >
-          {brands.map((b) => (
-            <tr key={b.id} className="border-t border-[var(--line)] align-top">
-              <td className="px-3 py-2">
-                <span className="font-medium">{b.name}</span>
-                <span className="block text-xs text-[var(--text-muted)]">
-                  {b.domain}
-                </span>
-                {b.sample && <Pill>Sample</Pill>}
-              </td>
-              <td className="px-3 py-2 font-mono text-xs break-all">
-                {b.address ?? 'Set INBOX_IMAP_USER in Vercel to see it'}
-              </td>
-              <td className="px-3 py-2">{b.niche ?? '—'}</td>
-              <td className="px-3 py-2">
-                <Pill tone={subscriptionTone(b.subscription)}>
-                  {b.subscription.replace('_', ' ')}
-                </Pill>
-              </td>
-              <td className="px-3 py-2">{day(b.lastEmailAt)}</td>
-              <td className="px-3 py-2">{b.emails}</td>
-              <td className="px-3 py-2 text-xs">
-                {b.senders.join(', ') || '—'}
-              </td>
-            </tr>
-          ))}
-        </DataTable>
-      )}
-      <ActionForm
-        action={inboxAdminAction}
-        className="mt-6 grid gap-3 sm:grid-cols-2"
-      >
-        <input type="hidden" name="kind" value="save_brand" />
-        <Field label="Brand name">
-          <TextField
-            name="name"
-            required
-            maxLength={120}
-            placeholder="Northwind Outdoor"
-          />
-        </Field>
-        <Field label="Website domain">
-          <TextField
-            name="domain"
-            required
-            maxLength={253}
-            placeholder="northwind.com"
-          />
-        </Field>
-        <Field label="+alias (the brand's short name)">
-          <TextField
-            name="alias"
-            required
-            pattern="[a-z0-9][a-z0-9\-]{1,39}"
-            placeholder="northwind"
-          />
-        </Field>
-        <Field label="Niche">
-          <TextField
-            name="niche"
-            required
-            maxLength={60}
-            placeholder="apparel"
-          />
-        </Field>
-        <Field label="Sender domains (optional, comma separated)">
-          <TextField
-            name="senders"
-            maxLength={2000}
-            placeholder="mail.northwind.com"
-          />
-        </Field>
-        <div className="flex items-end">
-          <SubmitButton pendingLabel="Saving…">Save brand</SubmitButton>
-        </div>
-      </ActionForm>
-    </Panel>
+          <div className="grid grid-cols-1 gap-[var(--space-4)] lg:grid-cols-2">
+            <Field
+              label="Brand name"
+              name="name"
+              required
+              maxLength={120}
+              placeholder="Northwind Outdoor"
+              autoComplete="off"
+            />
+            <Field
+              label="Website domain"
+              name="domain"
+              required
+              maxLength={253}
+              placeholder="northwind.com"
+              autoComplete="off"
+            />
+            <Field
+              label="+alias (the brand's short name)"
+              name="alias"
+              required
+              pattern="[a-z0-9][a-z0-9\-]{1,39}"
+              placeholder="northwind"
+              autoComplete="off"
+            />
+            <Field
+              label="Niche"
+              name="niche"
+              required
+              maxLength={60}
+              placeholder="apparel"
+              autoComplete="off"
+            />
+            <Field
+              label="Sender domains (optional, comma separated)"
+              name="senders"
+              maxLength={2000}
+              placeholder="mail.northwind.com"
+              autoComplete="off"
+            />
+          </div>
+        </ActionButton>
+      </div>
+    </Card>
   )
 }

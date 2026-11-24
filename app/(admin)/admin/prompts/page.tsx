@@ -1,13 +1,22 @@
-import { PlaceholderPage } from '@/components/shell/placeholder-page'
 import type { Metadata } from 'next'
+import { AdminPage } from '@/components/gros/admin-nav'
+import { NotBuiltYet } from '@/features/admin/screens'
+import { adminAlsoMember } from '@/features/auth/application/admin-member'
 
-export const metadata: Metadata = { title: 'Prompt engine' }
+export const metadata: Metadata = { title: 'Prompts' }
 
-export default function AdminPromptsPage() {
+/**
+ * Not built yet (UI-ADM): the GROS empty state with the way back. Opened
+ * from Dashboard, so Dashboard is its menu item.
+ */
+export default async function AdminPromptsPage() {
   return (
-    <PlaceholderPage
-      title="Prompt engine"
-      description="Prompt version management, knowledge previews and model controls are planned."
-    />
+    <AdminPage
+      current="dashboard"
+      title="Prompts"
+      member={await adminAlsoMember()}
+    >
+      <NotBuiltYet />
+    </AdminPage>
   )
 }

@@ -1,5 +1,6 @@
 import type { PagedRead, StoreEvent } from '@/lib/providers/klaviyo/catalog'
-import { moneyOf, orderLines } from './clean'
+import type { ReportRow } from '@/lib/providers/klaviyo/history'
+import { currencyOf, moneyOf, orderLines } from './clean'
 
 /**
  * Cancelled and refunded orders (ONB-ORD), matched to the Placed Order
@@ -159,4 +160,59 @@ export function returnsState(
     (allOrders || returns.unmatched === 0)
     ? 'whole'
     : 'partial'
+}
+
+/**
+ * A report's rows with the cancelled and refunded orders taken off the
+ * email or flow Klaviyo credited with each (orders placed since `since`,
+ * the report's own timeframe): one order for each cancelled or fully
+ * refunded one, and the money. An order in another currency than the
+ * account's (`currency`) takes off its count but not its money: the report
+ * counts in the account's. A flow's rows are taken from in turn; none goes
+ * below 0. Klaviyo's own revenue per recipient is scaled by the money left,
+ * only when the row has both it and the money.
+ */
+export function netReport(
+  rows: ReportRow[],
+  returns: Returns,
+  key: 'campaign_message_id' | 'flow_id',
+  since: number,
+  currency: string | null = null
+): ReportRow[] {
+  const off = new Map<string, { orders: number; value: number }>()
+  for (const [order, undo] of returns.byOrder) {
+    if (Date.parse(order.at) < since) continue
+    const own = currencyOf(order.props)
+    const value = currency && own && own !== currency ? 0 : undo.value
+    for (const id of (key === 'flow_id' ? order.flows : order.messages) ?? []) {
+      const o = off.get(id) ?? { orders: 0, value: 0 }
+      o.orders += undo.whole ? 1 : 0
+      o.value += value
+      off.set(id, o)
+    }
+  }
+  return rows.map((row) => {
+    const o = off.get(row.groupings[key] ?? '')
+    if (!o) return row
+    const s = { ...row.statistics }
+    const take = (name: string, want: number) => {
+      if (s[name] === undefined) return 0
+      const n = Math.min(s[name], want)
+      s[name] -= n
+      return n
+    }
+    const before = s.conversion_value
+    o.orders -= take('conversions', o.orders)
+    o.value -= take('conversion_value', o.value)
+    const after = s.conversion_value
+    if (
+      s.revenue_per_recipient !== undefined &&
+      before !== undefined &&
+      after !== undefined &&
+      before > 0 &&
+      after !== before
+    )
+      s.revenue_per_recipient *= after / before
+    return { ...row, statistics: s }
+  })
 }

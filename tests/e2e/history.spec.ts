@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { login } from './accounts'
+import { ask, firstCampaign, startChat } from './chats'
 
 test('UC-11 paged GROS history retains old and newest messages after refresh', async ({
   page
@@ -8,36 +9,17 @@ test('UC-11 paged GROS history retains old and newest messages after refresh', a
   await login(page)
   await page.goto('/gros')
   const title = `Synthetic paged history ${info.project.name}`
-  await page.getByLabel('Conversation title').fill(title)
-  await page
-    .getByRole('button', { name: 'Create conversation', exact: true })
-    .click()
-  await expect(page).toHaveURL(/\/gros\?chat=/)
-  const review = page.getByRole('button', {
-    name: 'Review conversation visibility',
-    exact: true
-  })
-  await review.focus()
-  await review.press('Enter')
-  const dialog = page.getByRole('dialog', {
-    name: 'Confirm conversation visibility',
-    exact: true
-  })
-  await expect(dialog).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(dialog).not.toBeVisible()
-  await expect(review).toBeFocused()
-  const campaign = await page
-    .getByLabel('Campaign context')
-    .locator('option')
-    .nth(1)
-    .getAttribute('value')
+  await startChat(page, title)
+  // The starter of a private chat can share it (it asks first).
+  await expect(
+    page.getByRole('button', { name: 'Share chat', exact: true })
+  ).toBeVisible()
+  const campaign = await firstCampaign(page)
   for (let n = 0; n < 51; n++) {
-    await page.getByLabel('Campaign context').selectOption(campaign!)
-    await page
-      .getByLabel('Question or reason')
-      .fill(`Original history question ${info.project.name} ${n}`)
-    await page.getByRole('button', { name: 'Ask GROS', exact: true }).click()
+    await ask(page, {
+      campaign,
+      question: `Original history question ${info.project.name} ${n}`
+    })
     await expect(
       page.getByText(`Original history question ${info.project.name} ${n}`, {
         exact: true
@@ -51,7 +33,7 @@ test('UC-11 paged GROS history retains old and newest messages after refresh', a
     })
   ).toHaveCount(0)
   await page
-    .getByRole('link', { name: 'Earlier messages', exact: true })
+    .getByRole('link', { name: 'Show earlier messages', exact: true })
     .click()
   await expect(
     page.getByText(`Original history question ${info.project.name} 0`, {
@@ -63,7 +45,9 @@ test('UC-11 paged GROS history retains old and newest messages after refresh', a
       exact: true
     })
   ).toHaveCount(0)
-  await page.getByRole('link', { name: 'Latest messages', exact: true }).click()
+  await page
+    .getByRole('link', { name: 'Show latest messages', exact: true })
+    .click()
   await expect(
     page.getByText(`Original history question ${info.project.name} 50`, {
       exact: true

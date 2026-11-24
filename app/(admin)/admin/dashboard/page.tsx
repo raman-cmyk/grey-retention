@@ -1,13 +1,19 @@
-import { PlaceholderPage } from '@/components/shell/placeholder-page'
 import type { Metadata } from 'next'
+import { AdminPage } from '@/components/gros/admin-nav'
+import { AdminDashboard } from '@/features/admin/screens'
+import { adminAlsoMember } from '@/features/auth/application/admin-member'
 
-export const metadata: Metadata = { title: 'Overview' }
+export const metadata: Metadata = { title: 'Dashboard' }
 
-export default function AdminDashboardPage() {
+/** The admin Dashboard (UI-ADM). */
+export default async function AdminDashboardPage() {
   return (
-    <PlaceholderPage
+    <AdminPage
+      current="dashboard"
       title="Platform operations"
-      description="A central view of tenant health and platform activity is planned. Open Operations for the tools available today."
-    />
+      member={await adminAlsoMember()}
+    >
+      <AdminDashboard />
+    </AdminPage>
   )
 }
