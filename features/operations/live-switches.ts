@@ -5,6 +5,7 @@ import { draftPushLive } from '@/features/klaviyo-push/live'
 import { klaviyoMode } from '@/features/connections/live-klaviyo'
 import { designStudioOn } from '@/features/studio/waits'
 import { inboxConfig } from '@/features/inbox/config'
+import { strategyAgentsOn } from '@/features/strategy/agents'
 
 type Env = Record<string, string | undefined>
 
@@ -55,6 +56,10 @@ export function liveSwitches(env: Env = process.env): LiveSwitch[] {
   const studio = designStudioOn(env)
   const inbox = inboxConfig(env)
   const draftsAsked = env.KLAVIYO_DRAFT_PUSH === 'live'
+  const planning = strategyAgentsOn(env as NodeJS.ProcessEnv)
+  const review = aiSetup('review', env as NodeJS.ProcessEnv)
+  const planLive = [plan, review].every((s) => s.provider !== 'fake' && s.ready)
+  const planLabel = 'AI team in “Plan next 15 days”'
   return [
     ai,
     agents && live
@@ -75,6 +80,27 @@ export function liveSwitches(env: Env = process.env): LiveSwitch[] {
             state: 'off',
             detail:
               'Off: emails are built by code only. Set EMAIL_BUILD_AGENTS=on.'
+          },
+    // STR-LIVE-001: the same checks as `strategyAgentsFor`.
+    planning && planLive && klaviyoMode(env) === 'live'
+      ? {
+          label: planLabel,
+          state: 'on',
+          detail:
+            'On: the agents plan the 15 days from the brand’s real Klaviyo data.'
+        }
+      : planning
+        ? {
+            label: planLabel,
+            state: 'attention',
+            detail: planLive
+              ? 'STRATEGY_AGENTS=on, but Klaviyo reading is off: plans are made by code only. Set KLAVIYO_MODE=live too.'
+              : 'STRATEGY_AGENTS=on, but there is no real AI: plans are made by code only.'
+          }
+        : {
+            label: planLabel,
+            state: 'off',
+            detail: 'Off: plans are made by code only. Set STRATEGY_AGENTS=on.'
           },
     studio && agents && live
       ? {

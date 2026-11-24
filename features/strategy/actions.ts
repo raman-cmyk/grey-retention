@@ -11,6 +11,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { logger } from '@/lib/logger'
 import { onboardedStrategyData } from '@/features/onboarding/strategy-data'
 import { runStrategyRuns } from './worker'
+import { strategyAgentsFor, strategyBudgetMs } from './agents'
 
 export type PlanFormState = { error?: string }
 
@@ -26,6 +27,8 @@ function runSoon(run: string) {
       // (ONB-057), else the sample store.
       await runStrategyRuns(service, {
         run,
+        agents: strategyAgentsFor(service),
+        deadline: Date.now() + strategyBudgetMs,
         data: onboardedStrategyData(service)
       })
     } catch (error) {
