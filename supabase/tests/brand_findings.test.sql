@@ -80,6 +80,9 @@ set local role authenticated;
 select throws_ok($$select public.start_site_reading('00000000-0000-4000-8000-000000000102')$$,'23514',null,
   'a website is a name, never an address');
 reset role;
+-- Workspace 102 keeps its website again: its read below is of it, and a
+-- read of a website the brand no longer has stores nothing current (ONB-SITEb).
+update public.brand_profiles set domain = 'north-studio.example' where tenant_id = '00000000-0000-4000-8000-000000000102';
 select is((select kind||'/'||status||'/'||(input->>'domain') from public.job_runs where id=current_setting('test.job')::uuid),
   'brand.read_site/queued/cedar-lane.example','the job is queued with the plain domain it reads');
 
