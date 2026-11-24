@@ -11,11 +11,14 @@ export async function startChat(
   who: 'private' | 'shared' = 'private'
 ) {
   const first = page.getByRole('button', { name: 'Start a chat', exact: true })
+  const chats = page.getByRole('region', { name: 'Chats', exact: true })
+  // The loading page already shows the title: wait until the page has
+  // settled on the empty state or the Chats card before choosing.
+  await expect(first.or(chats).first()).toBeVisible()
   if (await first.isVisible()) {
     await first.click()
     await expect(page).toHaveURL(/\/gros\?chat=/)
   }
-  const chats = page.getByRole('region', { name: 'Chats', exact: true })
   await chats.getByLabel('Chat name', { exact: true }).fill(name)
   await chats.getByLabel('Who can see it', { exact: true }).selectOption(who)
   await chats.getByRole('button', { name: 'Start chat', exact: true }).click()
