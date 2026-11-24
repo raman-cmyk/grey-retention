@@ -487,17 +487,23 @@ const currencyNames = [
 const shopCurrency = (props: Record<string, unknown>) =>
   (props.$extra as { currency?: unknown } | undefined)?.currency
 
+/** The currency one order says it is in (a 3-letter code), or null. */
+export function currencyOf(props: Record<string, unknown>) {
+  const raw = [
+    shopCurrency(props),
+    ...currencyNames.map((name) => props[name])
+  ].find((v) => typeof v === 'string')
+  const code = typeof raw === 'string' ? raw.trim().toUpperCase() : ''
+  return /^[A-Z]{3}$/.test(code) ? code : null
+}
+
 /** The currency most of the orders are in, and how many say one. */
 export function orderCurrency(orders: StoreEvent[]) {
   const counts = new Map<string, number>()
   let said = 0
   for (const order of orders) {
-    const raw = [
-      shopCurrency(order.props),
-      ...currencyNames.map((name) => order.props[name])
-    ].find((v) => typeof v === 'string')
-    const code = typeof raw === 'string' ? raw.trim().toUpperCase() : ''
-    if (!/^[A-Z]{3}$/.test(code)) continue
+    const code = currencyOf(order.props)
+    if (!code) continue
     said++
     counts.set(code, (counts.get(code) ?? 0) + 1)
   }
