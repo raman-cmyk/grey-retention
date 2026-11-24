@@ -45,6 +45,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
       DESIGN_STUDIO: 'on',
       KLAVIYO_MODE: 'live',
       KLAVIYO_DRAFT_PUSH: 'live',
+      KLAVIYO_WRITE_LOCK: 'unlocked',
       SITE_READER_MODE: 'live'
     }
     const s = byLabel(env)
@@ -90,6 +91,20 @@ describe('the go-live switches (OPS-LIVE)', () => {
     ]!
     expect(plan.state).toBe('attention')
     expect(plan.detail).toContain('KLAVIYO_MODE=live')
+  })
+
+  it('says drafts cannot be written while Klaviyo is locked (KLV-LOCK-001)', () => {
+    for (const lock of [undefined, '', 'UNLOCKED', ' unlocked'])
+      expect(
+        byLabel({
+          KLAVIYO_MODE: 'live',
+          KLAVIYO_DRAFT_PUSH: 'live',
+          ...(lock === undefined ? {} : { KLAVIYO_WRITE_LOCK: lock })
+        })['Klaviyo drafts']
+      ).toMatchObject({
+        state: 'attention',
+        detail: expect.stringContaining('locked')
+      })
   })
 
   it('says when the fake AI is forced over a real key', () => {
