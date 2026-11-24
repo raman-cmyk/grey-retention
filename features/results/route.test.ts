@@ -7,6 +7,17 @@ const service = vi.hoisted(() => ({ createServiceClient: vi.fn() }))
 vi.mock('@/lib/supabase/service', () => service)
 const sync = vi.hoisted(() => ({ runResultsSync: vi.fn() }))
 vi.mock('@/features/results/live', () => sync)
+const learning = vi.hoisted(() => ({
+  learnFromRecentResults: vi.fn(async () => ({
+    workspaces: 1,
+    failed: 0,
+    added: 2,
+    updated: 0,
+    retired: 0,
+    conflicts: 0
+  }))
+}))
+vi.mock('@/features/learning/run', () => learning)
 
 import { GET } from '@/app/api/internal/klaviyo/results/route'
 
@@ -63,8 +74,21 @@ describe('GET /api/internal/klaviyo/results', () => {
       checked: 2,
       pulled: 1,
       paused: 0,
-      deferred: 0
+      deferred: 0,
+      // LRN-002: what the final results taught, counts only.
+      learned: {
+        workspaces: 1,
+        failed: 0,
+        added: 2,
+        updated: 0,
+        retired: 0,
+        conflicts: 0
+      }
     })
+    expect(learning.learnFromRecentResults).toHaveBeenCalledOnce()
+    expect(sync.runResultsSync.mock.invocationCallOrder[0]!).toBeLessThan(
+      learning.learnFromRecentResults.mock.invocationCallOrder[0]!
+    )
   })
 
   it('answers a failed run with a code, never its details', async () => {

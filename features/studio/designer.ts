@@ -446,7 +446,7 @@ const bytesOf = (image: AiImage) => Math.floor((image.base64.length * 3) / 4)
 export const sectionDesignerAgent: AgentDefinition<DesignTask, DesignAnswer> = {
   name: 'section-designer',
   version: '2026-11-17.1',
-  // AGENT_MAP.md models: the Section designer runs on 2.5 Pro.
+  // AGENT_MAP.md models: the Section designer runs on the plan model (3.8 Flash, AI-MDL-001).
   purpose: 'plan',
   instructions: [
     'You are the Section designer for a marketing email of a small online store: design one section of it like a Figma designer, in HTML and CSS.',

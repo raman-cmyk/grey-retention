@@ -7,6 +7,7 @@ import {
   sameBook,
   saveBrandBook,
   staleBooks,
+  strategistAuthor,
   within,
   withCorrections,
   writeBrandBook,
@@ -700,6 +701,28 @@ describe('staleBooks and within (ONB-106b)', () => {
       'c'
     ])
     expect(await staleBooks(client([], []), { since: 'x' })).toEqual([])
+  })
+
+  it('never counts the Brand strategist’s version as up to date: it carries the book it read (ONB-106c)', async () => {
+    const db = client(
+      [{ tenant_id: 'a', updated_at: '2026-11-15T10:00:00Z' }],
+      [
+        // The strategist saved after the read, on the older book's content.
+        {
+          tenant_id: 'a',
+          created_at: '2026-11-15T10:05:00Z',
+          written_by: strategistAuthor
+        },
+        {
+          tenant_id: 'a',
+          created_at: '2026-11-15T09:00:00Z',
+          written_by: brandBookAuthor
+        }
+      ]
+    )
+    expect(await staleBooks(db, { since: '2026-11-13T00:00:00Z' })).toEqual([
+      'a'
+    ])
   })
 
   it('finds a book older than the owner’s newest correction, made or taken back (ONB-058)', async () => {

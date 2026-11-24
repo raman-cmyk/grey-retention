@@ -1,4 +1,5 @@
 import 'server-only'
+import { learnAfterBuild } from '@/features/learning/run'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
@@ -81,6 +82,8 @@ export async function runEmailBuilds(
     saved?: SavedOffers
     pusher?: DraftPusher
     fallbacks?: FallbackLog
+    /** LRN-002b, after a finished build. Default: `learnAfterBuild`. */
+    learn?: (db: Db, tenantId: string) => Promise<unknown>
     /**
      * Default: `buildAgentsFor(db)`: the agents when a live model is set up,
      * else null (the code-only path, nothing metered). REL-AI part 2.
@@ -444,6 +447,9 @@ export async function runEmailBuilds(
           }
           throw done.error
         }
+        // LRN-002b: what the checks kept rejecting becomes a "don't" for
+        // the writers (code only, keyed writes; never throws).
+        await (deps.learn ?? learnAfterBuild)(db, job.tenant_id)
       } else {
         const email = builtEmail.safeParse(job.email)
         if (!email.success) {
