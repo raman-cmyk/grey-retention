@@ -56,7 +56,8 @@ const answer = {
   customers: ['People who want cool clothes on hot days.'],
   heroProducts: ['Linen shirt'],
   angles: ['Lead with how the fabric feels in the heat.'],
-  care: []
+  care: [] as string[],
+  voice: { tone: ['calm'], use: ['linen'], avoid: ['hype'], style: '' }
 }
 const ok =
   (content: unknown): AiCall =>

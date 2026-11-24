@@ -12,6 +12,7 @@ import type { Finding } from './findings'
 import {
   bookKey,
   checkStrategy,
+  checkVoice,
   maxStrategyChars,
   needsStrategy,
   strategistAgent,
@@ -76,6 +77,12 @@ const answer = (over: Partial<StrategistOutput> = {}): StrategistOutput => ({
   heroProducts: ['linen shirt', 'Linen Hat'],
   angles: ['Lead with how the fabric feels on a hot day.'],
   care: ['Say nothing about sizes until the sizing is clear.'],
+  voice: {
+    tone: ['calm', 'warm'],
+    use: ['linen', 'warm weather'],
+    avoid: ['hype'],
+    style: 'Short sentences in the second person.'
+  },
   ...over
 })
 
@@ -124,7 +131,13 @@ describe('the Brand strategist (ONB-106c)', () => {
       customers: ['Women who travel and want clothes that pack light.'],
       heroProducts: ['Linen shirt', 'Linen hat'],
       angles: [],
-      care: []
+      care: [],
+      voice: {
+        tone: ['calm', 'warm'],
+        use: ['linen', 'warm weather'],
+        avoid: ['hype'],
+        style: 'Short sentences in the second person.'
+      }
     })
   })
 
@@ -233,6 +246,56 @@ describe('the Brand strategist (ONB-106c)', () => {
     expect(usableSentence('Calm words for a slow \uD83D morning.')).toBe(
       'Calm words for a slow \uFFFD morning.'
     )
+  })
+
+  it('keeps a voice guide whose words to reuse are the brand’s own (ONB-106d)', () => {
+    const book = realBook()
+    const voice = checkVoice(
+      {
+        tone: ['Calm', 'calm', 'very warm and slow', 'best', '42'],
+        use: [
+          'Linen',
+          'warm weather',
+          'feels soft',
+          'luxurious',
+          'Linen & Co',
+          'free shipping',
+          'soft'
+        ],
+        avoid: ['hype', 'Act now!', 'limited time offer', 'world-class'],
+        style: 'Short sentences, plain words, no exclamation marks.'
+      },
+      book
+    )
+    expect(voice).toEqual({
+      // One word each, plain, once.
+      tone: ['Calm'],
+      // Only what the book says, whole ("luxurious" is not in it; a name
+      // with "&" is not a word list; an offer is never kept).
+      use: ['Linen', 'warm weather', 'feels soft', 'soft'],
+      // Phrases to avoid restrict the writers; "Act now!" is not words only.
+      avoid: ['hype', 'limited time offer', 'world-class'],
+      style: 'Short sentences, plain words, no exclamation marks.'
+    })
+    expect(
+      checkVoice({ tone: [], use: [], avoid: [], style: '  ' }, book).style
+    ).toBeNull()
+    // Never words from what the book says to avoid or is unclear about.
+    const withAvoid = { ...book, avoid: ['clinically proven'] }
+    expect(
+      checkVoice(
+        { tone: [], use: ['clinically'], avoid: [], style: '' },
+        withAvoid
+      ).use
+    ).toEqual([])
+  })
+
+  it('drops the voice guide’s lists before the positioning when space is short (ONB-106d)', () => {
+    const book = realBook()
+    const kept = checkStrategy(answer(), book, 260)
+    expect(kept).not.toBeNull()
+    expect(JSON.stringify(kept).length).toBeLessThanOrEqual(260)
+    expect(kept!.positioning).toBeTruthy()
   })
 
   it('takes one line, no link or markup, a sensible length', () => {
