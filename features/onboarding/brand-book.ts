@@ -14,6 +14,7 @@ import { claimsSafety } from './claims-safety'
 import type { Finding, FindingSource, FindingTopic } from './findings'
 import type { StoredHistory } from './history/read'
 import { industryInWords } from './industry'
+import type { Strategy } from './strategist'
 import { plain } from './words'
 
 /**
@@ -36,6 +37,12 @@ import { plain } from './words'
  * brand never gets a sample book. The strategist's own summary (AI) is
  * ONB-106c; the owner corrects lines through ONB-058.
  */
+
+/**
+ * Who wrote a version with the Brand strategist's reading (ONB-106c,
+ * `brand_books.written_by`); here so the book never imports the agent.
+ */
+export const strategistAuthor = 'brand-strategist@1'
 
 export const brandBookSchema = 2
 /** Who wrote a version (`brand_books.written_by`). */
@@ -89,6 +96,12 @@ export type BrandBookContent = {
    * his lines in `observed`). Absent when he corrected nothing.
    */
   corrected?: string[]
+  /**
+   * ONB-106c: the Brand strategist's reading of this book (AI, checked by
+   * code; `features/onboarding/strategist.ts`). Never confirmed. Absent
+   * until the strategist has read this version of the book's own content.
+   */
+  strategy?: Strategy
 }
 
 export type BrandBookParts = {
@@ -260,7 +273,7 @@ function bookFrom(parts: BrandBookParts): BrandBookContent {
 type Db = SupabaseClient<Database>
 
 /** The same JSON whatever its keys' order (Postgres reorders jsonb keys). */
-function canonical(value: unknown): unknown {
+export function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical)
   if (value && typeof value === 'object')
     return Object.fromEntries(
@@ -274,10 +287,19 @@ function canonical(value: unknown): unknown {
 export const sameBook = (a: unknown, b: unknown) =>
   JSON.stringify(canonical(a)) === JSON.stringify(canonical(b))
 
+/** The book as code wrote it: everything but the strategist's reading. */
+export function withoutStrategy(book: BrandBookContent): BrandBookContent {
+  const rest = { ...book }
+  delete rest.strategy
+  return rest
+}
+
 /**
  * Saves the Brand book as a new version when it changed (the worker's
  * service-role client; `save_brand_book` is the only way to write one).
- * Returns the version saved, or null when nothing changed.
+ * Returns the version saved, or null when nothing changed. A book whose own
+ * content changed is saved without a strategy: the old one read another
+ * book, and the strategist writes a new one (ONB-106c).
  */
 export async function saveBrandBook(
   db: Db,
@@ -291,8 +313,11 @@ export async function saveBrandBook(
     .order('version', { ascending: false })
     .limit(1)
   if (latest.error) throw latest.error
-  const before = latest.data?.[0]?.content
-  if (before && sameBook(before, content)) return null
+  const before = latest.data?.[0]?.content as BrandBookContent | undefined
+  // ONB-106c: the strategist's reading is not code's content; an unchanged
+  // book keeps the version that carries it.
+  if (before && sameBook(withoutStrategy(before), withoutStrategy(content)))
+    return null
   const saved = await db.rpc('save_brand_book', {
     t: tenantId,
     content: content as never,
@@ -410,7 +435,7 @@ const changesRead = 1000
 const workspacesChecked = 100
 
 /** The onboarding readers' jobs (a read that finished changes the book). */
-const readerKinds = [
+export const readerKinds = [
   'brand.read_site',
   'brand.read_catalog',
   'brand.read_history',
@@ -466,7 +491,7 @@ export async function staleBooks(
     .slice(0, workspacesChecked)
   const books = await db
     .from('brand_books')
-    .select('tenant_id,created_at')
+    .select('tenant_id,created_at,written_by')
     .in(
       'tenant_id',
       changed.map(([t]) => t)
@@ -476,7 +501,10 @@ export async function staleBooks(
   if (books.error) throw books.error
   const written = new Map<string, string>()
   for (const b of books.data ?? [])
-    if (!written.has(b.tenant_id)) written.set(b.tenant_id, b.created_at)
+    // ONB-106c: a strategist version carries the book it read, not a newer
+    // read or correction, so it never makes a book up to date.
+    if (!written.has(b.tenant_id) && b.written_by !== strategistAuthor)
+      written.set(b.tenant_id, b.created_at)
   return changed
     .filter(
       ([t, at]) =>
