@@ -55,9 +55,8 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ back: vi.fn() })
 }))
 
-const { default: ListPage } = await import('@/app/(client)/lists/[listId]/page')
-const { default: SegmentPage } =
-  await import('@/app/(client)/segments/[segmentId]/page')
+// A segment's and a list's page moved to Audiences (UI-AUDc): tested in
+// features/audiences/detail.test.tsx.
 const { default: CampaignPage } =
   await import('@/app/(client)/campaigns/klaviyo/[klaviyoId]/page')
 const { default: FlowPage } = await import('@/app/(client)/flows/[flowId]/page')
@@ -81,36 +80,13 @@ afterEach(() => {
 })
 
 describe('Klaviyo detail pages (§4)', () => {
-  it('list: plain sign-up method, back to Audiences, sample note', async () => {
-    render(await ListPage(props('listId', 'LSTnews01', 'lists')))
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Newsletter' })
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('link', { name: 'Back to Audiences' })
-    ).toHaveAttribute('href', '/audiences')
-    expect(screen.getByText('Double opt-in')).toBeInTheDocument()
+  it('metric: the sample note and the way back Home', async () => {
+    render(await MetricPage(props('metricId', 'METord005', 'metrics')))
+    expect(screen.getByRole('link', { name: 'Back to Home' })).toHaveAttribute(
+      'href',
+      '/home'
+    )
     expect(screen.getByText(/Sample Klaviyo data/)).toBeInTheDocument()
-    const main = screen.getByText('Sign-up method').closest('section')!
-    expect(main).not.toHaveTextContent('double_opt_in')
-    expect(screen.getByText(/Flow triggers · 1 item/)).toBeInTheDocument()
-  })
-
-  it('segment: active and starred pills, rules as a sentence, JSON only in Advanced, back to Audiences', async () => {
-    render(await SegmentPage(props('segmentId', 'SEGeng030')))
-    expect(
-      screen.getByRole('link', { name: 'Back to Audiences' })
-    ).toHaveAttribute('href', '/audiences')
-    expect(screen.getByText('Active')).toBeInTheDocument()
-    expect(screen.getByText('Starred')).toBeInTheDocument()
-    const rules = screen.getByRole('region', {
-      name: 'How this segment is defined'
-    })
-    expect(rules).toHaveTextContent('Opened an email in the last 30 days.')
-    expect(rules).not.toHaveTextContent('condition_groups')
-    expect(
-      screen.getByText('Advanced details').closest('details')
-    ).toHaveTextContent('condition_groups')
   })
 
   it('campaign: names not ids, how it did, the time with its timezone, a safe preview', async () => {
@@ -200,7 +176,7 @@ describe('Klaviyo detail pages (§4)', () => {
   })
 
   it('unknown ids are not found', async () => {
-    await expect(ListPage(props('listId', 'nope'))).rejects.toThrow(
+    await expect(MetricPage(props('metricId', 'nope'))).rejects.toThrow(
       'NEXT_NOT_FOUND'
     )
     await expect(CampaignPage(props('klaviyoId', 'nope'))).rejects.toThrow(
@@ -255,7 +231,7 @@ describe('Klaviyo detail pages (§4)', () => {
 
   it('reads the connection for the signed-in workspace only', async () => {
     connections.rows = [{ provider: 'klaviyo', status: 'connected' }]
-    render(await ListPage(props('listId', 'LSTnews01')))
+    render(await MetricPage(props('metricId', 'METord005')))
     expect(connections.tenant).toEqual(['tenant_id', 't1'])
   })
 
@@ -273,7 +249,7 @@ describe('Klaviyo detail pages (§4)', () => {
   it('reads nothing when the visitor is not signed in', async () => {
     connections.denied = true
     connections.rows = [{ provider: 'klaviyo', status: 'connected' }]
-    await expect(ListPage(props('listId', 'LSTnews01'))).rejects.toThrow(
+    await expect(MetricPage(props('metricId', 'METord005'))).rejects.toThrow(
       'NEXT_REDIRECT'
     )
     expect(connections.reads).toBe(0)
