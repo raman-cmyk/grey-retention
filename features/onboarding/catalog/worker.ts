@@ -8,6 +8,7 @@ import {
   findStoreMetrics,
   readCatalogItems,
   readEvents,
+  readOrderReturns,
   storeLocale,
   type CatalogItem,
   type PagedRead,
@@ -30,6 +31,7 @@ import {
   salesWindowDays,
   withSales
 } from './clean'
+import { matchReturns, returnsState } from './returns'
 
 type Db = SupabaseClient<Database>
 type Job = Database['public']['Tables']['job_runs']['Row']
@@ -70,7 +72,8 @@ const languageName = (code: string) => {
  * The Catalog analyst's job (ONB-102): reads the account (its currency and
  * language), the Klaviyo catalog, or, when the catalog API shows nothing
  * (a Shopify store), the products of the Viewed Product events, and the
- * Placed Order events of the last 90 days; cleans the catalog in code;
+ * Placed Order events of the last 90 days, less those cancelled or
+ * refunded (ONB-ORD, matched by the order id); cleans the catalog in code;
  * asks the analyst for duplicates and what the brand sells; and stores it
  * all at once (`record_catalog_reading`, which also finishes the job).
  *
@@ -134,7 +137,13 @@ export async function readBrandCatalog(
   const fromApi = items.records.length > 0
   const metrics = more()
     ? await findStoreMetrics(deps.client, more)
-    : { placedOrder: null, viewedProduct: null, complete: false }
+    : {
+        placedOrder: null,
+        viewedProduct: null,
+        cancelledOrder: null,
+        refundedOrder: null,
+        complete: false
+      }
   // Without the catalog, the views show the products: they are read first,
   // so a slow answer never leaves only the orders (which have no pages).
   const views: PagedRead<StoreEvent> = fromApi
@@ -156,6 +165,27 @@ export async function readBrandCatalog(
       : metrics.placedOrder
         ? unread
         : none
+  // ONB-ORD: cancelled and refunded orders sell nothing (a partial refund
+  // only its units); a store without those metrics has none. They only
+  // correct the sales: how much was read is its own flag, never whether
+  // the catalog read was whole (which retires the products not seen).
+  const returns =
+    orders.records.length && (metrics.cancelledOrder || metrics.refundedOrder)
+      ? await readOrderReturns(deps.client, metrics, since, more)
+      : { cancels: none, refunds: none }
+  const undone = matchReturns(
+    orders.records,
+    returns.cancels.records,
+    returns.refunds.records
+  )
+  const returnsRead = returnsState(
+    [
+      ...(metrics.cancelledOrder ? [returns.cancels] : []),
+      ...(metrics.refundedOrder ? [returns.refunds] : [])
+    ],
+    undone,
+    orders.complete
+  )
   const skipped = items.skipped + orders.skipped + views.skipped
   const read =
     items.complete &&
@@ -176,7 +206,10 @@ export async function readBrandCatalog(
   const raw = fromApi
     ? fromCatalogItems(items.records, started)
     : fromEvents(views.records, orders.records, started)
-  const listed = withSales(raw, salesFrom(orders.records, started))
+  const listed = withSales(
+    raw,
+    salesFrom(orders.records, started, undone.byOrder)
+  )
 
   // Nothing found before the time ran out is not "no products": the read
   // is tried again later, and nothing earlier is replaced.
@@ -281,6 +314,15 @@ export async function readBrandCatalog(
     since: since.toISOString(),
     orders: orders.records.length,
     views: views.records.length,
+    // The orders taken out, when the store has the metrics.
+    ...(metrics.cancelledOrder || metrics.refundedOrder
+      ? {
+          returns: returnsRead,
+          cancelled: undone.cancelled,
+          refunded: undone.refunded,
+          unmatched: undone.unmatched
+        }
+      : {}),
     ...(oldest(orders.records) ? { oldestOrder: oldest(orders.records) } : {}),
     ...(oldest(views.records) ? { oldestView: oldest(views.records) } : {})
   }
@@ -308,6 +350,10 @@ export async function readBrandCatalog(
     skipped,
     complete,
     currencyCheck: check,
+    returns:
+      metrics.cancelledOrder || metrics.refundedOrder ? returnsRead : 'none',
+    cancelled: undone.cancelled,
+    refunded: undone.refunded,
     live: deps.live
   })
   if (state === 'empty')

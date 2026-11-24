@@ -12,6 +12,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
     expect(Object.keys(s)).toEqual([
       'Real AI',
       'AI team in “Create email”',
+      'AI team in “Plan next 15 days”',
       'Design studio',
       'Klaviyo reading',
       'Klaviyo drafts',
@@ -22,6 +23,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
     for (const label of [
       'Real AI',
       'AI team in “Create email”',
+      'AI team in “Plan next 15 days”',
       'Design studio',
       'Klaviyo reading',
       'Klaviyo drafts',
@@ -39,6 +41,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
     const env = {
       GEMINI_API_KEY: key,
       EMAIL_BUILD_AGENTS: 'on',
+      STRATEGY_AGENTS: 'on',
       DESIGN_STUDIO: 'on',
       KLAVIYO_MODE: 'live',
       KLAVIYO_DRAFT_PUSH: 'live',
@@ -48,6 +51,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
     for (const label of [
       'Real AI',
       'AI team in “Create email”',
+      'AI team in “Plan next 15 days”',
       'Design studio',
       'Klaviyo reading',
       'Klaviyo drafts',
@@ -62,12 +66,14 @@ describe('the go-live switches (OPS-LIVE)', () => {
   it('flags a switch that is set but cannot work', () => {
     const s = byLabel({
       EMAIL_BUILD_AGENTS: 'on',
+      STRATEGY_AGENTS: 'on',
       DESIGN_STUDIO: 'on',
       KLAVIYO_DRAFT_PUSH: 'live',
       INBOX_TRANSPORT: 'pop3'
     })
     for (const label of [
       'AI team in “Create email”',
+      'AI team in “Plan next 15 days”',
       'Design studio',
       'Klaviyo drafts',
       'Competitor inbox'
@@ -78,6 +84,12 @@ describe('the go-live switches (OPS-LIVE)', () => {
         'Real AI'
       ]!.state
     ).toBe('attention')
+    // Real AI, but sample Klaviyo data: planning stays code only.
+    const plan = byLabel({ GEMINI_API_KEY: 'k', STRATEGY_AGENTS: 'on' })[
+      'AI team in “Plan next 15 days”'
+    ]!
+    expect(plan.state).toBe('attention')
+    expect(plan.detail).toContain('KLAVIYO_MODE=live')
   })
 
   it('says when the fake AI is forced over a real key', () => {

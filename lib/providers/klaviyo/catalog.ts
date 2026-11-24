@@ -47,6 +47,8 @@ export type CatalogItem = {
 }
 
 export type StoreEvent = {
+  /** Klaviyo's id of the event, when it sends one. */
+  id?: string
   /** ISO time of the event. */
   at: string
   props: Record<string, unknown>
@@ -276,6 +278,9 @@ const metricRecord = z.object({
 export type StoreMetrics = {
   placedOrder: string | null
   viewedProduct: string | null
+  /** ONB-ORD: Cancelled (or Canceled) Order; null when the store has none. */
+  cancelledOrder: string | null
+  refundedOrder: string | null
   /** Klaviyo's own Clicked Email metric (a campaign's link clicks, LRN-001). */
   clickedEmail: string | null
   /** False when not every page of metrics was read. */
@@ -329,13 +334,16 @@ export async function findStoreMetrics(
         ? storePlatforms.length
         : storePlatforms.length + 1
   }
-  const pick = (name: string) =>
+  const pick = (...names: string[]) =>
     read.records
-      .filter((m) => m.attributes.name === name)
+      .filter((m) => names.includes(m.attributes.name))
       .sort((a, b) => rank(a) - rank(b))[0]?.id ?? null
   return {
     placedOrder: pick('Placed Order'),
     viewedProduct: pick('Viewed Product'),
+    // Shopify's name, and the one Klaviyo's guide for other stores uses.
+    cancelledOrder: pick('Cancelled Order', 'Canceled Order'),
+    refundedOrder: pick('Refunded Order'),
     // Klaviyo's own Clicked Email, never one another integration sends.
     clickedEmail:
       read.records.find(
@@ -349,6 +357,7 @@ export async function findStoreMetrics(
 
 const eventRecord = z.object({
   type: z.literal('event'),
+  id: z.string().max(200).nullish(),
   attributes: z.object({
     datetime: z.iso.datetime({ offset: true }),
     // Klaviyo may send no properties: the event then says nothing.
@@ -356,7 +365,10 @@ const eventRecord = z.object({
   })
 })
 
-/** One metric's events since `since`, newest first. */
+/**
+ * One metric's events since `since`, newest first; an event Klaviyo sends
+ * again (its id repeated, on a later page) is kept once.
+ */
 export function readEvents(
   client: KlaviyoClient,
   metricId: string,
@@ -364,6 +376,7 @@ export function readEvents(
   more: MorePages,
   maxPages = maxEventPages
 ): Promise<PagedRead<StoreEvent>> {
+  const seen = new Set<string>()
   return readPages(
     client,
     eventsPath(metricId, since),
@@ -372,14 +385,18 @@ export function readEvents(
     more,
     (body) => {
       let skipped = 0
-      const records = body.data.flatMap((raw) => {
+      const records = body.data.flatMap((raw): StoreEvent[] => {
         const e = eventRecord.safeParse(raw)
         if (!e.success) {
           skipped++
           return []
         }
+        const id = e.data.id ?? undefined
+        if (id && seen.has(id)) return []
+        if (id) seen.add(id)
         return [
           {
+            ...(id ? { id } : {}),
             at: new Date(e.data.attributes.datetime).toISOString(),
             props: e.data.attributes.event_properties ?? {}
           }
@@ -388,6 +405,50 @@ export function readEvents(
       return { records, skipped }
     }
   )
+}
+
+/**
+ * ONB-ORD: whether a failed read that only corrects the counts is left out
+ * (any Klaviyo failure but a refused key or its pace, which stop the job).
+ */
+export const correctionLeftOut = (error: unknown) =>
+  error instanceof KlaviyoError &&
+  error.kind !== 'bad_key' &&
+  error.kind !== 'rate_limited'
+
+export type OrderReturnsRead = {
+  cancels: PagedRead<StoreEvent>
+  refunds: PagedRead<StoreEvent>
+}
+
+/**
+ * ONB-ORD: the store's Cancelled and Refunded Order events since `since`,
+ * each within the events' page cap. A store without one of the metrics has
+ * none of them (not an error). These reads only correct the counts: any
+ * failure (an outage, a timeout, a 403, a refusal, an odd answer) leaves
+ * that one unread; only a refused key or Klaviyo's pace still throw.
+ */
+export async function readOrderReturns(
+  client: KlaviyoClient,
+  metrics: Pick<StoreMetrics, 'cancelledOrder' | 'refundedOrder'>,
+  since: Date,
+  more: MorePages
+): Promise<OrderReturnsRead> {
+  const one = async (metricId: string | null) => {
+    const unread = { records: [], complete: false, skipped: 0 }
+    if (!metricId) return { ...unread, complete: true }
+    if (!more()) return unread
+    try {
+      return await readEvents(client, metricId, since, more)
+    } catch (error) {
+      if (!correctionLeftOut(error)) throw error
+      return unread
+    }
+  }
+  return {
+    cancels: await one(metrics.cancelledOrder),
+    refunds: await one(metrics.refundedOrder)
+  }
 }
 
 const accountLocale = z.object({

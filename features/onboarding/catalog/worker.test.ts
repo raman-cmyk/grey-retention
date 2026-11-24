@@ -68,17 +68,25 @@ const read = async (
     live?: boolean
     ask?: Ask | null
     clock?: () => number
+    returns?: boolean
+    /** Requests to these addresses never answer (a timeout). */
+    hang?: RegExp
   } = {}
 ) => {
   const transport = recordedCatalogTransport({
     store: options.store ?? 'shopify',
     now: new Date(now),
-    fail: options.fail
+    fail: options.fail,
+    returns: options.returns
   })
   const { db, calls } = database()
   const run = await readBrandCatalog(db, job, {
     client: klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
-      transport,
+      transport: async (request) => {
+        if (options.hang?.test(decodeURIComponent(request.url)))
+          throw new DOMException('The operation timed out.', 'TimeoutError')
+        return transport(request)
+      },
       maxWaits: 0
     }),
     live: options.live ?? false,
@@ -206,6 +214,109 @@ describe('readBrandCatalog', () => {
     expect(transport.calls.filter((c) => c.includes('VwdPrd'))).toEqual([])
     expect(stored.findings[0]).toMatchObject({
       evidence: { ref: 'klaviyo:catalog' }
+    })
+  })
+
+  describe('cancelled and refunded orders (ONB-ORD)', () => {
+    const sold = (products: CatalogRecord[]) =>
+      Object.fromEntries(
+        products.map((p) => [
+          p.externalId,
+          [p.units30d, p.units90d, p.bestsellerRank]
+        ])
+      )
+
+    it('leaves them out of the best sellers', async () => {
+      const { stored, transport } = await read({ returns: true })
+      expect(sold(stored.products)).toMatchObject({
+        // Two of its five were cancelled.
+        '7001': [1, 3, 1],
+        '7005': [1, 1, 2],
+        '7002': [0, 2, 3],
+        // Both totes refunded: the tote was second; now its copy, which
+        // sold one, is the one kept.
+        '7003': [0, 0, null],
+        '7006': [0, 1, 4]
+      })
+      // A cancel of an order placed before the 90 days changes nothing.
+      expect(stored.summary).toMatchObject({
+        complete: true,
+        window: {
+          orders: 5,
+          returns: 'whole',
+          cancelled: 1,
+          refunded: 1,
+          unmatched: 1
+        }
+      })
+      // Read once each, after the orders.
+      expect(
+        transport.calls.slice(-3).map((c) => /"(\w+)"/.exec(c)?.[1])
+      ).toEqual(['PlcdOr', 'CnclOr', 'RfndOr'])
+    })
+
+    it('takes only the units a partial refund lists', async () => {
+      const { stored } = await read({ store: 'custom', returns: true })
+      expect(sold(stored.products)).toMatchObject({
+        'CG-OVERSHIRT': [1, 1, 2],
+        'CG-TOTE': [1, 1, 1]
+      })
+      expect(stored.summary.window).toMatchObject({
+        cancelled: 0,
+        refunded: 1
+      })
+    })
+
+    it('reads none and counts every order for a store without the metrics', async () => {
+      const { stored, transport } = await read()
+      expect(sold(stored.products)['7001']).toEqual([3, 5, 1])
+      expect(stored.summary.window).not.toHaveProperty('cancelled')
+      expect(transport.calls.some((c) => /CnclOr|RfndOr/.test(c))).toBe(false)
+    })
+
+    const failure = (status: number): KlaviyoResponse => ({
+      status,
+      headers: {},
+      body: '{"errors":[]}'
+    })
+    for (const [name, options] of [
+      ['an outage', { fail: { on: 'returns', with: failure(503) } }],
+      ['a timeout', { hang: /CnclOr|RfndOr/ }],
+      ['a 403', { fail: { on: 'returns', with: failure(403) } }],
+      ['a refusal', { fail: { on: 'returns', with: failure(400) } }]
+    ] as const)
+      it(`counts every order, still retiring what it no longer sees, after ${name} on the cancels and refunds`, async () => {
+        const { stored } = await read({ returns: true, ...options })
+        expect(sold(stored.products)['7001']).toEqual([3, 5, 1])
+        expect(stored.summary).toMatchObject({
+          complete: true,
+          window: { returns: 'unread', cancelled: 0, refunded: 0 }
+        })
+      })
+
+    it('still stops for a refused key or the pace on those reads', async () => {
+      for (const response of [recorded.badKey, recorded.throttled(30)]) {
+        const transport = recordedCatalogTransport({
+          now: new Date(now),
+          returns: true,
+          fail: { on: 'returns', with: response }
+        })
+        const { db } = database()
+        await expect(
+          readBrandCatalog(db, job, {
+            client: klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
+              transport,
+              maxWaits: 0
+            }),
+            live: false,
+            ask: sampleAsk,
+            callMs: 10_000,
+            now: () => now
+          })
+        ).rejects.toMatchObject({
+          kind: response === recorded.badKey ? 'bad_key' : 'rate_limited'
+        })
+      }
     })
   })
 

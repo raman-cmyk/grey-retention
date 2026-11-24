@@ -401,7 +401,7 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
   // A second run finds nothing left: each email is photographed once.
   expect(
     await takeScreenshots({ base: baseURL!, secret, browser, log: () => {} })
-  ).toEqual({ taken: 0, failed: 0 })
+  ).toEqual({ taken: 0, failed: 0, unloaded: 0 })
 
   // The owner, who follows northwind.example, sees the picture in Inspiration.
   await login(page, 'owner')

@@ -396,5 +396,7 @@ describe('siteFonts (FONT-SITE part a)', () => {
         page('', `<h1 style="font-family:Cut;${big}" class="${big}">x</h1>`)
       )
     ).toEqual(['Cut heading unknown'])
-  })
+    // Its own bounds (15 cases of 2 s, one call of 6 s) are the check:
+    // vitest's 5 s default must not cut it first on a busy machine.
+  }, 40_000)
 })

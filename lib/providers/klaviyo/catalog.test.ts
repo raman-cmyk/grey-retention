@@ -10,6 +10,7 @@ import {
   metricsPath,
   readCatalogItems,
   readEvents,
+  readOrderReturns,
   storeLocale
 } from './catalog'
 import {
@@ -75,11 +76,176 @@ describe('the catalog read, against recorded Klaviyo answers', () => {
     expect(await findStoreMetrics(client(transport), always)).toEqual({
       placedOrder: 'PlcdOr',
       viewedProduct: 'VwdPrd',
+      // No Cancelled or Refunded Order metric: the store has none of them.
+      cancelledOrder: null,
+      refundedOrder: null,
       // The recorded store has no Clicked Email metric (LRN-001's own does).
       clickedEmail: null,
       complete: true
     })
     expect(transport.calls).toEqual([`GET ${metricsPath}`])
+  })
+
+  it("finds the store's Cancelled and Refunded Order metrics, in either spelling", async () => {
+    expect(
+      await findStoreMetrics(
+        client(recordedCatalogTransport({ now, returns: true })),
+        always
+      )
+    ).toMatchObject({ cancelledOrder: 'CnclOr', refundedOrder: 'RfndOr' })
+    const metric = (id: string, name: string, from = 'API') => ({
+      type: 'metric',
+      id,
+      attributes: { name, integration: { name: from } }
+    })
+    const answer =
+      (data: unknown[]): KlaviyoTransport =>
+      async () => ({
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ data, links: { next: null } })
+      })
+    expect(
+      await findStoreMetrics(
+        client(
+          answer([
+            metric('PlcdOr', 'Placed Order'),
+            metric('Cncl1', 'Canceled Order')
+          ])
+        ),
+        always
+      )
+    ).toMatchObject({ cancelledOrder: 'Cncl1', refundedOrder: null })
+    // Shopify's own metric over one sent through the API, whatever the order.
+    expect(
+      await findStoreMetrics(
+        client(
+          answer([
+            metric('Cncl1', 'Canceled Order'),
+            metric('CnclSh', 'Cancelled Order', 'Shopify'),
+            metric('RfndAp', 'Refunded Order'),
+            metric('RfndSh', 'Refunded Order', 'Shopify')
+          ])
+        ),
+        always
+      )
+    ).toMatchObject({ cancelledOrder: 'CnclSh', refundedOrder: 'RfndSh' })
+  })
+
+  it('reads the cancels and refunds of the window in Shopify’s shape, and none without the metrics', async () => {
+    const transport = recordedCatalogTransport({ now, returns: true })
+    const since = new Date(now.getTime() - 90 * 86_400_000)
+    const metrics = { cancelledOrder: 'CnclOr', refundedOrder: 'RfndOr' }
+    const read = await readOrderReturns(
+      client(transport),
+      metrics,
+      since,
+      always
+    )
+    expect(read.cancels).toMatchObject({ complete: true, skipped: 0 })
+    expect(read.cancels.records.map((e) => e.props.$event_id)).toEqual([
+      '1001',
+      '100120'
+    ])
+    expect(read.refunds.records[0]!.props).toMatchObject({
+      $event_id: '10014',
+      $value: 90,
+      $extra: { line_items: [{ product_id: 7003, quantity: 2 }] }
+    })
+    expect(transport.calls).toEqual([
+      `GET ${eventsPath('CnclOr', since)}`,
+      `GET ${eventsPath('RfndOr', since)}`
+    ])
+    const none = recordedCatalogTransport({ now })
+    expect(
+      await readOrderReturns(
+        client(none),
+        { cancelledOrder: null, refundedOrder: null },
+        since,
+        always
+      )
+    ).toEqual({
+      cancels: { records: [], complete: true, skipped: 0 },
+      refunds: { records: [], complete: true, skipped: 0 }
+    })
+    expect(none.calls).toEqual([])
+  })
+
+  it('leaves a cancels read that fails unread, but stops for a refused key or the pace', async () => {
+    const since = new Date(now.getTime() - 90 * 86_400_000)
+    const metrics = { cancelledOrder: 'CnclOr', refundedOrder: 'RfndOr' }
+    const status = (s: number) => ({ status: s, headers: {}, body: '{}' })
+    const hang: KlaviyoTransport = async () => {
+      throw new DOMException('The operation timed out.', 'TimeoutError')
+    }
+    for (const transport of [
+      ...[status(503), status(403), status(400), status(200)].map((with_) =>
+        recordedCatalogTransport({
+          now,
+          returns: true,
+          fail: { on: 'returns', with: with_ }
+        })
+      ),
+      hang
+    ]) {
+      const read = await readOrderReturns(
+        client(transport),
+        metrics,
+        since,
+        always
+      )
+      expect(read.cancels).toEqual({ records: [], complete: false, skipped: 0 })
+      expect(read.refunds.complete).toBe(false)
+    }
+    for (const [response, kind] of [
+      [recorded.throttled(5), 'rate_limited'],
+      [recorded.badKey, 'bad_key']
+    ] as const) {
+      const transport = recordedCatalogTransport({
+        now,
+        returns: true,
+        fail: { on: 'returns', with: response }
+      })
+      expect(
+        (
+          await failure(
+            readOrderReturns(client(transport), metrics, since, always)
+          )
+        ).kind
+      ).toBe(kind)
+    }
+  })
+
+  it('skips a cancel of an unknown shape and keeps an event Klaviyo sends twice once', async () => {
+    const cancel = (id: string, extra: object = {}) => ({
+      type: 'event',
+      id,
+      attributes: {
+        datetime: '2026-11-10T10:00:00+00:00',
+        event_properties: { $event_id: id },
+        ...extra
+      }
+    })
+    const pages = [
+      {
+        data: [cancel('C1'), cancel('C2', { datetime: 'yesterday' })],
+        links: { next: 'https://a.klaviyo.com/api/events/?page[cursor]=p2' }
+      },
+      { data: [cancel('C1'), cancel('C3')], links: { next: null } }
+    ]
+    const transport: KlaviyoTransport = async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify(pages.shift())
+    })
+    const read = await readOrderReturns(
+      client(transport),
+      { cancelledOrder: 'CnclOr', refundedOrder: null },
+      new Date(now.getTime() - 90 * 86_400_000),
+      always
+    )
+    expect(read.cancels).toMatchObject({ complete: true, skipped: 1 })
+    expect(read.cancels.records.map((e) => e.id)).toEqual(['C1', 'C3'])
   })
 
   it('reads the events of the last 90 days, newest first, with their properties', async () => {
