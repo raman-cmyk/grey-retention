@@ -16,6 +16,8 @@ export const maxBytes: number
 export const perRun: number
 export const cropBudgetMs: number
 export const uploadBudgetMs: number
+/** How long one picture or style (`loadMs`) and the page (`pageMs`) may take. */
+export const timing: { loadMs: number; pageMs: number }
 export function launch(chromium: BrowserType): Promise<Browser>
 export function prepareHtml(
   html: string,
@@ -30,7 +32,8 @@ export function render(
     Partial<Pick<ScreenshotJob, 'sections'>>,
   html: string,
   /** When to stop cropping sections (epoch milliseconds). */
-  until?: number
+  until?: number,
+  times?: { loadMs: number; pageMs: number }
 ): Promise<{
   image: Uint8Array
   width: number
@@ -41,10 +44,13 @@ export function render(
     height: number
     image: Uint8Array
   }[]
+  /** The job's own pictures or styles refused (a redirect) or failed. */
+  unloaded: number
 }>
 export function run(options: {
   base: string
   secret: string
   browser: Browser
   log?: (line: string) => void
-}): Promise<{ taken: number; failed: number }>
+  times?: { loadMs: number; pageMs: number }
+}): Promise<{ taken: number; failed: number; unloaded: number }>

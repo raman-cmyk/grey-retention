@@ -6,6 +6,7 @@
     "KLAVIYO_MODE": "fake",
     "KLAVIYO_DRAFT_PUSH": "off",
     "EMAIL_BUILD_AGENTS": "off",
+    "STRATEGY_AGENTS": "off",
     "DESIGN_STUDIO": "off",
     "NEXT_TELEMETRY_DISABLED": "1"
   },

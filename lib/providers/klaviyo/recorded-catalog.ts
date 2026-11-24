@@ -161,6 +161,19 @@ export function catalogRecordings(
         prev: null
       }
     })
+  /** A store's Cancelled or Refunded Order event for one of its orders. */
+  const undo = (
+    daysAgo: number,
+    of: ReturnType<typeof order>,
+    over: Record<string, unknown> = {}
+  ) => ({
+    type: 'event',
+    id: `undo-${of.id}`,
+    attributes: {
+      datetime: at(daysAgo, 18),
+      event_properties: { ...of.attributes.event_properties, ...over }
+    }
+  })
 
   return {
     metrics: json(200, {
@@ -250,6 +263,23 @@ export function catalogRecordings(
       ]),
       order(50, [{ item: oldTote, quantity: 1 }])
     ]),
+    /**
+     * ONB-ORD: Shopify's Cancelled Order carries the order itself ($event_id
+     * is the order's id): the order of two overshirts, and one placed before
+     * the 90 days read.
+     */
+    cancelledOrder: events([
+      undo(
+        0.5,
+        order(1, [{ item: overshirt, quantity: 2, variant: 'Olive / M' }]),
+        {
+          Reason: 'customer'
+        }
+      ),
+      undo(2, order(120, [{ item: overshirt, quantity: 1 }]))
+    ]),
+    /** The order of two totes refunded in full. */
+    refundedOrder: events([undo(9, order(14, [{ item: tote, quantity: 2 }]))]),
     /** A catalog sent to Klaviyo directly: items with their variants. */
     customCatalog: json(200, {
       data: [
@@ -347,6 +377,8 @@ export function catalogRecordings(
         attributes: {
           datetime: at(3),
           event_properties: {
+            OrderId: 'C5001',
+            $event_id: 'C5001',
             $value: 223,
             Currency: 'USD',
             Items: [
@@ -370,8 +402,55 @@ export function catalogRecordings(
           }
         }
       }
+    ]),
+    /**
+     * ONB-ORD: one overshirt of that order refunded, as Klaviyo's guide for
+     * other stores sends it: the OrderId, its own id, its value, its line.
+     */
+    customRefunds: events([
+      {
+        type: 'event',
+        id: 'custom-refund-1',
+        attributes: {
+          datetime: at(1),
+          event_properties: {
+            OrderId: 'C5001',
+            $event_id: 'C5001-R1',
+            $value: 89,
+            Reason: 'Wrong size',
+            Items: [{ ProductID: 'CG-OVERSHIRT', Quantity: 1, ItemPrice: 89 }]
+          }
+        }
+      }
     ])
   }
+}
+
+/** ONB-ORD: the metrics with the store's Cancelled and Refunded Order. */
+export function withReturnMetrics(metrics: KlaviyoResponse): KlaviyoResponse {
+  const body = JSON.parse(metrics.body) as { data: unknown[] }
+  const store = (id: string, name: string) => ({
+    type: 'metric',
+    id,
+    attributes: {
+      name,
+      integration: {
+        object: 'integration',
+        id: '0eMvjm',
+        key: 'shopify',
+        name: 'Shopify',
+        category: 'eCommerce'
+      }
+    }
+  })
+  return json(200, {
+    ...body,
+    data: [
+      ...body.data,
+      store('CnclOr', 'Cancelled Order'),
+      store('RfndOr', 'Refunded Order')
+    ]
+  })
 }
 
 export type CatalogStore = 'shopify' | 'custom' | 'empty'
@@ -394,8 +473,17 @@ export function recordedCatalogTransport(
     store?: CatalogStore
     domain?: string
     now?: Date
+    /** ONB-ORD: the store has Cancelled and Refunded Order metrics. */
+    returns?: boolean
     fail?: {
-      on: 'account' | 'catalog' | 'metrics' | 'orders' | 'views' | 'views2'
+      on:
+        | 'account'
+        | 'catalog'
+        | 'metrics'
+        | 'orders'
+        | 'views'
+        | 'views2'
+        | 'returns'
       with: KlaviyoResponse
     }
   } = {}
@@ -416,7 +504,11 @@ export function recordedCatalogTransport(
         fail('catalog') ??
         (store === 'custom' ? r.customCatalog : r.emptyCatalog)
       )
-    if (path === metricsPath) return fail('metrics') ?? r.metrics
+    if (path === metricsPath)
+      return (
+        fail('metrics') ??
+        (options.returns ? withReturnMetrics(r.metrics) : r.metrics)
+      )
     const metric = eventsQuery.exec(path)?.[1]
     if (metric === 'PlcdOr')
       return (
@@ -443,6 +535,17 @@ export function recordedCatalogTransport(
         (store === 'shopify'
           ? r.viewedProduct
           : json(200, { data: [], links: { next: null } }))
+      )
+    if (options.returns && (metric === 'CnclOr' || metric === 'RfndOr'))
+      return (
+        fail('returns') ??
+        (store === 'shopify'
+          ? metric === 'CnclOr'
+            ? r.cancelledOrder
+            : r.refundedOrder
+          : store === 'custom' && metric === 'RfndOr'
+            ? r.customRefunds
+            : json(200, { data: [], links: { next: null } }))
       )
     return json(404, { errors: [{ status: 404, code: 'not_found' }] })
   }) as KlaviyoTransport & { calls: string[] }
