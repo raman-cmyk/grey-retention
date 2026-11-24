@@ -8,8 +8,8 @@ select col_not_null('public','email_builds','mode','every build has a mode');
 select col_has_check('public','email_builds','mode','the column itself allows only copy, remix or scratch');
 select ok(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.proname = 'create_email_build' and p.pronargs = 3),'the three-argument command is replaced, not kept beside the new one');
-select ok(not has_function_privilege('anon','public.create_email_build(uuid,uuid,integer,text)','execute'),'anon cannot create an email');
-select ok(has_function_privilege('authenticated','public.create_email_build(uuid,uuid,integer,text)','execute'),'members may call it (the owner check is inside)');
+select ok(not has_function_privilege('anon','public.create_email_build(uuid,uuid,integer,text,uuid)','execute'),'anon cannot create an email');
+select ok(has_function_privilege('authenticated','public.create_email_build(uuid,uuid,integer,text,uuid)','execute'),'members may call it (the owner check is inside)');
 
 -- A planned run with a designed email, a text email and a third designed one.
 select set_config('test.today',((now() at time zone (select timezone from public.tenants where id='00000000-0000-4000-8000-000000000101'))::date)::text,true);

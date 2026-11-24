@@ -116,10 +116,10 @@ export const pageSize = 20
 export const latestUploads = 40
 
 /**
- * Where "Use this design" leads from the Inspiration page (UI-OLDc): the
- * GROS "Use this design" screen with the email already chosen (competitor
- * emails and uploads), or Inspiration itself for a saved layout (which
- * Inspiration does not list).
+ * Where "Use this design" leads (UI-OLDc, UI-USE): the GROS "Use this
+ * design" screen with the email already chosen. A competitor email opens
+ * Create email on a planned email (Inspiration shows the button on those
+ * only); an upload opens the draft form; a saved layout, Inspiration.
  */
 export function referenceHref(item: Pick<LibraryItem, 'id' | 'source'>) {
   if (item.source === 'competitor')

@@ -276,7 +276,10 @@ function EmailsCard({
                   item.sample ? 'Sample' : ''
                 ]}
                 end={
-                  view.owner ? (
+                  // UI-USE: Create email follows an email of a brand the
+                  // workspace follows (its tagged sections); an email the
+                  // owner added has none, so it gets no button here.
+                  view.owner && item.source === 'competitor' ? (
                     <ButtonLink
                       href={referenceHref(item) as Route}
                       label="Use this design"

@@ -361,6 +361,53 @@ export function rankReferences(
   }
 }
 
+const chosenUnfitWords: Record<Unfit, string> = {
+  undated: 'its date cannot be read',
+  old: 'it is more than a year old',
+  thin: 'its layout is too short to follow',
+  heights: 'its top pictures are too short or too tall to copy'
+}
+
+/**
+ * UI-USE: the inspiration email the owner chose on Inspiration ("Use this
+ * design"), as the reference, when it can be one: an email the worker read
+ * (a brand the workspace follows, or a sample brand, that the inbox has
+ * tagged), that fits the mode. The owner chose it, so it need not share a
+ * label with the planned email. When it cannot be followed, `reason` says
+ * why the email is designed from scratch; another email is never used in
+ * its place.
+ */
+export function chosenReference(
+  emails: readonly ReferenceEmail[],
+  id: string,
+  {
+    mode,
+    now,
+    followed
+  }: { mode: 'copy' | 'remix'; now: number; followed: ReadonlySet<string> }
+): ReferencePick {
+  const email = emails.find(
+    (e) => e.id === id && (e.synthetic || followed.has(e.brandId))
+  )
+  if (!email)
+    return {
+      email: null,
+      reason: `The email you chose in Inspiration cannot be followed: it is still being read, it is more than a year old, or its brand is no longer one you follow${scratch}`
+    }
+  const no = unfit(email, mode, now)
+  if (no)
+    return {
+      email: null,
+      reason: `The email you chose in Inspiration cannot be followed: ${chosenUnfitWords[no]}${scratch}`
+    }
+  const subject = oneLine(email.subject, 80) || 'an email'
+  const brand = oneLine(email.brand, 60) || 'A brand you follow'
+  return {
+    email,
+    reason: `${mode === 'copy' ? 'We copy' : 'We remix'} ${brand}’s email “${subject}” (${dateWords.format(Date.parse(email.receivedAt))}), the email you chose in Inspiration.`
+  }
+}
+
 /** The best reference for one slot (`rankReferences`), or why there is none. */
 export function pickReference(
   ...args: Parameters<typeof rankReferences>

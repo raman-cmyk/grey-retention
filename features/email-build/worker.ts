@@ -585,7 +585,11 @@ export async function runEmailBuilds(
   return { ran }
 }
 
-type ReferenceLoader = (tenantId: string) => Promise<{
+type ReferenceLoader = (
+  tenantId: string,
+  /** UI-USE: the email the owner chose, read even when it is not recent. */
+  chosen?: string
+) => Promise<{
   emails: readonly ReferenceEmail[]
   followed: ReadonlySet<string>
 }>
@@ -602,24 +606,40 @@ export async function buildReference(
   now: () => number,
   load?: ReferenceLoader
 ) {
-  const { data, error } = await db
-    .from('email_builds')
-    .select('mode')
-    .eq('id', job.id)
-    .eq('tenant_id', job.tenant_id)
-  if (error) throw error
-  const mode = (data ?? [])[0]?.mode
+  const read = (columns: string) =>
+    db
+      .from('email_builds')
+      .select(columns)
+      .eq('id', job.id)
+      .eq('tenant_id', job.tenant_id)
+  // UI-USE: `reference_id` is not in the generated types until they are
+  // regenerated (BUILD_LEDGER Known issues); this read names its shape.
+  type Row = { mode: string; reference_id?: string | null }
+  let found = (await read('mode,reference_id')) as unknown as {
+    data: Row[] | null
+    error: { code?: string } | null
+  }
+  // The app can go live minutes before the migration that adds the
+  // column (42703 = no such column): the build goes on without a choice.
+  if (found.error?.code === '42703')
+    found = (await read('mode')) as unknown as typeof found
+  if (found.error) throw found.error
+  const row = (found.data ?? [])[0]
+  const mode = row?.mode
   if (mode !== 'copy' && mode !== 'remix') return undefined
+  const chosen =
+    typeof row?.reference_id === 'string' ? row.reference_id : undefined
   return {
     mode,
+    ...(chosen ? { chosen } : {}),
     load: load
-      ? () => load(job.tenant_id)
+      ? () => load(job.tenant_id, chosen)
       : async () => {
           const at = now()
-          return toReferences(await readReferenceRows(db, job.tenant_id, at), {
-            now: at,
-            timezone
-          })
+          return toReferences(
+            await readReferenceRows(db, job.tenant_id, at, chosen),
+            { now: at, timezone }
+          )
         }
   } as const
 }

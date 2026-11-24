@@ -407,6 +407,53 @@ describe('readReferenceRows', () => {
     expect(read.sections).toHaveLength(pageRows + 7 + 30)
   })
 
+  it('reads the email the owner chose too, on the same terms (UI-USE)', async () => {
+    const chosenRead = (row: EmailRow) =>
+      handlers({
+        competitor_emails: (ops: Op[]) =>
+          has(ops, 'eq', 'id', 'chosen')
+            ? ok([row])
+            : has(ops, 'select', 'id, capture_id, facts')
+              ? ok([])
+              : has(ops, 'eq', 'synthetic', true)
+                ? ok([])
+                : ok([mail({ id: 'e1' })])
+      })
+    // Not among the latest: read by its id, tagged and within the year.
+    const { db, calls } = fakeDb(
+      chosenRead(mail({ id: 'chosen', received_at: '2026-01-10T09:00:00Z' }))
+    )
+    const read = await readReferenceRows(db, 'tenant-1', now, 'chosen')
+    const byId = calls.find(
+      (c) => c.table === 'competitor_emails' && has(c.ops, 'eq', 'id', 'chosen')
+    )!
+    expect(has(byId.ops, 'eq', 'labels_state', 'tagged')).toBe(true)
+    expect(
+      has(byId.ops, 'gte', 'received_at', '2025-11-16T12:00:00.000Z')
+    ).toBe(true)
+    expect(read.emails.map((e) => e.id)).toEqual(['e1', 'chosen'])
+    // A hidden brand's, or one neither followed nor a sample: left out.
+    for (const row of [
+      mail({ id: 'chosen', capture_id: 'oak', synthetic: true }),
+      mail({ id: 'chosen', capture_id: 'elm', synthetic: false })
+    ]) {
+      const other = fakeDb(chosenRead(row))
+      expect(
+        (await readReferenceRows(other.db, 'tenant-1', now, 'chosen')).emails
+          .map((e) => e.id)
+          .includes('chosen')
+      ).toBe(false)
+    }
+    // Without a choice, no such read.
+    const plain = fakeDb(handlers())
+    await readReferenceRows(plain.db, 'tenant-1', now)
+    expect(
+      plain.calls.some((c) =>
+        c.ops.some(([o, a]) => o === 'eq' && a[0] === 'id')
+      )
+    ).toBe(false)
+  })
+
   it('throws with the code when a read fails, so the step is tried again', async () => {
     for (const table of [
       'competitor_subscriptions',

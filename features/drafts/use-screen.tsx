@@ -13,12 +13,12 @@ import {
 import { UseDesignForm } from './use-form'
 
 /**
- * "Use this design" (UI-OLDc): the GROS screen that starts a draft from an
- * Inspiration email, replacing the old `/first-draft` page. Create email on
- * the Plan picks its own Inspiration email (Copy or Remix) and takes no
- * chosen one, so this screen keeps the old first-draft action: a saved
- * draft that follows the chosen email's sections, never its words, images
- * or offers. With no email chosen it starts from scratch.
+ * The draft form (UI-OLDc): the GROS screen that starts a saved draft,
+ * replacing the old `/first-draft` page. UI-USE: an email from a brand the
+ * workspace follows now runs Create email on a planned email instead
+ * (`features/inspiration/use-screen.tsx`); this form is for an email the
+ * owner added (its sections are followed, never its words, images or
+ * offers), or none (from scratch).
  */
 export type UseDesignView =
   | { kind: 'error' }
