@@ -1,0 +1,336 @@
+import { describe, expect, it } from 'vitest'
+import {
+  confidenceFor,
+  findPatterns,
+  minSends,
+  planWrites,
+  retireAfter,
+  ruleKey,
+  ruleDays,
+  weeklyLearning,
+  type SentEmail,
+  type StoredRule
+} from './patterns'
+
+const tenant = '00000000-0000-4000-8000-000000000101'
+const now = Date.parse('2026-11-24T12:00:00Z')
+const day = 86_400_000
+let n = 0
+const sent = (over: Partial<SentEmail>): SentEmail => ({
+  buildId: `b${++n}`,
+  emailType: 'story',
+  sentAt: new Date(now - 10 * day).toISOString(),
+  recipients: 1000,
+  clicks: 20,
+  unsubscribes: 1,
+  topBlock: null,
+  ...over
+})
+const many = (k: number, over: Partial<SentEmail>) =>
+  Array.from({ length: k }, () => sent(over))
+
+describe('the Performance analyst (LRN-002, D22)', () => {
+  it('finds a kind of email with more clicks, and one with fewer, from three sends on each side', () => {
+    const emails = [
+      ...many(3, { emailType: 'launch', clicks: 40 }),
+      // 22 is within the band of the rest: no pattern.
+      ...many(3, { emailType: 'story', clicks: 22 }),
+      ...many(3, { emailType: 'education', clicks: 10 })
+    ]
+    const found = findPatterns(emails, now)
+    expect(
+      found
+        .filter((p) => p.dimension === 'email_type')
+        .map((p) => [p.value, p.kind])
+    ).toEqual([
+      ['education', 'dont'],
+      ['launch', 'do']
+    ])
+    const launch = found.find((p) => p.value === 'launch')!
+    expect(launch).toMatchObject({
+      rule: "Plan more launch emails: they get more clicks than this brand's other emails.",
+      why: 'launch emails: 4 clicks per 100 people over 3 sends, against 1.6 for the other 6.',
+      appliesTo: ['brief-writer', 'calendar-planner', 'strategy-critic'],
+      confidence: confidenceFor(3)
+    })
+    expect(launch.evidence).toHaveLength(3)
+  })
+
+  it('needs three sends on each side, enough people, and recent, real sends', () => {
+    const two = [
+      ...many(minSends - 1, { emailType: 'launch', clicks: 80 }),
+      ...many(4, { emailType: 'story' })
+    ]
+    expect(findPatterns(two, now)).toEqual([])
+    const small = [
+      ...many(3, { emailType: 'launch', clicks: 80, recipients: 99 }),
+      ...many(4, { emailType: 'story' })
+    ]
+    expect(findPatterns(small, now)).toEqual([])
+    const old = [
+      ...many(3, {
+        emailType: 'launch',
+        clicks: 80,
+        sentAt: new Date(now - 200 * day).toISOString()
+      }),
+      ...many(4, { emailType: 'story' })
+    ]
+    expect(findPatterns(old, now)).toEqual([])
+  })
+
+  it('makes a kind people unsubscribe from a don’t, even when it gets clicks (#76)', () => {
+    const emails = [
+      ...many(3, { emailType: 'offer', clicks: 60, unsubscribes: 8 }),
+      ...many(4, { emailType: 'story', clicks: 20, unsubscribes: 1 })
+    ]
+    const found = findPatterns(emails, now)
+    expect(found.map((p) => [p.dimension, p.value, p.kind])).toEqual([
+      ['unsubscribes', 'offer', 'dont'],
+      ['email_type', 'story', 'dont']
+    ])
+    // Not unknown counts as 0: a send with no count is left out.
+    const unknown = [
+      ...many(3, { emailType: 'offer', unsubscribes: null }),
+      ...many(4, { emailType: 'story', unsubscribes: 1 })
+    ]
+    expect(
+      findPatterns(unknown, now).filter((p) => p.dimension === 'unsubscribes')
+    ).toEqual([])
+  })
+
+  it('names the section that gets the most clicks in most emails', () => {
+    const emails = [
+      ...many(3, { topBlock: 'product_grid_2col' }),
+      ...many(1, { topBlock: 'hero_product' }),
+      ...many(2, { topBlock: null })
+    ]
+    expect(findPatterns(emails, now)).toEqual([
+      expect.objectContaining({
+        dimension: 'top_section',
+        value: 'product_grid_2col',
+        kind: 'do',
+        rule: "Give product grid 2col sections a clear place: they get the most clicks in this brand's emails.",
+        appliesTo: ['section-planner', 'art-director']
+      })
+    ])
+    // Not most: no rule.
+    expect(
+      findPatterns(
+        [
+          ...many(3, { topBlock: 'product_grid_2col' }),
+          ...many(3, { topBlock: 'hero_product' })
+        ],
+        now
+      )
+    ).toEqual([])
+  })
+
+  it('is surer with more sends, never past 0.9', () => {
+    expect(confidenceFor(3)).toBe(0.55)
+    expect(confidenceFor(6)).toBe(0.7)
+    expect(confidenceFor(40)).toBe(0.9)
+  })
+})
+
+describe('the Memory writer (LRN-002, D22)', () => {
+  const emails = [
+    ...many(3, { emailType: 'launch', clicks: 40 }),
+    ...many(3, { emailType: 'story', clicks: 20 })
+  ]
+  const patterns = findPatterns(emails, now)
+  const launchKey = ruleKey(tenant, {
+    dimension: 'email_type',
+    value: 'launch',
+    kind: 'do'
+  })
+  const stored = (over: Partial<StoredRule>): StoredRule => ({
+    id: 'r1',
+    revision: 1,
+    key: launchKey,
+    status: 'active',
+    confidence: 0.55,
+    ...over
+  })
+
+  it('adds a new pattern once, with its evidence and an end date', () => {
+    const writes = planWrites({
+      tenantId: tenant,
+      patterns,
+      stored: [],
+      emails,
+      now
+    })
+    expect(writes).toEqual([
+      expect.objectContaining({
+        op: 'add',
+        key: launchKey,
+        expiresAt: new Date(now + ruleDays * day).toISOString()
+      }),
+      expect.objectContaining({ op: 'add' })
+    ])
+    // Once: a stored rule with the key, whatever its status, is not added again.
+    expect(
+      planWrites({
+        tenantId: tenant,
+        patterns,
+        stored: patterns.map((p, i) =>
+          stored({
+            id: `r${i}`,
+            key: ruleKey(tenant, p),
+            status: 'retired'
+          })
+        ),
+        emails,
+        now
+      })
+    ).toEqual([])
+  })
+
+  it('moves a rule’s confidence with its evidence', () => {
+    const more = [
+      ...many(6, { emailType: 'launch', clicks: 40 }),
+      ...many(3, { emailType: 'story', clicks: 20 })
+    ]
+    const writes = planWrites({
+      tenantId: tenant,
+      patterns: findPatterns(more, now),
+      stored: [stored({})],
+      emails: more,
+      now
+    })
+    expect(writes).toContainEqual({
+      op: 'update',
+      id: 'r1',
+      revision: 1,
+      status: 'active',
+      confidence: confidenceFor(6),
+      reason: 'stronger'
+    })
+  })
+
+  it('retires a rule whose pattern turned the other way, and one that faded after enough sends', () => {
+    const turned = [
+      ...many(3, { emailType: 'launch', clicks: 5 }),
+      ...many(3, { emailType: 'story', clicks: 20 })
+    ]
+    expect(
+      planWrites({
+        tenantId: tenant,
+        patterns: findPatterns(turned, now),
+        stored: [stored({})],
+        emails: turned,
+        now
+      })
+    ).toContainEqual(
+      expect.objectContaining({
+        op: 'update',
+        id: 'r1',
+        status: 'retired',
+        reason: 'turned'
+      })
+    )
+    const faded = [
+      ...many(retireAfter, { emailType: 'launch', clicks: 21 }),
+      ...many(3, { emailType: 'story', clicks: 20 })
+    ]
+    expect(
+      planWrites({
+        tenantId: tenant,
+        patterns: findPatterns(faded, now),
+        stored: [stored({})],
+        emails: faded,
+        now
+      })
+    ).toContainEqual(
+      expect.objectContaining({
+        op: 'update',
+        status: 'retired',
+        reason: 'faded'
+      })
+    )
+    // Faded, but too few sends since: left to expire.
+    const early = [
+      ...many(retireAfter - 1, { emailType: 'launch', clicks: 21 }),
+      ...many(3, { emailType: 'story', clicks: 20 })
+    ]
+    expect(
+      planWrites({
+        tenantId: tenant,
+        patterns: findPatterns(early, now),
+        stored: [stored({})],
+        emails: early,
+        now
+      }).filter((w) => w.op === 'update')
+    ).toEqual([])
+  })
+})
+
+describe('the weekly learning report (#74)', () => {
+  const at = (days: number) => new Date(now - days * day).toISOString()
+  it('says what was learned this week in plain words', () => {
+    expect(
+      weeklyLearning(
+        [
+          {
+            kind: 'do',
+            rule: 'A',
+            status: 'active',
+            createdAt: at(1),
+            updatedAt: at(1)
+          },
+          {
+            kind: 'do',
+            rule: 'B',
+            status: 'active',
+            createdAt: at(3),
+            updatedAt: at(3)
+          },
+          {
+            kind: 'do',
+            rule: 'C',
+            status: 'active',
+            createdAt: at(6),
+            updatedAt: at(6)
+          },
+          {
+            kind: 'dont',
+            rule: 'D',
+            status: 'active',
+            createdAt: at(2),
+            updatedAt: at(2)
+          },
+          {
+            kind: 'do',
+            rule: 'E',
+            status: 'retired',
+            createdAt: at(30),
+            updatedAt: at(2)
+          },
+          {
+            kind: 'do',
+            rule: 'F',
+            status: 'active',
+            createdAt: at(30),
+            updatedAt: at(2)
+          },
+          {
+            kind: 'do',
+            rule: 'G',
+            status: 'active',
+            createdAt: at(9),
+            updatedAt: at(9)
+          }
+        ],
+        now
+      )
+    ).toEqual({
+      dos: ['A', 'B', 'C'],
+      donts: ['D'],
+      retired: ['E'],
+      summary: "3 new do's, 1 new don't, 1 retired"
+    })
+    expect(weeklyLearning([], now).summary).toBe(
+      'Nothing new learned this week'
+    )
+  })
+})
