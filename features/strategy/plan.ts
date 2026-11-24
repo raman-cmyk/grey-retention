@@ -242,7 +242,7 @@ type BriefTask = {
 
 export const briefWriterAgent: AgentDefinition<BriefTask, BriefAnswer> = {
   name: 'brief-writer',
-  version: '2026-11-11.2',
+  version: '2026-11-24.1',
   // AGENT_MAP.md models: the Brief writer runs on the plan model (3.8 Flash, AI-MDL-001).
   purpose: 'plan',
   usesBrandBook: true,
@@ -293,7 +293,9 @@ export const briefWriterAgent: AgentDefinition<BriefTask, BriefAnswer> = {
   output: briefAnswer,
   maxOutputTokens: 2000,
   temperature: 0.4,
-  reasoningEffort: 'medium'
+  // Low until the paid golden run measures 3.8 Flash (STR-LIVE-001 review):
+  // medium thinking takes longer than a planning call's time.
+  reasoningEffort: 'low'
 }
 
 export function checkBrief(answer: BriefAnswer, input: PlanInput) {
@@ -419,7 +421,7 @@ const kindGuide = letterKinds
 
 export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
   name: 'calendar-planner',
-  version: '2026-11-16.2',
+  version: '2026-11-24.1',
   // AGENT_MAP.md models: the Calendar planner runs on the plan model (3.8 Flash, AI-MDL-001).
   purpose: 'plan',
   usesBrandBook: true,
@@ -503,7 +505,8 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
   output: slotAnswer,
   maxOutputTokens: 2500,
   temperature: 0.3,
-  reasoningEffort: 'medium'
+  // Low for the same reason as the Brief writer's.
+  reasoningEffort: 'low'
 }
 
 /** Stable keys for the calendar rules, for the log and the learning agents. */

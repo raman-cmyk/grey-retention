@@ -24,6 +24,7 @@ vi.mock('./worker', () => worker)
 
 import { redirect } from 'next/navigation'
 import { pickOffers, startPlan } from './actions'
+import { strategyBudgetMs } from './agents'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
 const run = '00000000-0000-4000-8000-0000000000aa'
@@ -63,8 +64,12 @@ describe('starting a plan', () => {
     expect(stores.onboardedStrategyData).toHaveBeenCalledWith(db)
     expect(worker.runStrategyRuns).toHaveBeenCalledWith(db, {
       run,
+      agents: null,
+      deadline: expect.any(Number),
       data: stores.ownStore
     })
+    const deadline = worker.runStrategyRuns.mock.calls[0]![1].deadline
+    expect(deadline).toBeLessThanOrEqual(Date.now() + strategyBudgetMs)
   })
 
   it('is the owner’s only', async () => {
