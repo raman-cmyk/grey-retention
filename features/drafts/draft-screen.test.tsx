@@ -1,9 +1,18 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/features/campaigns/actions', () => ({
-  approveCalendar: vi.fn(async () => ({})),
+  approveCalendar: vi.fn(async () => ({
+    error: 'Choose an audience and a future send time first.'
+  })),
   addNote: vi.fn(async () => ({})),
   saveCampaign: vi.fn(async () => ({}))
 }))
@@ -256,6 +265,19 @@ describe('the draft screen', () => {
     render(<DraftPageError retry={() => {}} />)
     expect(
       screen.getByRole('button', { name: 'Try again' })
+    ).toBeInTheDocument()
+  })
+
+  it('shows the owner why Approve date was refused, in the draft card', async () => {
+    render(<DraftScreen view={view()} />)
+    const about = screen.getByRole('region', { name: 'The draft' })
+    const button = within(about).getByRole('button', { name: 'Approve date' })
+    await waitFor(() => expect(button).toBeEnabled())
+    await userEvent.click(button)
+    expect(
+      await within(about).findByText(
+        'Choose an audience and a future send time first.'
+      )
     ).toBeInTheDocument()
   })
 })

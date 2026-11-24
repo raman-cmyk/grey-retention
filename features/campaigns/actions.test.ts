@@ -141,4 +141,23 @@ describe('the draft page’s owner gates', () => {
     ).rejects.toThrow('NEXT_REDIRECT')
     expect(redirect).toHaveBeenCalledWith(`/plan/draft/${id}`)
   })
+
+  it('says why the date was refused, the command’s reason in plain words', async () => {
+    as('owner')
+    rpc.mockResolvedValue({
+      error: {
+        code: '23514',
+        message: 'Future date and authorized audience with exclusions required'
+      }
+    })
+    expect(await approveCalendar({}, form({ id, revision: '1' }))).toEqual({
+      error: 'Choose an audience and a future send time first.'
+    })
+    rpc.mockResolvedValue({
+      error: { code: '23514', message: 'Weekly cadence cap exceeded' }
+    })
+    expect(await approveCalendar({}, form({ id, revision: '1' }))).toEqual({
+      error: 'Weekly cadence cap exceeded'
+    })
+  })
 })

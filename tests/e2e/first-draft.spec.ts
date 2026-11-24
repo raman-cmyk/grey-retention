@@ -75,9 +75,14 @@ test('owner creates and reopens the same draft from scratch without integrations
   await expect(
     page.getByRole('heading', { name: title, exact: true })
   ).toBeVisible()
-  // The date is approved only with an audience: the command says so.
+  // The date is approved only with an audience: the page says the
+  // command's real reason, in plain words.
   await page.getByRole('button', { name: 'Approve date' }).click()
-  await expect(page.getByText('Select an audience first')).toBeVisible()
+  await expect(
+    page
+      .getByRole('region', { name: 'The draft' })
+      .getByText('Choose an audience and a future send time first.')
+  ).toBeVisible()
   // The details change on the same page; the send time stays in the
   // store's timezone.
   const renamed = `${title} (renamed)`

@@ -7,6 +7,7 @@ import { can } from '@/features/workflow/domain/policy'
 import { createClient } from '@/lib/supabase/server'
 import type { FormResult } from '@/components/ui/action-form'
 import { draftHref } from '@/features/drafts/href'
+import { plainGuard } from './guard-words'
 import { campaignInputSchema, revisionSchema } from './schema'
 
 async function access(ownerOnly = false) {
@@ -25,7 +26,9 @@ function failure(error: unknown): FormResult {
   if (e.code === '42501')
     return { error: 'You do not have permission for this action.' }
   if (e.code === '23514')
-    return { error: e.message ?? 'Required campaign inputs are missing.' }
+    return {
+      error: plainGuard(e.message) ?? 'Required campaign inputs are missing.'
+    }
   return {
     error:
       error instanceof z.ZodError
