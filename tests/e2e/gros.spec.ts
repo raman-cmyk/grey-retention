@@ -175,25 +175,29 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
   await page.context().clearCookies()
   await login(page, 'admin')
   await page.goto('/admin/operations')
-  const thread = page.locator('article').filter({
-    has: page.getByRole('heading', {
-      name: `${subject} · support · open`,
-      exact: true
+  // UI-ADM: each thread is a tile in the GROS support queue.
+  const thread = page
+    .getByRole('list', { name: 'Support threads' })
+    .getByRole('listitem')
+    .filter({
+      has: page.getByRole('heading', { name: subject, exact: true })
     })
-  })
+    .first()
+  await expect(thread).toContainText('Support · Open')
+  // Exact: the Save button's spoken label also says "thread reply".
   await thread
-    .getByLabel('Thread reply')
+    .getByLabel('Thread reply', { exact: true })
     .fill('Original operator response; fixture outcome inspected.')
-  await thread.getByLabel('Ticket state').selectOption('closed')
   await thread
-    .getByRole('button', { name: 'Save thread reply', exact: true })
-    .click()
-  await expect(
-    page.getByRole('heading', {
-      name: `${subject} · support · closed`,
+    .getByLabel('Ticket state', { exact: true })
+    .selectOption('closed')
+  await thread
+    .getByRole('button', {
+      name: `Save thread reply: ${subject}`,
       exact: true
     })
-  ).toBeVisible()
+    .click()
+  await expect(thread).toContainText('Support · Closed')
   await expect(
     page.getByText(`Original private question ${info.project.name}`, {
       exact: true

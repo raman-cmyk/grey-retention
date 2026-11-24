@@ -41,14 +41,19 @@ describe('the fallback log on Admin -> Operations', () => {
     expect(rpc).toHaveBeenCalledWith('admin_fallback_log', {
       max_rows: fallbackRows
     })
-    const [first, second] = screen.getAllByRole('row').slice(1)
-    expect(within(first).getByText('2026-11-11 09:30 UTC')).toBeVisible()
-    expect(within(first).getByText('Cedar Lane')).toBeVisible()
     expect(
-      within(first).getByText('The copy failed the brand check 3 times.')
+      screen.getByRole('heading', { name: 'Fallback log' })
+    ).toBeInTheDocument()
+    const [first, second] = within(
+      screen.getByRole('list', { name: 'Latest fallbacks, newest first' })
+    ).getAllByRole('listitem')
+    expect(
+      within(first!).getByText('The copy failed the brand check 3 times.')
     ).toBeVisible()
-    expect(within(first).getByText('Used plainer copy.')).toBeVisible()
-    expect(within(second).getByText('Platform')).toBeVisible()
+    expect(first).toHaveTextContent(
+      '2026-11-11 09:30 UTC · Cedar Lane · copy_check · Did instead: Used plainer copy. · 3 tries · 2 times'
+    )
+    expect(second).toHaveTextContent('Platform · tagger')
   })
 
   it('reads nothing for someone who is not an admin', async () => {
@@ -72,6 +77,10 @@ describe('the fallback log on Admin -> Operations', () => {
     render(await FallbackLogPanel())
     expect(screen.getByRole('alert')).toHaveTextContent(
       'The fallback log is unavailable.'
+    )
+    expect(screen.getByRole('link', { name: 'Try again' })).toHaveAttribute(
+      'href',
+      '/admin/operations'
     )
   })
 })

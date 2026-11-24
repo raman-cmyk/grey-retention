@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./actions', () => ({ inboxAdminAction: vi.fn() }))
 import type { DirectoryBrand, OpsTask } from './data'
-import { BrandDirectory, OpsQueue, taskWords } from './views'
+import { AddBrand, BrandDirectory, OpsQueue, taskWords } from './views'
 
 afterEach(cleanup)
 
@@ -177,15 +177,45 @@ describe('OpsQueue', () => {
 describe('BrandDirectory', () => {
   it('shows each brand with the address to subscribe with, its status and last email', () => {
     render(<BrandDirectory brands={[northwind, juniper]} />)
-    const table = screen.getByRole('table', { name: 'Competitor brands' })
-    const rows = within(table).getAllByRole('row').slice(1)
+    expect(
+      screen.getByRole('heading', { name: 'Brand directory (2)' })
+    ).toBeTruthy()
+    const list = screen.getByRole('list', { name: 'Competitor brands' })
+    const rows = within(list).getAllByRole('listitem')
     expect(rows[0]!.textContent).toContain('inbox+northwind@gmail.com')
-    expect(rows[0]!.textContent).toContain('unsubscribed')
+    expect(rows[0]!.textContent).toContain('Unsubscribed')
     expect(rows[0]!.textContent).toContain('5 Nov 2026')
     expect(rows[0]!.textContent).toContain('mail.northwind.com')
-    expect(within(rows[0]!).queryByText('Sample')).toBeNull()
+    expect(rows[0]!.textContent).not.toContain('Sample')
+    // An unsubscribed brand needs a person; a pending one is waiting.
+    expect(within(rows[0]!).getByText('Needs you')).toBeTruthy()
     expect(rows[1]!.textContent).toContain('capture+juniper@inbox.example')
-    expect(within(rows[1]!).getByText('Sample')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Save brand' })).toBeTruthy()
+    expect(rows[1]!.textContent).toContain('Sample')
+    expect(within(rows[1]!).getByText('Waiting')).toBeTruthy()
+  })
+
+  it('says when there are no brands yet', () => {
+    render(<BrandDirectory brands={[]} />)
+    expect(screen.getByText('No brands yet. Add the first one below.'))
+    expect(screen.queryByRole('list')).toBeNull()
+  })
+})
+
+describe('AddBrand', () => {
+  it('asks for the brand by its labels and saves it with one main button', () => {
+    render(<AddBrand />)
+    for (const label of [
+      'Brand name',
+      'Website domain',
+      "+alias (the brand's short name)",
+      'Niche',
+      'Sender domains (optional, comma separated)'
+    ])
+      expect(screen.getByLabelText(label)).toBeTruthy()
+    const save = screen.getByRole('button', { name: 'Save brand' })
+    expect(save.className).toContain('bg-[var(--forest)]')
+    expect(
+      save.closest('form')!.querySelector('input[name="kind"]')
+    ).toHaveValue('save_brand')
   })
 })

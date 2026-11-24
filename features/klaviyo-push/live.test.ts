@@ -82,9 +82,29 @@ describe('the pusher "Create email" uses', () => {
       sample: true
     })
     expect(rpc).not.toHaveBeenCalled()
-    // A workspace without a live, connected key: the owner must connect it.
-    expect(await pusher.createDraft(input)).toEqual({ ok: false, code: 'auth' })
-    expect(rpc).toHaveBeenCalledWith('klaviyo_api_key', { t: input.tenantId })
+    // KLV-LOCK-001: while Klaviyo is locked (the default), refused for good
+    // before the key is even read.
+    expect(await pusher.createDraft(input)).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['write_lock'],
+      reason: 'testing_write_lock'
+    })
+    expect(rpc).not.toHaveBeenCalled()
+    // Released for this test only: a workspace without a live, connected
+    // key, and the owner must connect it.
+    vi.stubEnv('KLAVIYO_WRITE_LOCK', 'unlocked')
+    try {
+      expect(await pusher.createDraft(input)).toEqual({
+        ok: false,
+        code: 'auth'
+      })
+      expect(rpc).toHaveBeenCalledWith('klaviyo_api_key', {
+        t: input.tenantId
+      })
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('refuses a real email planned for a sample audience once the switch is on, before any Klaviyo call', async () => {

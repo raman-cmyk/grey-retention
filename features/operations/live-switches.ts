@@ -5,6 +5,7 @@ import { draftPushLive } from '@/features/klaviyo-push/live'
 import { klaviyoMode } from '@/features/connections/live-klaviyo'
 import { designStudioOn } from '@/features/studio/waits'
 import { inboxConfig } from '@/features/inbox/config'
+import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import { strategyAgentsOn } from '@/features/strategy/agents'
 
 type Env = Record<string, string | undefined>
@@ -133,26 +134,33 @@ export function liveSwitches(env: Env = process.env): LiveSwitch[] {
           detail:
             'Off: sample Klaviyo data, no real account is read. Set KLAVIYO_MODE=live.'
         },
-    draftPushLive(env)
+    draftPushLive(env) && klaviyoWritesUnlocked(env)
       ? {
           label: 'Klaviyo drafts',
           state: 'on',
           detail:
             'On: a created email lands in the brand’s Klaviyo as a draft, never scheduled or sent.'
         }
-      : draftsAsked
+      : draftPushLive(env)
         ? {
             label: 'Klaviyo drafts',
             state: 'attention',
             detail:
-              'KLAVIYO_DRAFT_PUSH=live, but Klaviyo reading is off: no draft is written. Set KLAVIYO_MODE=live too.'
+              'KLAVIYO_DRAFT_PUSH=live, but Klaviyo writing is locked (KLV-LOCK-001): no draft is written. Set KLAVIYO_WRITE_LOCK=unlocked only when the owner decides.'
           }
-        : {
-            label: 'Klaviyo drafts',
-            state: 'off',
-            detail:
-              'Off: sample drafts only. Set KLAVIYO_DRAFT_PUSH=live (with KLAVIYO_MODE=live).'
-          },
+        : draftsAsked
+          ? {
+              label: 'Klaviyo drafts',
+              state: 'attention',
+              detail:
+                'KLAVIYO_DRAFT_PUSH=live, but Klaviyo reading is off: no draft is written. Set KLAVIYO_MODE=live too.'
+            }
+          : {
+              label: 'Klaviyo drafts',
+              state: 'off',
+              detail:
+                'Off: sample drafts only. Set KLAVIYO_DRAFT_PUSH=live (with KLAVIYO_MODE=live).'
+            },
     env.SITE_READER_MODE === 'live'
       ? {
           label: 'Website reading',

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 import { klaviyoClient } from '@/lib/providers/klaviyo/client'
@@ -208,7 +208,18 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
+/**
+ * KLV-LOCK-001: a block of live pushes to a recorded account, with the
+ * write lock released for that block only (locked everywhere else).
+ */
+const unlocked = () => {
+  beforeEach(() => vi.stubEnv('KLAVIYO_WRITE_LOCK', 'unlocked'))
+  afterEach(() => vi.unstubAllEnvs())
+}
+
 describe('the live Klaviyo draft push', () => {
+  unlocked()
+
   it('checks the audience, moves the pictures, makes a template, the campaign, then its message, in that order', async () => {
     const { account, memory, pusher } = setup()
     const result = await pusher.createDraft(input())
@@ -1231,6 +1242,8 @@ describe('the live Klaviyo draft push', () => {
 })
 
 describe('pushing the same email again (what the reviews found)', () => {
+  unlocked()
+
   it('changes only the subject without a new template, and never sends a deleted one', async () => {
     const { account, pusher } = setup()
     await pusher.createDraft(input())
@@ -1299,6 +1312,8 @@ describe('pushing the same email again (what the reviews found)', () => {
 })
 
 describe('an A/B draft when Klaviyo answers oddly (the third review)', () => {
+  unlocked()
+
   it('knows design A by the ids Klaviyo answered, when it renames the designs and the first read back fails', async () => {
     const { account, memory, pusher } = setup({
       renameVariations: true,
@@ -1470,6 +1485,8 @@ describe('an A/B draft when Klaviyo answers oddly (the third review)', () => {
 })
 
 describe('an A/B draft left half made (the fourth review)', () => {
+  unlocked()
+
   const lostAb = () => setup({ loseMessage: true, abTest: 'ignored' })
 
   it('checks an A/B message whose create answer was lost before the input checks', async () => {
@@ -1660,6 +1677,8 @@ describe('an A/B draft left half made (the fourth review)', () => {
 })
 
 describe('an A/B draft when Klaviyo stays odd (the fifth review)', () => {
+  unlocked()
+
   const unnamed = {
     dropCreateIds: true,
     renameVariations: true,

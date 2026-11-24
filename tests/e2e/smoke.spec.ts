@@ -109,7 +109,7 @@ test('RET-002 admins read the fallback log on Operations (decision D16)', async 
   await expect(
     page
       .getByText('No fallbacks yet.')
-      .or(page.getByRole('table', { name: 'Latest fallbacks, newest first' }))
+      .or(page.getByRole('list', { name: 'Latest fallbacks, newest first' }))
   ).toBeVisible()
   await expect(page.getByText('The fallback log is unavailable.')).toHaveCount(
     0
