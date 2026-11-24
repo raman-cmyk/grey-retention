@@ -91,6 +91,19 @@ const nextConfig: NextConfig = {
       // UI-SETd: support and feature requests are cards on Settings.
       { source: '/support', destination: '/settings', permanent: false },
       { source: '/feedback', destination: '/settings', permanent: false },
+      // UI-AUDc: a segment's and a list's page are under Audiences, on the
+      // GROS screens; old links (and bookmarks) open the new page.
+      {
+        source: '/segments/:segmentId',
+        destination: '/audiences/segments/:segmentId',
+        // Not permanent while the routes settle (a browser keeps a 308).
+        permanent: false
+      },
+      {
+        source: '/lists/:listId',
+        destination: '/audiences/lists/:listId',
+        permanent: false
+      },
       // UI-OLDc: the last old client pages, each opening the GROS screen
       // that does its job now (old links, bookmarks and the old shell's
       // menu land there; query strings are passed on).

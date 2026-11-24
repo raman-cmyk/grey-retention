@@ -8,10 +8,11 @@ import type {
 } from '@/features/klaviyo-data/reader'
 
 /**
- * What the Klaviyo detail pages (lists, segments, flows, metrics, Klaviyo
- * campaigns) kept from the retired dashboard (UI-HOMEb): where their
- * numbers come from, a campaign's status look, and the way back: Audiences
- * for a segment or a list (UI-AUDa), Home for the others until Results.
+ * What the Klaviyo detail pages (flows, metrics, Klaviyo campaigns) kept
+ * from the retired dashboard (UI-HOMEb): where their numbers come from, a
+ * campaign's status look, and the way back: Home until Results. A
+ * segment's and a list's page are GROS pages under Audiences (UI-AUDc,
+ * `features/audiences/detail.ts`), which read `sourceLine` too.
  */
 const notConnectedWords: Record<ConnectionState, string> = {
   connected: 'Klaviyo is connected.',
@@ -43,11 +44,3 @@ const homeHref: Route = '/home'
 
 /** The way back from a detail page: Home. */
 export const backHome = { href: homeHref, label: 'Back to Home' } as const
-
-const audiencesHref: Route = '/audiences'
-
-/** The way back from a segment's or a list's page: Audiences (UI-AUDa). */
-export const backToAudiences = {
-  href: audiencesHref,
-  label: 'Back to Audiences'
-} as const

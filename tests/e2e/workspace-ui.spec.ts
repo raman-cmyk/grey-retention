@@ -102,9 +102,26 @@ test('Klaviyo detail pages render with a heading and no overflow', async ({
   await login(page)
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
+  // UI-AUDc: a list's and a segment's page are GROS pages under Audiences,
+  // and their old addresses open them.
+  for (const [old, moved] of [
+    ['/lists/LSTnews01?from=lists', '/audiences/lists/LSTnews01?from=lists'],
+    [
+      '/segments/SEGeng030?from=segments',
+      '/audiences/segments/SEGeng030?from=segments'
+    ]
+  ] as const) {
+    await page.goto(old)
+    await expect(page).toHaveURL(new RegExp(`${moved.replace('?', '\\?')}$`))
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Main' })
+        .getByRole('link', { name: 'Audiences', exact: true })
+    ).toHaveAttribute('aria-current', 'page')
+  }
   for (const path of [
-    '/lists/LSTnews01?from=lists',
-    '/segments/SEGeng030?from=segments',
+    '/audiences/lists/LSTnews01',
+    '/audiences/segments/SEGeng030',
     '/campaigns/klaviyo/CMPspr001?from=campaigns',
     '/flows/FLWpst004?from=flows',
     '/flow-messages/FLWpst004M2',
@@ -112,7 +129,8 @@ test('Klaviyo detail pages render with a heading and no overflow', async ({
   ]) {
     await page.goto(path)
     // Sample data when the workspace's Klaviyo is connected, otherwise the
-    // "Klaviyo details" notice; both have one page heading.
+    // "Klaviyo details" notice (or Audiences' Klaviyo not connected); each
+    // has one page heading.
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     expect(
       await page.evaluate(

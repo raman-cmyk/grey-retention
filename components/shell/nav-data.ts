@@ -161,15 +161,9 @@ export const designerNavigation: ShellNavigation = {
 
 // Child pages highlight their parent area (OWNER_JOURNEYS.md §2 fix).
 const parentAreas: Record<string, readonly string[]> = {
-  // Klaviyo detail pages belong to Home (until Audiences and Results).
-  '/home': [
-    '/campaigns/klaviyo',
-    '/lists',
-    '/segments',
-    '/flows',
-    '/flow-messages',
-    '/metrics'
-  ],
+  // Klaviyo detail pages belong to Home (until Results); segments and lists
+  // are GROS pages under Audiences (UI-AUDc).
+  '/home': ['/campaigns/klaviyo', '/flows', '/flow-messages', '/metrics'],
   // An open brief belongs to the designer's Assignments desk.
   '/designer/dashboard': ['/designer/assignments']
 }

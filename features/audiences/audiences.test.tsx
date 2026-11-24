@@ -157,7 +157,7 @@ describe('Audiences screen (UI-AUDa)', () => {
     )
     expect(within(vip!).getByRole('link', { name: 'Open' })).toHaveAttribute(
       'href',
-      '/segments/SEGb'
+      '/audiences/segments/SEGb'
     )
     expect(lapsed).toHaveTextContent(
       '4,000 people · Bought in the last 90 days · Not kept up to date'
@@ -168,7 +168,7 @@ describe('Audiences screen (UI-AUDa)', () => {
     expect(lists).toHaveTextContent('1 person · Single opt-in')
     expect(
       within(lists).getAllByRole('link', { name: 'Open' })[0]
-    ).toHaveAttribute('href', '/lists/LSTa')
+    ).toHaveAttribute('href', '/audiences/lists/LSTa')
   })
 
   it('says when Klaviyo has no segments or lists', () => {
@@ -193,7 +193,7 @@ describe('Audiences screen (UI-AUDa)', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: 'Connect Klaviyo' })
-    ).toHaveAttribute('href', '/settings')
+    ).toHaveAttribute('href', '/settings#klaviyo')
     cleanup()
     render(<AudiencesScreen view={{ state: 'not_connected' }} owner={false} />)
     expect(screen.queryByRole('link', { name: 'Connect Klaviyo' })).toBeNull()
@@ -213,7 +213,7 @@ describe('Audiences screen (UI-AUDa)', () => {
     )
     expect(screen.getByRole('link', { name: 'Reconnect' })).toHaveAttribute(
       'href',
-      '/settings'
+      '/settings#klaviyo'
     )
     cleanup()
     render(<AudiencesScreen view={{ state: 'reconnect' }} owner={false} />)
