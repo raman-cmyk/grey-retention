@@ -115,7 +115,16 @@ export type ReadEmail = {
 }
 
 /** Everything a reader may see of an email, and every address it reaches. */
-export function readEmail(html: string): ReadEmail {
+export function readEmail(email: string): ReadEmail {
+  // DES-ENGINE-002b2: Klaviyo's own tags ({{ organization.name }},
+  // {% unsubscribe "Unsubscribe" %}) are code Klaviyo fills when it
+  // sends, not words a reader sees: only a tag's quoted label is read.
+  const html = email
+    .replace(/\{\{[^{}]{0,300}\}\}/g, ' ')
+    .replace(
+      /\{%\s*[a-z_]+\s*(?:"([^"{}%]{0,200})")?[^{}%]{0,300}%\}/gi,
+      (_, label?: string) => (label ? ` ${label} ` : ' ')
+    )
   const texts: string[] = []
   const addresses: string[] = []
   const title = /<title(?:\s[^>]*)?>([\s\S]*?)<\/title>/i.exec(html)

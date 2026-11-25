@@ -242,7 +242,8 @@ describe('brand swap', () => {
       'organization',
       'address',
       'unsubscribe',
-      'preferences'
+      'preferences',
+      'web_view'
     ])
     expect(one.footer).toBe(true)
     const none = swapped(blueprint({ sections: [section()] }))
@@ -256,7 +257,8 @@ describe('brand swap', () => {
       'organization',
       'address',
       'unsubscribe',
-      'preferences'
+      'preferences',
+      'web_view'
     ])
     expect(textOf(legal).split('\n')).toHaveLength(3)
     // Klaviyo takes only uploaded (https) pictures.

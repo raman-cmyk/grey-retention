@@ -233,7 +233,8 @@ describe('CI workflows', () => {
     for (const name of [
       'browser.yml',
       'inbox-screenshots.yml',
-      'design-engine.yml'
+      'design-engine.yml',
+      'design-copies.yml'
     ]) {
       const text = read(name)
       expect(text).not.toContain('playwright install --with-deps')
@@ -271,6 +272,11 @@ describe('CI workflows', () => {
     ])
       expect(pathFilters(text)).toContain(path)
     expect(text).toContain('run: pnpm exec vitest run features/design-engine\n')
+    // DES-ENGINE-002b2: the copies through the email's hard checks.
+    expect(text).toContain(
+      'run: pnpm exec vitest run features/email-build/library-copy.browser.test.ts\n'
+    )
+    expect(text).toContain("await import('./scripts/design-copies.mjs')")
     // The owner looks at the pictures whether the run passed or not.
     expect(text).toMatch(
       /- if: always\(\)\n {8}uses: actions\/upload-artifact@v4\n {8}with:\n {10}name: design-golden\n/
@@ -366,6 +372,32 @@ describe('CI workflows', () => {
     expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(2)
     expect(text).not.toContain('upload-artifact')
   })
+  it('keeps the design copies workflow opt-in, HTTPS-only and cheap when idle (DES-ENGINE-002b2)', () => {
+    const text = read('design-copies.yml')
+    expect(text).toContain("if: vars.SCHEDULED_JOBS_ENABLED == 'true'")
+    expect(text).toContain("--proto '=https'")
+    expect(text).toMatch(/\npermissions:\n {2}contents: read\n/)
+    const crons = [...text.matchAll(/- cron: '([^']+)'/g)].map((m) => m[1]!)
+    expect(crons).toEqual(['8-58/10 * * * *'])
+    expect(text).toContain(
+      "call '/api/internal/design/copies?peek=1' peek.json 30 || exit 1"
+    )
+    expect(text).toContain(
+      'run: node --import ./scripts/ts-register.mjs scripts/design-copies.mjs'
+    )
+    // Nothing is checked out or installed until the app says work is waiting.
+    const steps = `\n${text.split('\n    steps:\n')[1]!}`
+      .split(/\n {6}- /)
+      .slice(1)
+    expect(steps[0]).toContain('?peek=1')
+    for (const step of steps.slice(1))
+      expect(step).toMatch(/if: steps\.peek\.outputs\.waiting != '0'/)
+    // No token left on the runner the browser draws on.
+    expect(text).toContain('persist-credentials: false')
+    // The secret only reaches the steps that call the app; no artifacts.
+    expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(2)
+    expect(text).not.toContain('upload-artifact')
+  })
   it('keeps the onboarding readers workflow opt-in, HTTPS-only and one small request when idle', () => {
     const text = read('onboarding-readers.yml')
     expect(text).toContain("if: vars.SCHEDULED_JOBS_ENABLED == 'true'")
@@ -425,7 +457,8 @@ describe('CI workflows', () => {
       ['inbox-tagging.yml', 6],
       ['inbox-screenshots.yml', 30],
       ['klaviyo-results.yml', 10],
-      ['studio-renders.yml', 18]
+      ['studio-renders.yml', 18],
+      ['design-copies.yml', 22]
     ] as const
     for (const [name, minutes] of scheduled) {
       const text = read(name)
