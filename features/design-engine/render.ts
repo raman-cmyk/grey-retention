@@ -18,6 +18,7 @@ import type {
 } from './blueprint'
 import { blueprintSchema } from './blueprint'
 import { safeFontStack } from './fonts'
+import { klaviyoFooterTags } from '@/features/blocks/klaviyo-tags'
 
 /**
  * DES-ENGINE-001, the new drawing code: a blueprint as safe email HTML.
@@ -83,7 +84,23 @@ function alignOf(left: number, right: number): Align {
 const phoneClass = (left: number, right: number) =>
   left > phoneMargin || right > phoneMargin ? ' class="de-p"' : ''
 
-function runHtml(run: TextRun, part: TextPart): string {
+/** Klaviyo's footer tags by a run's `tag` (DES-ENGINE-002). */
+const runTags: Record<NonNullable<TextRun['tag']>, string> = {
+  organization: klaviyoFooterTags.organization,
+  address: klaviyoFooterTags.address,
+  unsubscribe: klaviyoFooterTags.unsubscribe,
+  preferences: klaviyoFooterTags.preferences,
+  web_view: klaviyoFooterTags.webView
+}
+
+function runHtml(run: TextRun, part: TextPart, mode: DrawMode): string {
+  // In Klaviyo mode a footer run is Klaviyo's own tag, which Klaviyo
+  // fills per recipient when it sends; a preview shows the run's words.
+  if (run.tag && mode === 'klaviyo') {
+    const color = run.color ?? part.color
+    const line = run.underline ? ';text-decoration:underline' : ''
+    return `<span style="color:${color}${line}">${runTags[run.tag]}</span>`
+  }
   const words = run.text
     .split('\n')
     .map((line) => escapeHtml(line))
@@ -134,7 +151,7 @@ function textRow(p: TextPart, avail: number, ctx: Ctx) {
       : p.role === 'subheadline'
         ? 'h2'
         : 'p'
-  const body = p.runs.map((r) => runHtml(r, p)).join('')
+  const body = p.runs.map((r) => runHtml(r, p, ctx.mode)).join('')
   return `<tr><td${phoneClass(left, right)} align="${p.align === 'justify' ? 'left' : p.align}" style="padding:0 ${pxv(right)} 0 ${pxv(left)}"><${tag} style="margin:0;${fontCss(p.font)};color:${p.color};text-align:${p.align}">${body}</${tag}></td></tr>`
 }
 

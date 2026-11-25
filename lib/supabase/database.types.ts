@@ -3313,6 +3313,7 @@ export type Database = {
           not_before: string | null
           progress: Json
           push_key: string
+          reference_id: string | null
           run_id: string
           sample_draft: boolean
           slot: number
@@ -3336,6 +3337,7 @@ export type Database = {
           not_before?: string | null
           progress?: Json
           push_key?: string
+          reference_id?: string | null
           run_id: string
           sample_draft?: boolean
           slot: number
@@ -3359,6 +3361,7 @@ export type Database = {
           not_before?: string | null
           progress?: Json
           push_key?: string
+          reference_id?: string | null
           run_id?: string
           sample_draft?: boolean
           slot?: number
@@ -4294,6 +4297,47 @@ export type Database = {
             columns: ['tenant_id']
             isOneToOne: false
             referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      inbox_blueprints: {
+        Row: {
+          blueprint: Json | null
+          failure: string | null
+          inbox_message_id: string
+          measured_at: string
+          sections: number | null
+          state: string
+          unsupported: number | null
+          version: number
+        }
+        Insert: {
+          blueprint?: Json | null
+          failure?: string | null
+          inbox_message_id: string
+          measured_at?: string
+          sections?: number | null
+          state: string
+          unsupported?: number | null
+          version: number
+        }
+        Update: {
+          blueprint?: Json | null
+          failure?: string | null
+          inbox_message_id?: string
+          measured_at?: string
+          sections?: number | null
+          state?: string
+          unsupported?: number | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'inbox_blueprints_inbox_message_id_fkey'
+            columns: ['inbox_message_id']
+            isOneToOne: true
+            referencedRelation: 'inbox_messages'
             referencedColumns: ['id']
           }
         ]
@@ -7689,7 +7733,13 @@ export type Database = {
         Returns: string
       }
       create_email_build: {
-        Args: { mode?: string; run: string; slot: number; t: string }
+        Args: {
+          mode?: string
+          reference?: string
+          run: string
+          slot: number
+          t: string
+        }
         Returns: string
       }
       create_email_result: {
@@ -8221,6 +8271,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      record_inbox_blueprint: {
+        Args: { blueprint?: Json; failure?: string; job: string; lease: string }
+        Returns: string
+      }
       record_inbox_images: {
         Args: { images: Json; job: string; lease: string }
         Returns: Json
@@ -8411,6 +8465,7 @@ export type Database = {
         Args: { category: string; details: string; subject: string; t: string }
         Returns: string
       }
+      request_inbox_blueprint: { Args: { email: string }; Returns: string }
       request_reschedule: {
         Args: {
           campaign: string

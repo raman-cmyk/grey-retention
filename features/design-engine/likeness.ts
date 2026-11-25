@@ -41,6 +41,20 @@ export const limits = {
   cell: 4
 } as const
 
+/**
+ * DES-ENGINE-002: how a copy that takes the brand's own content (Library,
+ * `keepContent` false) is compared. Its structure is held to every limit
+ * above; two things that follow the brand's content, not the structure,
+ * are read differently:
+ * - `brandLogo`: the logo keeps its height (within 1 px) and its place in
+ *   the row, and is never wider than the original's box; its width follows
+ *   the brand logo's own shape (a logo is never stretched or cut);
+ * - each section keeps its source's kind and each part its source's role,
+ *   since kinds and roles are read partly from words ("20% off", a price,
+ *   "Unsubscribe") and the words are the brand's on purpose.
+ */
+export type CompareOptions = { brandLogo?: boolean }
+
 export type SectionLikeness = {
   ordinal: number
   kind: Section['kind']
@@ -102,7 +116,8 @@ function compareItems(
   a: readonly Item[],
   b: readonly Item[],
   where: string,
-  problems: string[]
+  problems: string[],
+  options: CompareOptions = {}
 ) {
   for (let i = 0; i < Math.min(a.length, b.length); i++) {
     const x = a[i]!
@@ -121,7 +136,13 @@ function compareItems(
         continue
       }
       x.columns.forEach((c, k) =>
-        compareColumn(c, y.columns[k]!, `${where}, column ${k + 1}`, problems)
+        compareColumn(
+          c,
+          y.columns[k]!,
+          `${where}, column ${k + 1}`,
+          problems,
+          options
+        )
       )
       continue
     }
@@ -129,6 +150,22 @@ function compareItems(
       if (Math.abs(x.font.size - y.font.size) > limits.sizePx)
         problems.push(
           `${where}: text ${i + 1} is ${y.font.size} px where the original is ${x.font.size} px.`
+        )
+      continue
+    }
+    if (
+      options.brandLogo &&
+      x.type === 'image' &&
+      y.type === 'image' &&
+      x.role === 'logo'
+    ) {
+      if (Math.abs(x.height - y.height) > limits.sizePx)
+        problems.push(
+          `${where}: the logo is ${Math.round(y.height)} px tall where the original is ${Math.round(x.height)} px.`
+        )
+      if (y.width > x.width + limits.sizePx)
+        problems.push(
+          `${where}: the logo is ${Math.round(y.width)} px wide, wider than the original's ${Math.round(x.width)} px.`
         )
       continue
     }
@@ -170,7 +207,8 @@ function compareColumn(
   a: Column,
   b: Column,
   where: string,
-  problems: string[]
+  problems: string[],
+  options: CompareOptions = {}
 ) {
   if (Math.abs(a.width - b.width) > limits.columnPx)
     problems.push(
@@ -180,11 +218,43 @@ function compareColumn(
     problems.push(
       `${where} sits ${px(b.x - a.x)} ${b.x > a.x ? 'further right' : 'further left'} than the original.`
     )
-  compareItems(a.items, b.items, where, problems)
+  compareItems(a.items, b.items, where, problems, options)
+}
+
+/** The redraw with each logo in its original's box (a brand copy's grey boxes). */
+function logosAsSource(source: Blueprint, drawn: Blueprint): Blueprint {
+  const put = (items: readonly Item[], from: readonly Item[]): Item[] =>
+    items.map((item, i) => {
+      const f = from[i]
+      if (!f || f.type !== item.type) return item
+      if (item.type === 'row' && f.type === 'row')
+        return {
+          ...item,
+          columns: item.columns.map((c, k) =>
+            f.columns[k]
+              ? { ...c, items: put(c.items, f.columns[k]!.items) }
+              : c
+          )
+        }
+      if (item.type === 'image' && f.type === 'image' && f.role === 'logo')
+        return { ...item, x: f.x, width: f.width, height: f.height }
+      return item
+    })
+  return {
+    ...drawn,
+    sections: drawn.sections.map((s) => {
+      const f = source.sections.find((x) => x.ordinal === s.ordinal)
+      return f ? { ...s, items: put(s.items, f.items) } : s
+    })
+  }
 }
 
 /** One section of the source against the same section of the redraw. */
-export function compareSection(a: Section, b: Section): string[] {
+export function compareSection(
+  a: Section,
+  b: Section,
+  options: CompareOptions = {}
+): string[] {
   const problems: string[] = []
   if (a.kind !== b.kind)
     problems.push(
@@ -213,7 +283,7 @@ export function compareSection(a: Section, b: Section): string[] {
         : `It has ${pb} parts where the original has ${pa}.`
     )
   }
-  compareItems(a.items, b.items, 'In it', problems)
+  compareItems(a.items, b.items, 'In it', problems, options)
   return problems
 }
 
@@ -319,7 +389,8 @@ export function compareBlueprints(
   fullSource: Blueprint,
   fullDrawn: Blueprint,
   phone: ReadonlyMap<number, readonly string[]> = new Map(),
-  skip: ReadonlySet<number> = new Set()
+  skip: ReadonlySet<number> = new Set(),
+  options: CompareOptions = {}
 ): Likeness {
   const kept = (bp: Blueprint): Blueprint => ({
     ...bp,
@@ -336,6 +407,9 @@ export function compareBlueprints(
     problems.push(
       `The redraw is ${Math.round(drawn.width)} px wide where the original is ${Math.round(source.width)} px.`
     )
+  // A brand logo's own width is checked above; its grey box is the
+  // original's, so a narrower logo does not count against the layout.
+  const boxes = options.brandLogo ? logosAsSource(source, drawn) : drawn
   const sections: SectionLikeness[] = source.sections.map((s) => {
     const d = drawn.sections.find((x) => x.ordinal === s.ordinal)
     if (!d)
@@ -346,8 +420,11 @@ export function compareBlueprints(
         problems: ['It is missing from the redraw.'],
         picture: 0
       }
-    const list = [...compareSection(s, d), ...(phone.get(s.ordinal) ?? [])]
-    const picture = sectionPicture(source, drawn, s.ordinal)
+    const list = [
+      ...compareSection(s, d, options),
+      ...(phone.get(s.ordinal) ?? [])
+    ]
+    const picture = sectionPicture(source, boxes, s.ordinal)
     if (picture < limits.picture)
       list.push(
         `Its grey-box layout is only ${Math.round(picture * 100)} % alike (${Math.round(limits.picture * 100)} % needed).`
@@ -360,7 +437,7 @@ export function compareBlueprints(
       picture
     }
   })
-  const picture = pictureScore(source, drawn)
+  const picture = pictureScore(source, boxes)
   if (picture < limits.picture)
     problems.push(
       `The whole email's grey-box layout is only ${Math.round(picture * 100)} % alike (${Math.round(limits.picture * 100)} % needed).`

@@ -9,6 +9,14 @@ name: Design engine
 # engine's other browser tests run too. No app, no database, no secret and
 # no outside request: the emails and their pictures are made in code.
 #
+# DES-ENGINE-002: the library 1:1 gate runs in the same step. The 20
+# library-shaped emails are copied for a synthetic test brand (its colours,
+# fonts, logo, photos, products and words); at least 18 must keep the
+# original's structure, and no copy may show a word, picture, link or name
+# of the original. Its pictures (original | brand copy | phone) go to
+# design-golden/library-brand (and library-brand-no-crop: the same without
+# a photo cropper, as live stores are today).
+#
 # The results, a summary and a side-by-side picture of every email (the
 # original, the redraw, the redraw on a phone and both layouts as grey
 # boxes) are uploaded as the `design-golden` artifact on every run, so the

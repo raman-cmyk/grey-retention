@@ -310,7 +310,16 @@ describe('CI workflows', () => {
     for (const step of steps.slice(1))
       expect(step).toContain("if: steps.peek.outputs.waiting != '0'")
     // The secret only reaches the steps that call the app.
-    expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(2)
+    expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(3)
+    // DES-ENGINE-002: blueprints waiting wake the run too; their peek
+    // failing never stops the screenshots.
+    expect(text).toContain(
+      "if ! call '/api/internal/inbox/blueprints?peek=1' blueprints.json 30; then"
+    )
+    expect(text).toContain('waiting=$((shots + blueprints))')
+    expect(text).toContain(
+      'run: node --import ./scripts/ts-register.mjs scripts/inbox-blueprints.mjs'
+    )
   })
   it('keeps the studio render workflow opt-in, HTTPS-only and cheap when idle (DST-001c)', () => {
     const text = read('studio-renders.yml')

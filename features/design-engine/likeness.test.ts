@@ -222,3 +222,52 @@ describe('phone problems', () => {
     expect(problems.has(3)).toBe(false)
   })
 })
+
+describe('a brand copy (DES-ENGINE-002)', () => {
+  const withLogo = (x: number, width: number, height = 40) =>
+    blueprint({
+      sections: [
+        section({
+          kind: 'header',
+          height: 88,
+          items: [image({ gapBefore: 24, x, width, height, role: 'logo' })],
+          bottom: 24
+        })
+      ]
+    })
+  const brandCopy = { brandLogo: true }
+  it('a logo keeps its height and place; its width may follow the brand logo', () => {
+    expect(
+      compareBlueprints(
+        withLogo(225, 150),
+        withLogo(240, 120),
+        new Map(),
+        new Set(),
+        brandCopy
+      ).pass
+    ).toBe(true)
+    expect(compareBlueprints(withLogo(225, 150), withLogo(240, 120)).pass).toBe(
+      false
+    )
+  })
+  it('never taller or wider than the original logo', () => {
+    const tall = compareBlueprints(
+      withLogo(225, 150),
+      withLogo(225, 150, 44),
+      new Map(),
+      new Set(),
+      brandCopy
+    )
+    expect(tall.sections[0]!.problems[0]).toMatch(/logo is 44 px tall/)
+    const wide = compareBlueprints(
+      withLogo(225, 150),
+      withLogo(200, 200),
+      new Map(),
+      new Set(),
+      brandCopy
+    )
+    expect(wide.sections[0]!.problems.join(' ')).toMatch(
+      /wider than the original/
+    )
+  })
+})

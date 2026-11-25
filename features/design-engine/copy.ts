@@ -1,6 +1,8 @@
 import type { Browser } from '@playwright/test'
 import type { BlockBrand } from '@/features/blocks/brand'
 import { GMAIL_CLIP_BYTES } from '@/features/blocks/render'
+import { previewFooterTags } from '@/features/blocks/klaviyo-tags'
+import type { Lengthen } from './words'
 import type { Blueprint, Column, Item, Section } from './blueprint'
 import {
   desktopWindow,
@@ -37,6 +39,8 @@ import { DrawError, drawBlueprint, sentBytes, type DrawMode } from './render'
  */
 
 export const maxRetries = 2
+/** DES-ENGINE-002: drawings a brand copy may add to fit its words to the lines. */
+export const fitRounds = 3
 
 export type SectionOutcome = {
   ordinal: number
@@ -257,12 +261,6 @@ async function copyLoop(
   options: CopyOptions,
   mode: DrawMode
 ): Promise<CopyResult> {
-  const retries = Math.max(
-    0,
-    Math.min(maxRetries, options.retries ?? maxRetries)
-  )
-  const keepContent = options.keepContent ?? true
-  const drawer = options.drawer ?? drawBlueprint
   const opened = await measureHtml(browser, html, desktopWindow, {
     ...options,
     trustMarks: options.trustMarks ?? false
@@ -270,9 +268,245 @@ async function copyLoop(
   if (!opened.ok) return opened
   const measured = blueprintFrom(opened.measurement)
   if (!measured.ok) return measured
-  const source = measured.blueprint
+  return drawLoop(
+    browser,
+    measured.blueprint,
+    measured.blueprint,
+    options,
+    mode
+  )
+}
+
+/**
+ * DES-ENGINE-002: a source's structure drawn with the brand's content.
+ * Where `copyDesign` measures an email and draws it back unchanged,
+ * `copyBlueprint` takes the source's blueprint and the **target**: the
+ * same structure with the brand's own words, photos, colours and fonts
+ * (`swapBrand`). It draws the target, measures it and checks its
+ * structure against the source (`keepContent` false: the content differs
+ * on purpose). A text that breaks onto more lines than the original's is
+ * cut shorter at a word (`trimTo`) and drawn again; one that takes fewer
+ * lines keeps the original's height by the space after it. Sections the
+ * swap could not fill (`blocked`: no photo of that shape, no logo) and
+ * sections that cannot be copied are built from the closest library
+ * block, filled with the brand's own content, with the reason in plain
+ * words. Never throws.
+ */
+export async function copyBlueprint(
+  browser: Browser,
+  source: Blueprint,
+  target: Blueprint,
+  options: CopyOptions & {
+    /** Sections the swap could not fill, and why (words after "Section n (kind)"). */
+    blocked?: ReadonlyMap<number, string>
+    /** More of the brand's words for a text that broke onto fewer lines. */
+    lengthen?: Lengthen
+  } = {}
+): Promise<CopyResult> {
+  const mode = options.mode ?? 'preview'
+  if (mode === 'klaviyo' && !options.brand)
+    return {
+      ok: false,
+      error: 'An email for Klaviyo is drawn for a brand: give the brand.'
+    }
+  const same =
+    source.sections.length === target.sections.length &&
+    source.sections.every(
+      (s, i) =>
+        s.ordinal === target.sections[i]!.ordinal &&
+        sameShape(s.items, target.sections[i]!.items)
+    )
+  if (!same)
+    return {
+      ok: false,
+      error: 'The brand copy does not have the same parts as the original.'
+    }
+  try {
+    return await drawLoop(
+      browser,
+      source,
+      target,
+      { ...options, keepContent: false },
+      mode,
+      options.blocked,
+      options.lengthen
+    )
+  } catch (error) {
+    if (error instanceof DrawError) return { ok: false, error: error.message }
+    return {
+      ok: false,
+      error: `The email could not be copied: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+}
+
+/** A drawn brand copy read with its source's section kinds and part roles. */
+export function withSourceLabels(
+  drawn: Blueprint,
+  source: Blueprint
+): Blueprint {
+  const label = (items: readonly Item[], from: readonly Item[]): Item[] =>
+    items.map((item, i) => {
+      const f = from[i]
+      if (!f || f.type !== item.type) return item
+      if (item.type === 'row' && f.type === 'row')
+        return {
+          ...item,
+          columns: item.columns.map((c, k) =>
+            f.columns[k]
+              ? { ...c, items: label(c.items, f.columns[k]!.items) }
+              : c
+          )
+        }
+      if (item.type !== 'row' && f.type !== 'row')
+        return { ...item, role: f.role } as Item
+      return item
+    })
+  return {
+    ...drawn,
+    sections: drawn.sections.map((s) => {
+      const f = source.sections.find((x) => x.ordinal === s.ordinal)
+      return f ? { ...s, kind: f.kind, items: label(s.items, f.items) } : s
+    })
+  }
+}
+
+/**
+ * Words cut to about `share` of their length at a space, never inside a
+ * word (one word at least stays, and a cut always drops one); a cut line
+ * loses a comma, colon or dash left at its end.
+ */
+export function trimTo(text: string, share: number): string {
+  const words = text.split(' ')
+  if (words.length <= 1) return text
+  const want = Math.max(1, Math.floor(text.length * share))
+  let out = words[0]!
+  for (const w of words.slice(1)) {
+    if (out.length + 1 + w.length > want) break
+    out += ` ${w}`
+  }
+  if (out === text) out = words.slice(0, -1).join(' ')
+  return out.replace(/[\s,;:–—-]+$/, '')
+}
+
+const textOfRuns = (runs: readonly { text: string }[]) =>
+  runs.map((r) => r.text).join('')
+
+/** A brand copy's items refitted: words cut where they took more lines, room kept where fewer. */
+function refitItems(
+  plan: readonly Item[],
+  target: readonly Item[],
+  drawn: readonly Item[],
+  lengthen: Lengthen | undefined
+): { items: Item[]; changed: boolean; bottom: number } {
+  let changed = false
+  let carry = 0
+  const items = plan.map((p, i): Item => {
+    const t = target[i]!
+    const d = drawn[i]!
+    let item: Item = carry ? { ...p, gapBefore: p.gapBefore + carry } : p
+    if (carry) changed = true
+    carry = 0
+    if (item.type === 'row' && t.type === 'row' && d.type === 'row') {
+      const columns = item.columns.map((c, k) => {
+        const got = refitItems(
+          c.items,
+          t.columns[k]!.items,
+          d.columns[k]!.items,
+          lengthen
+        )
+        if (!got.changed) return c
+        changed = true
+        return { ...c, items: got.items, bottom: c.bottom + got.bottom }
+      })
+      return { ...item, columns }
+    }
+    if (item.type === 'text' && t.type === 'text' && d.type === 'text') {
+      if (d.lines > t.lines) {
+        const words = textOfRuns(item.runs)
+        const cut = trimTo(words, (t.lines / d.lines) * 0.97)
+        if (cut !== words) {
+          changed = true
+          item = { ...item, runs: [{ ...item.runs[0]!, text: cut }] }
+        }
+      } else if (d.lines < t.lines) {
+        // More of the brand's words, else the original's height is kept
+        // by the space after it.
+        const words = textOfRuns(item.runs)
+        const chars = Math.round(
+          (words.length * t.lines) / Math.max(1, d.lines)
+        )
+        const longer = lengthen?.(t.role, words, chars) ?? null
+        if (longer && longer !== words) {
+          changed = true
+          item = { ...item, runs: [{ ...item.runs[0]!, text: longer }] }
+        } else if (t.height > d.height) carry = t.height - d.height
+      }
+    }
+    if (
+      item.type === 'button' &&
+      t.type === 'button' &&
+      d.type === 'button' &&
+      d.lines > t.lines
+    ) {
+      const cut = trimTo(item.label, (t.lines / d.lines) * 0.97)
+      if (cut !== item.label) {
+        changed = true
+        item = { ...item, label: cut }
+      }
+    }
+    return item
+  })
+  if (carry) changed = true
+  return { items, changed, bottom: carry }
+}
+
+function refit(
+  plan: Blueprint,
+  target: Blueprint,
+  drawn: Blueprint,
+  ordinals: ReadonlySet<number>,
+  lengthen: Lengthen | undefined
+) {
+  let changed = false
+  const sections = plan.sections.map((s) => {
+    if (!ordinals.has(s.ordinal)) return s
+    const t = target.sections.find((x) => x.ordinal === s.ordinal)
+    const d = drawn.sections.find((x) => x.ordinal === s.ordinal)
+    if (!t || !d || !sameShape(t.items, d.items)) return s
+    const got = refitItems(s.items, t.items, d.items, lengthen)
+    if (!got.changed) return s
+    changed = true
+    return { ...s, items: got.items, bottom: s.bottom + got.bottom }
+  })
+  return { plan: { ...plan, sections }, changed }
+}
+
+async function drawLoop(
+  browser: Browser,
+  source: Blueprint,
+  start: Blueprint,
+  options: CopyOptions,
+  mode: DrawMode,
+  blocked: ReadonlyMap<number, string> = new Map(),
+  lengthen?: Lengthen
+): Promise<CopyResult> {
+  const retries = Math.max(
+    0,
+    Math.min(maxRetries, options.retries ?? maxRetries)
+  )
+  const keepContent = options.keepContent ?? true
+  /** A brand copy: its content differs from the source's on purpose. */
+  const swapped = start !== source
+  // A brand copy may also fit its words (`fitRounds` more drawings).
+  const rounds = swapped ? retries + fitRounds : retries
+  const drawer = options.drawer ?? drawBlueprint
   const roles = roleContextOf(source)
-  const brand = options.brand ?? brandFromBlueprint(source)
+  const brand = options.brand ?? brandFromBlueprint(start)
+  // A brand copy's library blocks are filled from its own (the brand's)
+  // section, never from the source's words or pictures.
+  const filler = (ordinal: number) =>
+    (swapped ? start : source).sections.find((x) => x.ordinal === ordinal)!
   const fallbacks = new Map<number, Fallback>()
   /** What a section still had wrong when it went to a library block. */
   const lastProblems = new Map<number, string[]>()
@@ -282,13 +516,17 @@ async function copyLoop(
       fallbacks.set(
         s.ordinal,
         fallbackFor(
-          s,
+          filler(s.ordinal),
           `has ${s.unsupported}, which cannot be copied`,
           brand,
           mode
         )
       )
       lastProblems.set(s.ordinal, [`It has ${s.unsupported}.`])
+    } else if (blocked.has(s.ordinal)) {
+      const why = blocked.get(s.ordinal)!
+      fallbacks.set(s.ordinal, fallbackFor(filler(s.ordinal), why, brand, mode))
+      lastProblems.set(s.ordinal, [`It ${why}.`])
     }
   const draw = (bp: Blueprint) =>
     drawer(bp, {
@@ -296,21 +534,39 @@ async function copyLoop(
       replaced: new Map([...fallbacks].map(([k, f]) => [k, f.rows])),
       brand
     })
-  const check = async (out: string) => {
-    const got = await measureDrawn(browser, out, roles, options)
+  // A Klaviyo drawing is measured as our previews show it: the footer's
+  // tags as words (Klaviyo fills them when it sends), the same geometry.
+  const shownOf = (bp: Blueprint, out: string) =>
+    mode === 'klaviyo'
+      ? previewFooterTags(
+          drawer(bp, {
+            mode: 'preview',
+            replaced: new Map([...fallbacks].map(([k, f]) => [k, f.rows])),
+            brand
+          }),
+          brand.name
+        )
+      : out
+  const check = async (bp: Blueprint, out: string) => {
+    const shown = shownOf(bp, out)
+    const got = await measureDrawn(browser, shown, roles, options)
     if (!got.ok) return got
     const skip = new Set(fallbacks.keys())
-    const likeness = compareBlueprints(source, got.blueprint, got.phone, skip)
-    if (keepContent)
-      addContent(likeness, compareContent(source, got.blueprint, skip))
-    return { ok: true as const, drawn: got.blueprint, likeness }
+    const drawn = swapped
+      ? withSourceLabels(got.blueprint, source)
+      : got.blueprint
+    const likeness = compareBlueprints(source, drawn, got.phone, skip, {
+      brandLogo: swapped
+    })
+    if (keepContent) addContent(likeness, compareContent(source, drawn, skip))
+    return { ok: true as const, drawn, likeness }
   }
-  let plan = source
+  let plan = start
   let drawings = 0
   let last: { html: string; drawn: Blueprint; likeness: Likeness } | null = null
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  for (let attempt = 0; attempt <= rounds; attempt++) {
     const out = draw(plan)
-    const got = await check(out)
+    const got = await check(plan, out)
     drawings++
     if (!got.ok)
       return {
@@ -323,10 +579,16 @@ async function copyLoop(
     const failing = new Set(
       got.likeness.sections.filter((s) => !s.pass).map((s) => s.ordinal)
     )
-    if (!failing.size || attempt === retries) break
-    // A correction only helps sizes and places; when it changes nothing
-    // (the parts themselves differ), another drawing would be the same.
-    const next = correct(plan, source, got.drawn, failing)
+    if (!failing.size || attempt === rounds) break
+    // A brand copy fits its words first; then, as any copy, sizes and
+    // places are corrected. When nothing changes (the parts themselves
+    // differ), another drawing would be the same.
+    const fitted = swapped
+      ? refit(plan, source, got.drawn, failing, lengthen)
+      : { plan, changed: false }
+    const next = fitted.changed
+      ? fitted
+      : correct(plan, source, got.drawn, failing)
     if (!next.changed) break
     plan = next.plan
   }
@@ -335,19 +597,18 @@ async function copyLoop(
   let added = false
   for (const s of last.likeness.sections) {
     if (s.pass) continue
-    const section = source.sections.find((x) => x.ordinal === s.ordinal)!
     const n = tries.get(s.ordinal) ?? 1
     const first = (s.problems[0] ?? 'it did not match')
       .replace(/\.$/, '')
       .replace(/^It /, 'it ')
     const why = `still differed from the original after ${n} ${n === 1 ? 'try' : 'tries'} (${first})`
-    fallbacks.set(s.ordinal, fallbackFor(section, why, brand, mode))
+    fallbacks.set(s.ordinal, fallbackFor(filler(s.ordinal), why, brand, mode))
     lastProblems.set(s.ordinal, s.problems)
     added = true
   }
   if (added) {
     const out = draw(plan)
-    const got = await check(out)
+    const got = await check(plan, out)
     drawings++
     if (!got.ok)
       return {
@@ -364,7 +625,10 @@ async function copyLoop(
         ordinal: s.ordinal,
         kind: s.kind,
         result: f.block ? 'library' : 'left_out',
-        tries: s.unsupported ? 0 : (tries.get(s.ordinal) ?? 0),
+        tries:
+          s.unsupported || blocked.has(s.ordinal)
+            ? 0
+            : (tries.get(s.ordinal) ?? 0),
         problems: lastProblems.get(s.ordinal) ?? [],
         fallback: { block: f.block, blockName: f.blockName, reason: f.reason }
       }

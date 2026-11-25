@@ -154,7 +154,16 @@ export const runSchema = z.strictObject({
   size: z.number().finite().min(1).max(200).optional(),
   underline: z.boolean().optional(),
   strike: z.boolean().optional(),
-  href: linkSchema.optional()
+  href: linkSchema.optional(),
+  /**
+   * DES-ENGINE-002: a footer run Klaviyo fills when it sends (its
+   * organisation name and address, the unsubscribe, preferences and web
+   * view links). The Klaviyo drawing writes the tag; a preview, and the
+   * measuring, show the run's own words. Never measured from an email.
+   */
+  tag: z
+    .enum(['organization', 'address', 'unsubscribe', 'preferences', 'web_view'])
+    .optional()
 })
 export type TextRun = z.infer<typeof runSchema>
 
