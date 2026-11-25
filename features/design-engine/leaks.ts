@@ -61,7 +61,12 @@ export const decode = (s: string) =>
     .replace(/&#x([0-9a-f]+);/gi, (_, n: string) =>
       String.fromCodePoint(parseInt(n, 16))
     )
-    .replace(/&([a-z]+);/gi, (m, n: string) => named[n.toLowerCase()] ?? m)
+    // A named character this table lacks (&rarr;, &hearts;) is a sign, never
+    // a word a reader sees: read as a space, not as its name.
+    .replace(
+      /&([a-z]+[0-9]*);/gi,
+      (_, n: string) => named[n.toLowerCase()] ?? ' '
+    )
 
 /** The words of a text, lower case, letters and digits only. */
 export const wordsIn = (text: string) =>

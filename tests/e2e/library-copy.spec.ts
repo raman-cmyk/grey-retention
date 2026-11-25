@@ -68,7 +68,7 @@ test('Use this design with Copy copies the chosen email for the brand, says whic
     .from('competitor_captures')
     .update({ brand_name: 'Rival Studio' })
     .eq('id', capture.data!.id)
-  const source = libraryEmails.find((e) => e.id === 'lib-04-offer-code')!
+  const source = libraryEmails.find((e) => e.id === 'lib-01-grid-2col')!
   const key = createHash('sha256').update(randomUUID()).digest('hex')
   const markedPath = `fake/${key}.marked.html`
   expect(
@@ -229,7 +229,42 @@ test('Use this design with Copy copies the chosen email for the brand, says whic
     log: () => undefined,
     engine: ENGINE_VERSION,
     copy: libraryCopy,
-    tools: (origins) => photoTools(browser, { origins })
+    // The sample store's photos are on a host the job never fetches from
+    // (`photoOrigins`), so the copy's photos are cut by a stand-in here: a
+    // real JPEG at each slot's size, drawn in the browser. Every cut then
+    // takes the real path: uploaded to its claim's folder, pinned when the
+    // copy is recorded, checked again and signed.
+    tools: (origins) => {
+      expect(origins).not.toContain('https://cedar.example')
+      const real = photoTools(browser, { origins })
+      return {
+        sizeOf: async (src) => {
+          const got = await real.sizeOf(src)
+          // Never the slot's own shape, so every photo slot needs its cut.
+          return 'failed' in got ? { width: 1000, height: 703 } : got
+        },
+        cropTo: async (photo, width, height) => {
+          const page = await browser.newPage()
+          try {
+            const src = await page.evaluate(
+              ([w, h]) => {
+                const c = document.createElement('canvas')
+                c.width = w!
+                c.height = h!
+                const g = c.getContext('2d')!
+                g.fillStyle = '#6f8f5f'
+                g.fillRect(0, 0, w!, h!)
+                return c.toDataURL('image/jpeg', 0.8)
+              },
+              [Math.round(width), Math.round(height)]
+            )
+            return { ...photo, src, width, height }
+          } finally {
+            await page.close()
+          }
+        }
+      }
+    }
   })
   expect(counts).toMatchObject({ copied: 1, failed: 0, skew: false })
   expect(counts.carried).toBe(1)
@@ -267,6 +302,24 @@ test('Use this design with Copy copies the chosen email for the brand, says whic
   // The brand's copy: none of the other brand's words, and Klaviyo's tags.
   expect(stored.html).not.toContain('Rival Studio')
   expect(stored.html).not.toContain('email-copies.invalid')
+  // Its cut photos: stored in the copy's own claim folder, pinned, and in
+  // the email as their signed links (the push imports them into Klaviyo).
+  const pinned = await db
+    .from('email_copies')
+    .select('tenant_id,result')
+    .eq('build_id', buildId)
+    .single()
+  const photos = (
+    pinned.data!.result as { stored: { path: string; etag: string }[] }
+  ).stored
+  expect(photos.length).toBeGreaterThan(0)
+  for (const p of photos) {
+    expect(p.path.startsWith(`${pinned.data!.tenant_id}/${buildId}/`)).toBe(
+      true
+    )
+    expect(p.etag).toBeTruthy()
+    expect(stored.html).toContain(`/email-copies/${p.path}?token=`)
+  }
   expect(stored.html).toContain('{% unsubscribe')
   await page.screenshot({
     path: `.audit/library-copy-${info.project.name}.png`,

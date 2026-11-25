@@ -38,6 +38,10 @@ describe('Klaviyo tags in the leak check (DES-ENGINE-002b2)', () => {
     expect(leaks(`<p>Tea picked this spring</p><p>${footer}</p>`)).toEqual([])
   })
 
+  it('reads a named character it has no table entry for as a sign, never a word', () => {
+    expect(leaks('<p>Tea picked this spring &rarr; &hearts;</p>')).toEqual([])
+  })
+
   it.each([
     '<p>{{ "Acme Deals" }}</p>',
     '<p>{% with x="Acme Deals" %}{{ x }}{% endwith %}</p>',
