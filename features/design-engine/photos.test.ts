@@ -1,8 +1,11 @@
 // @vitest-environment node
+import { createServer } from 'node:net'
+import type { AddressInfo } from 'node:net'
 import { describe, expect, it } from 'vitest'
 import type { Browser } from '@playwright/test'
 import {
   headerSize,
+  httpsOpener,
   photoLimits,
   photoOrigins,
   photoTools,
@@ -153,6 +156,56 @@ describe('store photos (DES-ENGINE-002b)', () => {
       )('cdn.shopify.com', {}, (_e, a) => ok(a))
     )
     expect(got).toBe('23.1.2.3')
+  })
+
+  it('answers Node’s all-addresses lookup with every checked address', async () => {
+    const lookup = safeLookup((_host, cb) =>
+      cb(null, [
+        { address: '23.1.2.3', family: 4 },
+        { address: '2606:4700::1111', family: 6 }
+      ])
+    )
+    const got = await new Promise<unknown>((ok) =>
+      (
+        lookup as unknown as (
+          h: string,
+          o: object,
+          cb: (e: Error | null, a: unknown) => void
+        ) => void
+      )('cdn.shopify.com', { all: true }, (_e, a) => ok(a))
+    )
+    expect(got).toEqual([
+      { address: '23.1.2.3', family: 4 },
+      { address: '2606:4700::1111', family: 6 }
+    ])
+  })
+
+  it('connects through the real https.get to the address it checked', async () => {
+    // A plain TCP server: reaching it proves https.get accepted the lookup's
+    // answer (Node 20+ calls it with `all: true`). TLS then fails, which is fine.
+    const server = createServer()
+    const reached = new Promise<void>((ok) => {
+      server.once('connection', (socket) => {
+        socket.destroy()
+        ok()
+      })
+    })
+    await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok))
+    const { port } = server.address() as AddressInfo
+    const open = httpsOpener(
+      (_host, cb) => cb(null, [{ address: '127.0.0.1', family: 4 }]),
+      () => false
+    )
+    const attempt = open(new URL(`https://photos.test:${port}/x.png`)).catch(
+      (e: Error) => e
+    )
+    await reached
+    const result = await attempt
+    server.close()
+    expect(result).toBeInstanceOf(Error)
+    expect((result as NodeJS.ErrnoException).code).not.toBe(
+      'ERR_INVALID_IP_ADDRESS'
+    )
   })
 
   it('refuses to cut a photo smaller than half the slot', async () => {

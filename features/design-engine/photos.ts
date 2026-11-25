@@ -105,22 +105,29 @@ type Resolve = (
 const systemResolve: Resolve = (host, cb) => dnsLookup(host, { all: true }, cb)
 
 /** A lookup that refuses any private address and connects to the one checked. */
-export function safeLookup(resolve: Resolve = systemResolve) {
+export function safeLookup(
+  resolve: Resolve = systemResolve,
+  isReserved: (address: string) => boolean = reservedAddress
+) {
   return ((
     host: string,
-    _options: unknown,
+    options: { all?: boolean } | undefined,
     cb: (e: Error | null, address: string, family: number) => void
   ) =>
     resolve(host, (error, addresses) => {
       if (error) return cb(error, '', 0)
-      if (
-        !addresses.length ||
-        addresses.some((a) => reservedAddress(a.address))
-      )
+      if (!addresses.length || addresses.some((a) => isReserved(a.address)))
         return cb(
           Object.assign(new Error('blocked address'), { code: 'EBLOCKED' }),
           '',
           0
+        )
+      // Node 20+ asks for every address (`all: true`, for autoSelectFamily)
+      // and expects an array back; answering one address fails every fetch.
+      if (options?.all)
+        return (cb as unknown as (e: null, a: LookupAddress[]) => void)(
+          null,
+          addresses
         )
       const first = addresses[0]!
       cb(null, first.address, first.family)
@@ -129,12 +136,12 @@ export function safeLookup(resolve: Resolve = systemResolve) {
 
 /** The real opener: https, the checked address, no redirect, a deadline. */
 export const httpsOpener =
-  (resolve?: Resolve): PhotoOpener =>
+  (resolve?: Resolve, isReserved?: (address: string) => boolean): PhotoOpener =>
   (url) =>
     new Promise((ok, fail) => {
       const req = https.get(
         url,
-        { lookup: safeLookup(resolve), timeout: photoLimits.ms },
+        { lookup: safeLookup(resolve, isReserved), timeout: photoLimits.ms },
         (res) =>
           ok({
             status: res.statusCode ?? 0,
@@ -279,36 +286,56 @@ export function photoTools(
     }
     if (url.protocol !== 'https:' || !allowed.has(url.origin))
       return failed(photoWords.host)
-    let res: PhotoResponse
-    try {
-      res = await open(url)
-    } catch (e) {
-      return failed(
-        (e as { code?: string })?.code === 'EBLOCKED'
-          ? photoWords.address
-          : photoWords.fetch
-      )
-    }
-    // Never a redirect: the address asked for is the one answered.
-    if (res.status !== 200) {
-      res.cancel()
-      return failed(photoWords.fetch)
-    }
-    const chunks: Buffer[] = []
-    let total = 0
-    try {
-      for await (const chunk of res.body) {
-        total += chunk.byteLength
-        if (total > photoLimits.bytes) {
-          res.cancel()
-          return failed(photoWords.big)
-        }
-        chunks.push(Buffer.from(chunk))
+    // One deadline for the whole fetch: `https.get`'s timeout is only an
+    // idle-socket timeout, so a slow trickle could otherwise hold the copy.
+    let res: PhotoResponse | undefined
+    let late = false
+    const download = async (): Promise<Buffer | Failed> => {
+      try {
+        res = await open(url)
+      } catch (e) {
+        return failed(
+          (e as { code?: string })?.code === 'EBLOCKED'
+            ? photoWords.address
+            : photoWords.fetch
+        )
       }
+      if (late) {
+        res.cancel()
+        return failed(photoWords.fetch)
+      }
+      // Never a redirect: the address asked for is the one answered.
+      if (res.status !== 200) {
+        res.cancel()
+        return failed(photoWords.fetch)
+      }
+      const chunks: Buffer[] = []
+      let total = 0
+      try {
+        for await (const chunk of res.body) {
+          total += chunk.byteLength
+          if (total > photoLimits.bytes) {
+            res.cancel()
+            return failed(photoWords.big)
+          }
+          chunks.push(Buffer.from(chunk))
+        }
+      } catch {
+        return failed(photoWords.fetch)
+      }
+      return Buffer.concat(chunks)
+    }
+    let body: Buffer | Failed
+    try {
+      body = await deadline(download(), photoLimits.ms, () => {
+        late = true
+        res?.cancel()
+      })
     } catch {
       return failed(photoWords.fetch)
     }
-    return checked(res.contentType, Buffer.concat(chunks))
+    if (!Buffer.isBuffer(body)) return body
+    return checked(res!.contentType, body)
   }
   const load = (src: string) => {
     let got = cache.get(src)
