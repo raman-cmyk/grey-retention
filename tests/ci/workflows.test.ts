@@ -262,6 +262,14 @@ describe('CI workflows', () => {
         filter
       ).toBe(true)
     expect(text).toContain("DESIGN_ENGINE_BROWSER: 'on'")
+    // DES-ENGINE-002: the engine loaded as the blueprint job loads it.
+    expect(text).toContain('node --import ./scripts/ts-register.mjs -e')
+    for (const path of [
+      'scripts/inbox-blueprints.mjs',
+      'scripts/ts-hooks.mjs',
+      'scripts/ts-register.mjs'
+    ])
+      expect(pathFilters(text)).toContain(path)
     expect(text).toContain('run: pnpm exec vitest run features/design-engine\n')
     // The owner looks at the pictures whether the run passed or not.
     expect(text).toMatch(
@@ -308,7 +316,9 @@ describe('CI workflows', () => {
       .slice(1)
     expect(steps[0]).toContain('?peek=1')
     for (const step of steps.slice(1))
-      expect(step).toContain("if: steps.peek.outputs.waiting != '0'")
+      expect(step).toMatch(
+        /if: (?:\$\{\{ !cancelled\(\) && )?steps\.peek\.outputs\.waiting != '0'/
+      )
     // The secret only reaches the steps that call the app.
     expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(3)
     // DES-ENGINE-002: blueprints waiting wake the run too; their peek
@@ -348,7 +358,9 @@ describe('CI workflows', () => {
       `if [ "$waiting" = "0" ]; then\n            call '/api/internal/studio/builds' builds.json 130 || exit 1`
     )
     for (const step of steps.slice(1))
-      expect(step).toContain("if: steps.peek.outputs.waiting != '0'")
+      expect(step).toMatch(
+        /if: (?:\$\{\{ !cancelled\(\) && )?steps\.peek\.outputs\.waiting != '0'/
+      )
     // The secret only reaches the steps that call the app; no artifacts (a
     // public repository's logs and artifacts are public).
     expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(2)
@@ -411,7 +423,7 @@ describe('CI workflows', () => {
       ['scheduled-jobs.yml', 7],
       ['onboarding-readers.yml', 10],
       ['inbox-tagging.yml', 6],
-      ['inbox-screenshots.yml', 18],
+      ['inbox-screenshots.yml', 30],
       ['klaviyo-results.yml', 10],
       ['studio-renders.yml', 18]
     ] as const

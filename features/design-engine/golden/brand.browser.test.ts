@@ -18,8 +18,10 @@ import { libraryEmails } from './library'
  * The photos are the test brand's plain colours, cut to each slot's shape
  * by the fake image worker (exact for a plain colour). Without a cropper
  * (as on a live store today, where no image service is set up) only
- * photos of the slot's own shape fit; that score is written to
- * `library-brand-no-crop` for the owner to see, not gated.
+ * photos of the slot's own shape fit: 9 of 20 copy fully (25 Nov), the
+ * rest build their sections from library blocks with the reason. That
+ * path is the one live stores take, so it has its own floor
+ * (`noCropFloor`) and its pictures go to `library-brand-no-crop`.
  */
 const on = process.env.DESIGN_ENGINE_BROWSER === 'on'
 const out = process.env.DESIGN_GOLDEN_OUT ?? 'design-golden'
@@ -28,6 +30,8 @@ const only = (process.env.DESIGN_GOLDEN_ONLY ?? '')
   .map((s) => s.trim())
   .filter(Boolean)
 export const brandGateTarget = 18
+/** The path live stores take today (no cropper): 9 observed, 1 of margin. */
+export const noCropFloor = 8
 
 describe.skipIf(!on)('library 1:1 gate', () => {
   let browser: Browser
@@ -65,7 +69,7 @@ describe.skipIf(!on)('library 1:1 gate', () => {
       )
   }, 600_000)
 
-  it('without a cropper, sections no photo fits are built from a block and say why, with no leak', async () => {
+  it(`without a cropper, at least ${noCropFloor} copy fully; the other sections are built from a block and say why, with no leak`, async () => {
     const rows = await runBrandGate(
       browser,
       emails,
@@ -80,5 +84,9 @@ describe.skipIf(!on)('library 1:1 gate', () => {
       for (const s of r.sections)
         if (s.result !== 'copied')
           expect(s.fallback?.reason).toMatch(/^Section \d+ \(/)
+    if (!only.length)
+      expect(rows.filter((r) => r.pass).length).toBeGreaterThanOrEqual(
+        noCropFloor
+      )
   }, 600_000)
 })

@@ -142,6 +142,7 @@ describe('brand swap', () => {
     expect(
       leaksOf({
         source,
+        sourceHtml: drawBlueprint(source),
         html,
         sourceNames: ['Rival Store', 'rival.example'],
         vocabulary: [...testVocabulary, ...swapOwnWords(testBrand)]
@@ -215,6 +216,37 @@ describe('brand swap', () => {
     // The block still gets the brand's closest photo, never the source's.
     const pic = partsOf(tall.target.sections[0]!.items)[0] as ImagePart
     expect(pic.src?.startsWith('data:image/png')).toBe(true)
+  })
+
+  it('a one-line footer still carries the organisation, address and unsubscribe tags', () => {
+    const one = swapped(
+      blueprint({
+        sections: [
+          {
+            ...footer(1),
+            items: [
+              text({
+                role: 'legal',
+                lines: 1,
+                runs: [{ text: 'Unsubscribe here' }],
+                font: { ...font, size: 12, lineHeight: 18 }
+              })
+            ]
+          }
+        ]
+      }),
+      { brand: { ...testBrand, address: null } }
+    )
+    const legal = partsOf(one.target.sections[0]!.items)[0] as TextPart
+    expect(legal.runs.filter((r) => r.tag).map((r) => r.tag)).toEqual([
+      'organization',
+      'address',
+      'unsubscribe',
+      'preferences'
+    ])
+    expect(one.footer).toBe(true)
+    const none = swapped(blueprint({ sections: [section()] }))
+    expect(none.footer).toBe(false)
   })
 
   it('writes the footer from the brand with Klaviyo tags, and draws them in Klaviyo mode', () => {
@@ -292,6 +324,12 @@ describe('brand swap', () => {
     const own = swapped(offer)
     expect(JSON.stringify(own.target)).toContain('Use code FERN15')
     expect(JSON.stringify(own.target)).not.toContain('RIVAL40')
+    // A code whose percent is above the max is never drawn.
+    const over = swapped(offer, {
+      rules: { offer: { code: 'FERN15', percent: 15 }, maxDiscountPercent: 10 }
+    })
+    expect(over.blocked.get(1)).toMatch(/above your max discount/)
+    expect(JSON.stringify(over.target)).not.toContain('FERN15')
   })
 
   it('a stored source (no pictures, no links) swaps the same', () => {
@@ -319,9 +357,35 @@ describe('brand swap', () => {
       swapped(card).target.sections[0]!.items
     )[0] as TextPart
     expect(priced.runs.map((r) => [r.text, !!r.strike])).toEqual([
-      ['$18.00', true],
+      ['$16.00', true],
       [' $14.00', false]
     ])
+    // An old price whose discount is above the max is never shown (rule 6).
+    const deep = partsOf(
+      swapped(card, {
+        products: [{ ...testProducts[0]!, compareAt: '$28.00' }]
+      }).target.sections[0]!.items
+    )[0] as TextPart
+    expect(textOf(deep)).toBe('$14.00')
+    const strictMax = swapped(
+      blueprint({
+        sections: [
+          section({
+            items: [
+              text({
+                role: 'old_price',
+                runs: [{ text: '$60.00', strike: true }],
+                lines: 1
+              })
+            ]
+          })
+        ]
+      }),
+      { rules: { ...testRules, maxDiscountPercent: 10 } }
+    )
+    expect(strictMax.blocked.get(1)).toMatch(
+      /no sale price within your max discount/
+    )
     const plain = partsOf(
       swapped(card, { products: [{ ...testProducts[1]! }] }).target.sections[0]!
         .items

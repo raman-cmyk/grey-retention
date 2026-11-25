@@ -10,6 +10,7 @@ import {
 import {
   blueprintFailures,
   checkStored,
+  ENGINE_VERSION,
   type BlueprintFailure
 } from '@/features/design-engine/stored'
 
@@ -145,11 +146,14 @@ export const blueprintResult = z.union([
   z.object({
     job: z.uuid(),
     lease: z.uuid(),
+    /** The version the job measured with (`ENGINE_VERSION`). */
+    engine: z.string().min(1).max(40),
     blueprint: z.unknown().refine((v) => v !== undefined)
   }),
   z.object({
     job: z.uuid(),
     lease: z.uuid(),
+    engine: z.string().min(1).max(40),
     failure: z.enum(failureCodes)
   }),
   z.object({
@@ -162,7 +166,11 @@ export const blueprintResult = z.union([
 /**
  * Records one result: a blueprint (checked against the schema again,
  * pictures and links dropped, at most 500,000 characters), a failure that
- * is final, or one worth another try.
+ * is final, or one worth another try. A job that measured with another
+ * engine version (the browser job and the app briefly running different
+ * code after a merge), or a blueprint this app's schema refuses, is tried
+ * again later, never stored as failed: only the measuring job itself
+ * says an email can never be measured.
  */
 export async function finishBlueprint(
   db: Db,
@@ -172,13 +180,20 @@ export async function finishBlueprint(
     await fail(db, result.job, result.lease, result.retry)
     return { ok: true, state: 'retry' }
   }
+  if (result.engine !== ENGINE_VERSION) {
+    await fail(db, result.job, result.lease, 'version_skew')
+    return { ok: true, state: 'retry' }
+  }
   let blueprint: Blueprint | null = null
   let failure: BlueprintFailure | null = null
   if ('failure' in result) failure = result.failure
   else {
     const checked = checkStored(result.blueprint)
-    if (checked.ok) blueprint = checked.blueprint
-    else failure = checked.failure as BlueprintFailure
+    if (!checked.ok) {
+      await fail(db, result.job, result.lease, `app_${checked.failure}`)
+      return { ok: true, state: 'retry' }
+    }
+    blueprint = checked.blueprint
   }
   const recorded = await db.rpc('record_inbox_blueprint', {
     job: result.job,
@@ -193,15 +208,20 @@ export async function finishBlueprint(
 
 /**
  * An inspiration email's blueprint as the email build reads it (service
- * role; the build checked the email is one the workspace follows):
- * `ready` with the blueprint, `failed` with the reason in plain words,
- * `waiting` while the browser job has not measured it yet (asked for now
- * on first use), or `none` (the email has no marked copy to measure).
+ * role): `ready` with the blueprint, `failed` with the reason in plain
+ * words, `waiting` while the browser job has not measured it yet (asked
+ * for now on first use), or `none` (the email has no marked copy to
+ * measure). **No workspace check here**: the caller reads only an email
+ * the workspace follows (as `create_email_build` checks it).
  */
 export type StoredBlueprint =
   | { state: 'ready'; blueprint: Blueprint }
   | { state: 'failed'; reason: string }
   | { state: 'waiting' | 'none' }
+
+/** Why a blueprint is missing after four tries (no row was stored). */
+export const blueprintGaveUp =
+  'The email could not be measured after 4 tries; it is tried again tomorrow.'
 
 export async function inspirationBlueprint(
   db: Db,
@@ -217,14 +237,18 @@ export async function inspirationBlueprint(
     .from('competitor_emails')
     .select('inbox_message_id')
     .eq('id', competitorEmailId)
-    .single()
-  if (email.error || !email.data.inbox_message_id) return { state: 'none' }
+    .maybeSingle()
+  if (email.error) throw email.error
+  if (!email.data?.inbox_message_id) return { state: 'none' }
   const row = await db
     .from('inbox_blueprints')
     .select('state,blueprint,failure')
     .eq('inbox_message_id', email.data.inbox_message_id)
-    .single()
+    .eq('version', 1)
+    .maybeSingle()
   if (row.error) throw row.error
+  // A job that failed four times stores no row.
+  if (!row.data) return { state: 'failed', reason: blueprintGaveUp }
   if (row.data.state === 'ready') {
     const parsed = parseBlueprint(row.data.blueprint)
     if (parsed.ok) return { state: 'ready', blueprint: parsed.blueprint }

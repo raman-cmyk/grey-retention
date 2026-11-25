@@ -13,10 +13,12 @@ import {
   type TextPart,
   type TextRun
 } from './blueprint'
+import { amount } from '@/features/assembly/assemble'
 import { limits } from './likeness'
 import { lightness, paletteMapper, type PaletteMapper } from './palette'
 import {
   cutTo,
+  holdsFacts,
   wordPicker,
   type Lengthen,
   type WordPools,
@@ -121,6 +123,12 @@ export type SwapResult =
       blockBrand: BlockBrand
       /** More of the brand's words for a text that broke onto fewer lines. */
       lengthen: Lengthen
+      /**
+       * True when a footer of the copy carries Klaviyo's organisation,
+       * address and unsubscribe tags. False (the original had no footer
+       * text): the email build adds the library's Footer block.
+       */
+      footer: boolean
     }
   | { ok: false; error: string }
 
@@ -165,6 +173,8 @@ const host = (site: string) => {
 }
 
 const navWords = ['Shop', 'New in', 'About', 'Help', 'Contact', 'Stores']
+/** What a preview shows for the address Klaviyo writes when it sends. */
+const storeAddress = 'Store address'
 
 /** The parts of a column that make it a product card. */
 const productRoles = new Set([
@@ -229,11 +239,13 @@ export function swapBrand(input: SwapInput): SwapResult {
     color: string,
     withLinks: boolean
   ): TextRun[] => {
+    // Klaviyo needs the organisation, its address and the unsubscribe
+    // link in every email: always written, whatever the original's footer
+    // looked like (Klaviyo fills the address itself when it sends).
     const org: TextRun[] = [
       { text: brand.name, tag: 'organization' },
-      ...(brand.address
-        ? [{ text: ', ' }, { text: brand.address, tag: 'address' as const }]
-        : [])
+      { text: ', ' },
+      { text: brand.address || storeAddress, tag: 'address' }
     ]
     const why: TextRun[] = [
       {
@@ -255,15 +267,28 @@ export function swapBrand(input: SwapInput): SwapResult {
           ? [org, why, links]
           : count === 2
             ? [org, links]
-            : [links]
+            : [[...org, { text: ' · ' }, ...links]]
       : count >= 2
-        ? [org, why]
-        : [org]
+        ? [[{ text: brand.name }], why]
+        : [why]
     return lines.flatMap((l, i) => (i ? [{ text: '\n' }, ...l] : l))
   }
 
   let footerLinks = false
   let navCursor = 0
+  /**
+   * The old price a product may show: a confirmed sale's, only when its
+   * discount is within the max (as `toProduct`, VISION rule 6).
+   */
+  const salePrice = (product: SwapProduct) => {
+    if (!product.compareAt) return null
+    const now = amount(product.price)
+    const was = amount(product.compareAt)
+    const implied = now && was && was > now ? ((was - now) / was) * 100 : null
+    return implied !== null && implied <= rules.maxDiscountPercent
+      ? product.compareAt
+      : null
+  }
 
   const textPart = (p: TextPart, ctx: Ctx): TextPart => {
     const color = pal.text(p.color, ctx.behind, p.font.size)
@@ -292,15 +317,27 @@ export function swapBrand(input: SwapInput): SwapResult {
     }
     let runs: TextRun[] | null = null
     switch (p.role) {
-      case 'legal':
-      case 'footer_text': {
-        const links = p.role === 'legal' && !footerLinks
+      case 'footer_text':
+        // Small words near the end: the brand's caption, unless they hold
+        // the unsubscribe link (then the footer, with Klaviyo's tags).
+        if (footerLinks || !/unsubscribe/i.test(words)) {
+          const got = fill('caption')
+          if (got === null) {
+            block(ctx.section, 'has words the brand has nothing written for')
+            runs = one('—')
+          } else runs = one(got)
+          break
+        }
+      // falls through
+      case 'legal': {
+        // The first legal text (or footer text with an unsubscribe link)
+        // carries Klaviyo's organisation, address and unsubscribe tags.
+        const links =
+          !footerLinks && (p.role === 'legal' || /unsubscribe/i.test(words))
         if (links) footerLinks = true
-        runs = footerLines(
-          segments.length,
-          color,
-          links || (p.role === 'footer_text' && /unsubscribe/i.test(words))
-        ).map((r) => (r.tag && r.color ? { ...r, color } : r))
+        runs = footerLines(segments.length, color, links).map((r) =>
+          r.tag && r.color ? { ...r, color } : r
+        )
         break
       }
       case 'price': {
@@ -314,23 +351,25 @@ export function swapBrand(input: SwapInput): SwapResult {
           break
         }
         const old = p.runs.find((r) => r.strike && r.text.trim())
+        const was = salePrice(product)
         runs =
-          old && product.compareAt
+          old && was
             ? [
-                { text: product.compareAt, strike: true },
+                { text: was, strike: true },
                 { ...style, text: ` ${product.price}` }
               ]
             : [{ ...style, text: product.price }]
         break
       }
       case 'old_price': {
-        if (!ctx.product?.compareAt) {
+        const was = ctx.product ? salePrice(ctx.product) : null
+        if (!was) {
           block(
             ctx.section,
-            'shows an old price, and the store has no sale price for its products'
+            'shows an old price, and the store has no sale price within your max discount for its products'
           )
           runs = [{ text: ctx.product?.price ?? '—', strike: true }]
-        } else runs = [{ text: ctx.product.compareAt, strike: true }]
+        } else runs = [{ text: was, strike: true }]
         break
       }
       case 'product_name': {
@@ -343,6 +382,16 @@ export function swapBrand(input: SwapInput): SwapResult {
       case 'code': {
         if (!rules.offer) {
           block(ctx.section, 'shows a discount code, and this email has none')
+          runs = one('—')
+        } else if (
+          !Number.isInteger(rules.offer.percent) ||
+          rules.offer.percent < 1 ||
+          rules.offer.percent > rules.maxDiscountPercent
+        ) {
+          block(
+            ctx.section,
+            'shows a discount code, and this email’s code is above your max discount'
+          )
           runs = one('—')
         } else
           runs = [
@@ -475,7 +524,9 @@ export function swapBrand(input: SwapInput): SwapResult {
       : pal.text(p.color, ctx.behind, p.font.size)
     return {
       ...p,
-      label: cutTo(label, Math.max(4, p.label.length + 2)),
+      label: holdsFacts(label)
+        ? label
+        : cutTo(label, Math.max(4, p.label.length + 2)),
       href: link(ctx),
       font: fontFor(p),
       color,
@@ -569,6 +620,7 @@ export function swapBrand(input: SwapInput): SwapResult {
     target: parsed.data,
     blocked,
     lengthen: picker.more,
+    footer: footerLinks,
     blockBrand: {
       name: brand.name,
       site: brand.site,
@@ -601,6 +653,9 @@ export function swapOwnWords(brand: SwapBrand): string[] {
     `This email went to you because you joined the ${brand.name} list at ${host(brand.site)}.`,
     'Unsubscribe · Preferences · View in browser',
     'Use code',
+    storeAddress,
+    // The drawn email's own <title>.
+    'Email',
     ...navWords,
     // The library blocks' own footer and preview words.
     'Your brand',

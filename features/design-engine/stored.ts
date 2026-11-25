@@ -14,6 +14,19 @@ import { blueprintFrom } from './measure'
  * corners and alt text.
  */
 
+/**
+ * The version of what the measuring job stores: the blueprint schema and
+ * the measuring code. Bumped with either; the app answers a job that
+ * measured with another version by trying it again later (a browser job
+ * and the app may briefly run different code after a merge).
+ */
+export const ENGINE_VERSION = '2026-11-25.2'
+
+/** A web address written in words, blanked letter for letter (its length stays). */
+const address = /(?:https?:)?\/\/\S*|\burl\s*\(/gi
+const blank = (words: string) =>
+  words.replace(address, (m) => 'x'.repeat(m.length))
+
 const bare = (items: readonly Item[]): Item[] =>
   items.map((item) => {
     if (item.type === 'row')
@@ -21,21 +34,26 @@ const bare = (items: readonly Item[]): Item[] =>
         ...item,
         columns: item.columns.map((c) => ({ ...c, items: bare(c.items) }))
       }
-    if (item.type === 'image') return { ...item, src: null, href: null }
-    if (item.type === 'button') return { ...item, href: null }
+    if (item.type === 'image')
+      return { ...item, src: null, href: null, alt: blank(item.alt) }
+    if (item.type === 'button')
+      return { ...item, href: null, label: blank(item.label) }
     if (item.type === 'text')
       return {
         ...item,
         runs: item.runs.map((r) => {
           const { href, ...rest } = r
           void href
-          return rest
+          return { ...rest, text: blank(r.text) }
         })
       }
     return item
   })
 
-/** The blueprint as it is stored: no picture address, no link. */
+/**
+ * The blueprint as it is stored: no picture address, no link, and no web
+ * address in its words (the table refuses any).
+ */
 export function forStorage(bp: Blueprint): Blueprint {
   return {
     ...bp,

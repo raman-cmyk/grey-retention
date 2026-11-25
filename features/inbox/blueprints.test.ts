@@ -1,14 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
 import { blueprint } from '@/features/design-engine/fixtures'
-import { forStorage } from '@/features/design-engine/stored'
+import { ENGINE_VERSION, forStorage } from '@/features/design-engine/stored'
 
 vi.mock('server-only', () => ({}))
 
-const { blueprintResult, finishBlueprint, inspirationBlueprint } =
-  await import('./blueprints')
+const {
+  blueprintGaveUp,
+  blueprintResult,
+  finishBlueprint,
+  inspirationBlueprint
+} = await import('./blueprints')
 
 const job = '00000000-0000-4000-8000-0000000000a1'
 const lease = '00000000-0000-4000-8000-0000000000b1'
+const engine = ENGINE_VERSION
 
 /** A database that records RPCs and answers rows by table. */
 function fakeDb(answers: {
@@ -25,7 +30,7 @@ function fakeDb(answers: {
       const q = {
         select: () => q,
         eq: () => q,
-        single: async () => ({
+        maybeSingle: async () => ({
           data: answers.rows?.[table] ?? null,
           error: null
         })
@@ -36,10 +41,25 @@ function fakeDb(answers: {
   return { db: db as never, calls }
 }
 
+const retried = (code: string) => ({
+  fn: 'fail_platform_job',
+  args: {
+    job,
+    lease,
+    failure: code === 'timeout' ? 'timeout' : 'protocol',
+    error_code: code
+  }
+})
+
 describe('blueprint results', () => {
   it('stores a blueprint without its pictures and links, checked again', async () => {
     const { db, calls } = fakeDb({ rpc: { record_inbox_blueprint: 'ready' } })
-    const parsed = blueprintResult.parse({ job, lease, blueprint: blueprint() })
+    const parsed = blueprintResult.parse({
+      job,
+      lease,
+      engine,
+      blueprint: blueprint()
+    })
     expect(await finishBlueprint(db, parsed)).toEqual({
       ok: true,
       state: 'ready'
@@ -51,27 +71,62 @@ describe('blueprint results', () => {
     )
   })
 
-  it('a blueprint that is not valid is stored as failed, never as ready', async () => {
+  it('a final failure from the measuring job is stored', async () => {
     const { db, calls } = fakeDb({ rpc: { record_inbox_blueprint: 'failed' } })
     await finishBlueprint(
       db,
-      blueprintResult.parse({ job, lease, blueprint: { version: 9 } })
+      blueprintResult.parse({ job, lease, engine, failure: 'too_tall' })
     )
-    expect(calls[0]!.args).toEqual({ job, lease, failure: 'not_valid' })
+    expect(calls[0]!.args).toEqual({ job, lease, failure: 'too_tall' })
   })
 
-  it('a slow browser is tried again; an unknown reason is refused', async () => {
+  it('a blueprint this app refuses is tried again, never stored as failed', async () => {
+    const { db, calls } = fakeDb({})
+    expect(
+      await finishBlueprint(
+        db,
+        blueprintResult.parse({ job, lease, engine, blueprint: { version: 9 } })
+      )
+    ).toEqual({ ok: true, state: 'retry' })
+    expect(calls).toEqual([retried('app_not_valid')])
+  })
+
+  it('a job measured with another engine version is tried again', async () => {
+    const { db, calls } = fakeDb({})
+    await finishBlueprint(
+      db,
+      blueprintResult.parse({
+        job,
+        lease,
+        engine: 'older',
+        blueprint: blueprint()
+      })
+    )
+    await finishBlueprint(
+      db,
+      blueprintResult.parse({
+        job,
+        lease,
+        engine: 'older',
+        failure: 'too_tall'
+      })
+    )
+    expect(calls).toEqual([retried('version_skew'), retried('version_skew')])
+  })
+
+  it('a slow browser is tried again; an unknown reason or no version is refused', async () => {
     const { db, calls } = fakeDb({})
     await finishBlueprint(
       db,
       blueprintResult.parse({ job, lease, retry: 'timeout' })
     )
-    expect(calls[0]).toEqual({
-      fn: 'fail_platform_job',
-      args: { job, lease, failure: 'timeout', error_code: 'timeout' }
-    })
+    expect(calls).toEqual([retried('timeout')])
     expect(
-      blueprintResult.safeParse({ job, lease, failure: 'whatever' }).success
+      blueprintResult.safeParse({ job, lease, engine, failure: 'whatever' })
+        .success
+    ).toBe(false)
+    expect(
+      blueprintResult.safeParse({ job, lease, blueprint: blueprint() }).success
     ).toBe(false)
     expect(blueprintResult.safeParse({ job, lease }).success).toBe(false)
   })
@@ -114,6 +169,16 @@ describe('an inspiration email’s blueprint for the build', () => {
       state: 'failed',
       reason:
         'The email is taller than 16,000 px, the most that can be measured.'
+    })
+  })
+  it('a job that failed four times (no row) reads as failed, never crashes', async () => {
+    const { db } = fakeDb({
+      rpc: { request_inbox_blueprint: 'failed' },
+      rows: { competitor_emails: { inbox_message_id: 'm1' } }
+    })
+    expect(await inspirationBlueprint(db, email)).toEqual({
+      state: 'failed',
+      reason: blueprintGaveUp
     })
   })
 })

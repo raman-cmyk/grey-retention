@@ -66,9 +66,9 @@ const product = (
 })
 
 export const testProducts: SwapProduct[] = [
-  product('green', 'Hill green', '$14.00', '#6f8f5f', '$18.00'),
+  product('green', 'Hill green', '$14.00', '#6f8f5f', '$16.00'),
   product('black', 'Smoky black', '$16.00', '#4a3b2f'),
-  product('oolong', 'Amber oolong', '$19.00', '#a8743c', '$24.00'),
+  product('oolong', 'Amber oolong', '$19.00', '#a8743c', '$22.00'),
   product('white', 'Silver needle', '$24.00', '#d8d2c0'),
   product('mint', 'Fresh mint', '$12.00', '#7fb59a'),
   product('chai', 'Spiced chai', '$15.00', '#8a5a3c'),

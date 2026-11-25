@@ -4,30 +4,63 @@ import { partsOf, textOf, type Blueprint, type Item } from './blueprint'
  * DES-ENGINE-002: rule 8 checked on the drawn email. A brand copy of a
  * library email may share the source's structure and nothing a reader
  * sees of it:
- * - no **picture** of the source (its address, inline or https);
- * - no **link** of the source;
- * - no **name** of the source's brand (its own words for itself, given by
- *   the caller: the inbox brand's name and domain);
- * - no **phrase** of the source: three words in a row the source says
- *   (its texts, button words and alt texts);
- * - and every **word** the email shows (its texts, buttons and alt texts,
- *   the library blocks' too) is one of the brand's own: in the words,
- *   facts and catalog the swap was given (`vocabulary`).
- * Code only; the email build refuses a copy with any leak.
+ * - no **picture** of the source: the same address, or the same host and
+ *   path (query strings aside), or the same picture file name anywhere;
+ * - no **link** of the source (host and path, query strings aside);
+ * - no **name** of the source's brand (given by the caller: the inbox
+ *   brand's name and domain);
+ * - no **phrase** of the source: three words in a row it says anywhere
+ *   (its words, its alt texts and titles, its `<title>`, comments,
+ *   subject and preview line);
+ * - no **number** the source shows (prices, percents, numeric codes)
+ *   unless the brand's own content has it;
+ * - and every **word** the copy shows (its words, alt texts, titles,
+ *   `<title>`, comments, subject and preview line, the library blocks'
+ *   too) is one of the brand's own: in the words, facts and catalog the
+ *   swap was given (`vocabulary`).
+ * It refuses to run (throws `LeakCheckError`) without the source's own
+ * HTML: a stored blueprint has no pictures or links, so a check from it
+ * alone could pass a copy that is not clean. Code only.
  */
 
-const decode = (s: string) =>
+export class LeakCheckError extends Error {}
+
+const named: Record<string, string> = {
+  nbsp: ' ',
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  middot: '·',
+  bull: '•',
+  rsquo: '’',
+  lsquo: '‘',
+  rdquo: '”',
+  ldquo: '“',
+  ndash: '–',
+  mdash: '—',
+  hellip: '…',
+  copy: '©',
+  reg: '®',
+  trade: '™',
+  euro: '€',
+  pound: '£',
+  yen: '¥',
+  cent: '¢',
+  times: '×',
+  zwnj: '',
+  zwj: '',
+  shy: ''
+}
+
+export const decode = (s: string) =>
   s
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&middot;/g, '·')
     .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
     .replace(/&#x([0-9a-f]+);/gi, (_, n: string) =>
       String.fromCodePoint(parseInt(n, 16))
     )
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
+    .replace(/&([a-z]+);/gi, (m, n: string) => named[n.toLowerCase()] ?? m)
 
 /** The words of a text, lower case, letters and digits only. */
 export const wordsIn = (text: string) =>
@@ -35,50 +68,120 @@ export const wordsIn = (text: string) =>
     (w) => w.replace(/’/g, "'")
   )
 
-/** What a reader sees of an email: its words, alt texts and titles. */
-export function shownText(html: string): string[] {
+/** Numbers as shown: "$48.00", "40%", "1234" (spaces aside). */
+export const numbersIn = (text: string) =>
+  (text.match(/[$€£¥₹]?\s?\d[\d.,]*\s?%?/g) ?? []).map((n) =>
+    n.replace(/\s/g, '').replace(/[.,]$/, '')
+  )
+
+const addressAttrs = new Set([
+  'src',
+  'href',
+  'background',
+  'poster',
+  'srcset',
+  'action',
+  'data',
+  'xlink:href',
+  'longdesc',
+  'cite'
+])
+const wordAttrs = new Set([
+  'alt',
+  'title',
+  'aria-label',
+  'aria-description',
+  'placeholder',
+  'value',
+  'label',
+  'summary'
+])
+
+export type ReadEmail = {
+  /** What a reader may see or hear: texts, alt texts, titles, comments. */
+  texts: string[]
+  /** Every picture address and link (src, href, background, style url()…). */
+  addresses: string[]
+}
+
+/** Everything a reader may see of an email, and every address it reaches. */
+export function readEmail(html: string): ReadEmail {
+  const texts: string[] = []
+  const addresses: string[] = []
+  const title = /<title(?:\s[^>]*)?>([\s\S]*?)<\/title>/i.exec(html)
+  if (title) texts.push(decode(title[1]!))
+  for (const m of html.matchAll(/<!--([\s\S]*?)-->/g)) texts.push(decode(m[1]!))
+  const urlsIn = (css: string) => {
+    for (const u of css.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi))
+      addresses.push(decode(u[2]!.trim()))
+  }
+  for (const m of html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi))
+    urlsIn(m[1]!)
+  for (const tag of html.matchAll(/<[a-zA-Z][^>]*>/g))
+    for (const a of tag[0].matchAll(
+      /\s([^\s=/>"']+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))/g
+    )) {
+      const name = a[1]!.toLowerCase()
+      const value = decode(a[2] ?? a[3] ?? a[4] ?? '')
+      if (name === 'srcset')
+        for (const part of value.split(','))
+          addresses.push(part.trim().split(/\s+/)[0] ?? '')
+      else if (addressAttrs.has(name)) addresses.push(value.trim())
+      else if (name === 'style') urlsIn(value)
+      else if (wordAttrs.has(name)) texts.push(value)
+    }
   const body = html
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<head[\s\S]*?<\/head>/gi, ' ')
-  const alts = [...body.matchAll(/\salt\s*=\s*"([^"]*)"/gi)].map((m) =>
-    decode(m[1]!)
-  )
-  const text = decode(
-    body.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ' ')
-  )
-  return [text, ...alts]
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<head(?:\s[^>]*)?>[\s\S]*?<\/head>/gi, ' ')
+    .replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+  texts.push(decode(body))
+  return { texts, addresses: addresses.filter(Boolean) }
 }
 
-/** Every picture address and link of an email. */
-export function addressesIn(html: string): string[] {
-  return [...html.matchAll(/\s(?:src|href)\s*=\s*"([^"]*)"/gi)].map((m) =>
-    decode(m[1]!)
-  )
+/** An address compared by what it points at: host and path (query aside). */
+function addressKey(address: string): string {
+  if (/^data:/i.test(address)) return address
+  try {
+    const u = new URL(address, 'https://relative.invalid/')
+    return `${u.protocol === 'mailto:' ? 'mailto:' : ''}${u.hostname.toLowerCase()}${decodeURIComponent(u.pathname)}`
+  } catch {
+    return address
+  }
 }
 
-function sourceTexts(bp: Blueprint) {
-  const out: string[] = []
-  const pics: string[] = []
-  const links: string[] = []
+/** A picture's file name, when it is distinctive enough to compare. */
+function fileName(address: string): string | null {
+  if (/^data:/i.test(address)) return null
+  const name = addressKey(address).split('/').pop() ?? ''
+  return /^.{8,}\.(?:png|jpe?g|gif|webp|svg|avif)$/i.test(name)
+    ? name.toLowerCase()
+    : null
+}
+
+function blueprintTexts(bp: Blueprint) {
+  const texts: string[] = []
+  const addresses: string[] = []
   const walk = (items: readonly Item[]) => {
     for (const p of partsOf(items)) {
       if (p.type === 'text') {
-        out.push(textOf(p))
-        for (const r of p.runs) if (r.href) links.push(r.href)
+        texts.push(textOf(p))
+        for (const r of p.runs) if (r.href) addresses.push(r.href)
       }
       if (p.type === 'button') {
-        out.push(p.label)
-        if (p.href) links.push(p.href)
+        texts.push(p.label)
+        if (p.href) addresses.push(p.href)
       }
       if (p.type === 'image') {
-        if (p.alt) out.push(p.alt)
-        if (p.src) pics.push(p.src)
-        if (p.href) links.push(p.href)
+        if (p.alt) texts.push(p.alt)
+        if (p.src) addresses.push(p.src)
+        if (p.href) addresses.push(p.href)
       }
     }
   }
   for (const s of bp.sections) walk(s.items)
-  return { texts: out, pics, links }
+  return { texts, addresses }
 }
 
 const triples = (words: readonly string[]) => {
@@ -93,59 +196,83 @@ export type Leak =
   | { kind: 'link'; value: string }
   | { kind: 'name'; value: string }
   | { kind: 'phrase'; value: string }
+  | { kind: 'number'; value: string }
   | { kind: 'word'; value: string }
 
 /** Everything of the source a drawn brand copy shows; empty when none. */
 export function leaksOf(input: {
-  /** The source as measured (with its pictures and links when known). */
-  source: Blueprint
-  /** The source email's own HTML, when known (its pictures and links). */
-  sourceHtml?: string
-  /** The drawn brand copy. */
+  /** The source email's own HTML (its pictures, links and words). Required. */
+  sourceHtml: string
+  /** The source's blueprint as measured, when known. */
+  source?: Blueprint
+  /** The source's subject and preview line, when known. */
+  sourceSubject?: string
+  sourcePreheader?: string
+  /** The drawn brand copy, with its subject and preview line. */
   html: string
+  subject?: string
+  preheader?: string
   /** The source brand's names (its name, its domain). */
   sourceNames: readonly string[]
   /** Everything the brand's content says (words, facts, catalog, footer). */
   vocabulary: readonly string[]
 }): Leak[] {
+  if (!input.sourceHtml?.trim())
+    throw new LeakCheckError(
+      'The leak check needs the original email’s own HTML, not only its stored blueprint.'
+    )
   const leaks: Leak[] = []
-  const src = sourceTexts(input.source)
-  const theirs = new Set([
-    ...src.pics,
-    ...(input.sourceHtml
-      ? addressesIn(input.sourceHtml).filter((a) =>
-          /^(?:https?:|data:image)/i.test(a)
-        )
-      : [])
-  ])
-  const theirLinks = new Set([
-    ...src.links,
-    ...(input.sourceHtml
-      ? addressesIn(input.sourceHtml).filter((a) =>
-          /^(?:https?|mailto):/i.test(a)
-        )
-      : [])
-  ])
-  for (const a of addressesIn(input.html)) {
-    if (theirs.has(a)) leaks.push({ kind: 'picture', value: a.slice(0, 80) })
-    else if (theirLinks.has(a)) leaks.push({ kind: 'link', value: a })
+  const add = (leak: Leak) => {
+    if (!leaks.some((l) => l.kind === leak.kind && l.value === leak.value))
+      leaks.push(leak)
   }
-  const shown = shownText(input.html)
+  const theirs = readEmail(input.sourceHtml)
+  const fromBp = input.source
+    ? blueprintTexts(input.source)
+    : { texts: [], addresses: [] }
+  const sourceTexts = [
+    ...theirs.texts,
+    ...fromBp.texts,
+    input.sourceSubject ?? '',
+    input.sourcePreheader ?? ''
+  ]
+  const sourceAddresses = [...theirs.addresses, ...fromBp.addresses].filter(
+    (a) => /^(?:https?:|data:image|mailto:|\/\/)/i.test(a)
+  )
+  const keys = new Set(sourceAddresses.map(addressKey))
+  const files = new Set(sourceAddresses.flatMap((a) => fileName(a) ?? []))
+  const ours = readEmail(input.html)
+  for (const a of ours.addresses) {
+    const kind = /\.(?:png|jpe?g|gif|webp|svg|avif)$|^data:image/i.test(
+      addressKey(a)
+    )
+      ? 'picture'
+      : 'link'
+    if (keys.has(addressKey(a))) add({ kind, value: a.slice(0, 80) })
+    else if (fileName(a) && files.has(fileName(a)!))
+      add({ kind: 'picture', value: a.slice(0, 80) })
+  }
+  const shown = [...ours.texts, input.subject ?? '', input.preheader ?? '']
   const shownWords = shown.flatMap(wordsIn)
   const flat = ` ${shownWords.join(' ')} `
   for (const name of input.sourceNames) {
     const w = wordsIn(name).join(' ')
-    if (w && flat.includes(` ${w} `)) leaks.push({ kind: 'name', value: name })
+    if (w && flat.includes(` ${w} `)) add({ kind: 'name', value: name })
   }
-  const ours = triples(input.vocabulary.flatMap(wordsIn))
+  const vocabulary = input.vocabulary
+  const ourTriples = triples(vocabulary.flatMap(wordsIn))
   const said = new Set<string>()
-  for (const t of src.texts) for (const x of triples(wordsIn(t))) said.add(x)
+  for (const t of sourceTexts) for (const x of triples(wordsIn(t))) said.add(x)
   for (const part of shown)
     for (const x of triples(wordsIn(part)))
-      if (said.has(x) && !ours.has(x)) leaks.push({ kind: 'phrase', value: x })
-  const vocab = new Set(input.vocabulary.flatMap(wordsIn))
+      if (said.has(x) && !ourTriples.has(x)) add({ kind: 'phrase', value: x })
+  const theirNumbers = new Set(sourceTexts.flatMap(numbersIn))
+  const ourNumbers = new Set(vocabulary.flatMap(numbersIn))
+  for (const n of new Set(shown.flatMap(numbersIn)))
+    if (theirNumbers.has(n) && !ourNumbers.has(n))
+      add({ kind: 'number', value: n })
+  const vocab = new Set(vocabulary.flatMap(wordsIn))
   for (const w of new Set(shownWords))
-    if (!vocab.has(w) && !/^\d+$/.test(w))
-      leaks.push({ kind: 'word', value: w })
+    if (!vocab.has(w) && !/^\d+$/.test(w)) add({ kind: 'word', value: w })
   return leaks
 }

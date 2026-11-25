@@ -64,6 +64,7 @@ describe('the blueprint browser', () => {
       secret: 'x'.repeat(40),
       browser: {} as Browser,
       log: (l) => lines.push(l),
+      engine: 'v-test',
       measure: async (_b, html, origins) => {
         htmls.push(html)
         expect(origins).toEqual(['https://db.test'])
@@ -73,8 +74,8 @@ describe('the blueprint browser', () => {
     expect(counts).toEqual({ measured: 1, failed: 1, retry: 2 })
     expect(htmls[0]).toContain('https://db.test/sign/a?token=1')
     expect(posts).toEqual([
-      { job: 'j1', lease: 'l1', blueprint: bare },
-      { job: 'j2', lease: 'l2', failure: 'too_tall' },
+      { job: 'j1', lease: 'l1', engine: 'v-test', blueprint: bare },
+      { job: 'j2', lease: 'l2', engine: 'v-test', failure: 'too_tall' },
       { job: 'j3', lease: 'l3', retry: 'timeout' },
       { job: 'j4', lease: 'l4', retry: 'html_unreadable' }
     ])

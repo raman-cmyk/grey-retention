@@ -2,8 +2,8 @@ import type { Browser } from '@playwright/test'
 import type { BlockBrand } from '@/features/blocks/brand'
 import { GMAIL_CLIP_BYTES } from '@/features/blocks/render'
 import { previewFooterTags } from '@/features/blocks/klaviyo-tags'
-import type { Lengthen } from './words'
-import type { Blueprint, Column, Item, Section } from './blueprint'
+import { holdsFacts, type Lengthen } from './words'
+import type { Blueprint, Column, Item, PartRole, Section } from './blueprint'
 import {
   desktopWindow,
   measureHtml,
@@ -372,6 +372,36 @@ export function withSourceLabels(
 }
 
 /**
+ * The writers' words made about `share` as long without changing what
+ * any of them promises: whole sentences are dropped from the end (at
+ * least one stays); a last sentence with no number, money, code or
+ * condition (`holdsFacts`) may instead be cut at a word. A single
+ * sentence that holds a fact is never cut (the section is then built
+ * from a library block, with the reason).
+ */
+export function shorten(text: string, share: number): string {
+  const want = Math.max(1, Math.floor(text.length * share))
+  const sentences = text.split(/(?<=[.!?])\s+/)
+  while (sentences.join(' ').length > want) {
+    const last = sentences.at(-1)!
+    const rest = sentences.slice(0, -1).join(' ')
+    if (!holdsFacts(last)) {
+      const room = want - (rest ? rest.length + 1 : 0)
+      if (room >= Math.min(12, last.length)) {
+        const cut = trimTo(last, room / last.length)
+        if (cut !== last) {
+          sentences[sentences.length - 1] = cut
+          break
+        }
+      }
+    }
+    if (sentences.length === 1) break
+    sentences.pop()
+  }
+  return sentences.join(' ')
+}
+
+/**
  * Words cut to about `share` of their length at a space, never inside a
  * word (one word at least stays, and a cut always drops one); a cut line
  * loses a comma, colon or dash left at its end.
@@ -389,6 +419,21 @@ export function trimTo(text: string, share: number): string {
   return out.replace(/[\s,;:–—-]+$/, '')
 }
 
+/** The writers' words a brand copy may cut at a word to fit its lines. */
+const writtenRoles = new Set<PartRole>([
+  'footer_text',
+  'headline',
+  'subheadline',
+  'eyebrow',
+  'body',
+  'caption',
+  'link',
+  'main_button',
+  'secondary_button'
+])
+const cuttable = (role: PartRole, words: string) =>
+  writtenRoles.has(role) && !holdsFacts(words)
+
 const textOfRuns = (runs: readonly { text: string }[]) =>
   runs.map((r) => r.text).join('')
 
@@ -397,7 +442,9 @@ function refitItems(
   plan: readonly Item[],
   target: readonly Item[],
   drawn: readonly Item[],
-  lengthen: Lengthen | undefined
+  lengthen: Lengthen | undefined,
+  /** The space after the last item, as the original and the redraw have it. */
+  ends: { target: number; drawn: number }
 ): { items: Item[]; changed: boolean; bottom: number } {
   let changed = false
   let carry = 0
@@ -413,7 +460,8 @@ function refitItems(
           c.items,
           t.columns[k]!.items,
           d.columns[k]!.items,
-          lengthen
+          lengthen,
+          { target: t.columns[k]!.bottom, drawn: d.columns[k]!.bottom }
         )
         if (!got.changed) return c
         changed = true
@@ -424,7 +472,12 @@ function refitItems(
     if (item.type === 'text' && t.type === 'text' && d.type === 'text') {
       if (d.lines > t.lines) {
         const words = textOfRuns(item.runs)
-        const cut = trimTo(words, (t.lines / d.lines) * 0.97)
+        // Facts (names, prices, codes, the footer) and words that carry a
+        // number or a condition are never cut: the section is then built
+        // from a library block, with the reason.
+        const cut = writtenRoles.has(t.role)
+          ? shorten(words, (t.lines / d.lines) * 0.97)
+          : words
         if (cut !== words) {
           changed = true
           item = { ...item, runs: [{ ...item.runs[0]!, text: cut }] }
@@ -436,18 +489,31 @@ function refitItems(
         const chars = Math.round(
           (words.length * t.lines) / Math.max(1, d.lines)
         )
-        const longer = lengthen?.(t.role, words, chars) ?? null
+        const longer = writtenRoles.has(t.role)
+          ? (lengthen?.(t.role, words, chars) ?? null)
+          : null
         if (longer && longer !== words) {
           changed = true
           item = { ...item, runs: [{ ...item.runs[0]!, text: longer }] }
-        } else if (t.height > d.height) carry = t.height - d.height
+        } else {
+          // Only what is still missing: a space added by an earlier
+          // drawing is already in the redraw's next gap.
+          const gap = (list: readonly Item[], end: number) =>
+            list[i + 1]?.gapBefore ?? end
+          const missing =
+            t.height -
+            d.height -
+            (gap(drawn, ends.drawn) - gap(target, ends.target))
+          if (missing > 0.5) carry = missing
+        }
       }
     }
     if (
       item.type === 'button' &&
       t.type === 'button' &&
       d.type === 'button' &&
-      d.lines > t.lines
+      d.lines > t.lines &&
+      cuttable(t.role, item.label)
     ) {
       const cut = trimTo(item.label, (t.lines / d.lines) * 0.97)
       if (cut !== item.label) {
@@ -474,7 +540,10 @@ function refit(
     const t = target.sections.find((x) => x.ordinal === s.ordinal)
     const d = drawn.sections.find((x) => x.ordinal === s.ordinal)
     if (!t || !d || !sameShape(t.items, d.items)) return s
-    const got = refitItems(s.items, t.items, d.items, lengthen)
+    const got = refitItems(s.items, t.items, d.items, lengthen, {
+      target: t.bottom,
+      drawn: d.bottom
+    })
     if (!got.changed) return s
     changed = true
     return { ...s, items: got.items, bottom: s.bottom + got.bottom }

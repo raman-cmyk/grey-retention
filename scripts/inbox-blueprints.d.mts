@@ -21,5 +21,7 @@ export function run(options: {
     html: string,
     origins: readonly string[]
   ) => Promise<StoredMeasure>
+  /** The engine version reported (tests; else `ENGINE_VERSION`). */
+  engine?: string
   now?: () => number
 }): Promise<{ measured: number; failed: number; retry: number }>

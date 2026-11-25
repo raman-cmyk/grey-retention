@@ -52,19 +52,85 @@ describe('stored blueprints', () => {
 
 describe('leak check', () => {
   const source = blueprint()
-  const vocabulary = ['Fernhill Tea', 'Brew a better cup', 'Shop', '$14.00']
+  const sourceHtml = `<html><head><title>Rival spring edit</title></head><body><!-- built by Rival studio --><p>Some words for the test</p><img src="https://cdn.rival.example/img/spring-hero.png?w=600" alt="Rival hero" title="Rival flowers"><td background="https://cdn.rival.example/bg/paper-texture.jpg"></td><div style="background:url('https://cdn.rival.example/bg/dots-pattern.png')"></div><p>Now $48.00 or 40% off with RIVAL1234</p></body></html>`
+  const vocabulary = [
+    'Fernhill Tea',
+    'Brew a better cup',
+    'Shop',
+    '$14.00',
+    'Email'
+  ]
   const clean =
-    '<p>Brew a better cup</p><a href="https://fernhill.example/">Shop</a>'
+    '<html><head><title>Email</title></head><body><p>Brew a better cup</p><a href="https://fernhill.example/">Shop</a></body></html>'
+  const kinds = (
+    html: string,
+    extra: Partial<Parameters<typeof leaksOf>[0]> = {}
+  ) =>
+    leaksOf({
+      source,
+      sourceHtml,
+      html,
+      sourceNames: ['Rival Store'],
+      vocabulary,
+      ...extra
+    }).map((l) => l.kind)
   it('passes the brand’s own words', () => {
+    expect(kinds(clean)).toEqual([])
+  })
+  it('refuses to run without the original’s HTML', () => {
+    expect(() =>
+      leaksOf({
+        source,
+        sourceHtml: '',
+        html: clean,
+        sourceNames: [],
+        vocabulary
+      })
+    ).toThrow(/needs the original email’s own HTML/)
+  })
+  it('reads every place an address or a word can hide', () => {
+    // The same picture with another query string, or another host.
     expect(
-      leaksOf({ source, html: clean, sourceNames: ['Rival'], vocabulary })
-    ).toEqual([])
+      kinds(
+        `${clean}<img src="https://cdn.rival.example/img/spring-hero.png?w=300">`
+      )
+    ).toContain('picture')
+    expect(
+      kinds(`${clean}<img src="https://a.klaviyo.example/up/spring-hero.png">`)
+    ).toContain('picture')
+    expect(
+      kinds(
+        `${clean}<table background='https://cdn.rival.example/bg/paper-texture.jpg'>`
+      )
+    ).toContain('picture')
+    expect(
+      kinds(
+        `${clean}<div style="background-image:url(https://cdn.rival.example/bg/dots-pattern.png)">`
+      )
+    ).toContain('picture')
+    expect(
+      kinds(`${clean}<img src=https://cdn.rival.example/img/spring-hero.png>`)
+    ).toContain('picture')
+    expect(
+      kinds(clean.replace('<title>Email', '<title>Rival spring edit'))
+    ).toContain('phrase')
+    expect(kinds(`${clean}<!-- Rival spring edit -->`)).toContain('phrase')
+    expect(
+      kinds(
+        `${clean}<a title="Rival flowers" href="https://fernhill.example/">Shop</a>`
+      )
+    ).toContain('word')
+    expect(kinds(clean, { subject: 'Rival spring edit' })).toContain('phrase')
+    expect(kinds(`${clean}<p>Shop $48.00</p>`)).toContain('number')
+    expect(kinds(`${clean}<p>Shop 40%</p>`)).toContain('number')
+    expect(kinds(`${clean}<p>Shop $14.00</p>`)).toEqual([])
+    // <header> is part of the body, never taken for <head>.
+    expect(kinds(`${clean}<header>Rival</header>`)).toContain('word')
+    expect(kinds(`${clean}<p>Brew&nbsp;a&nbsp;better cup&hellip;</p>`)).toEqual(
+      []
+    )
   })
   it('finds a source picture, link, name, phrase or word', () => {
-    const kinds = (html: string) =>
-      leaksOf({ source, html, sourceNames: ['Rival Store'], vocabulary }).map(
-        (l) => l.kind
-      )
     expect(
       kinds(`${clean}<img src="https://example.com/a.png" alt="">`)
     ).toContain('picture')

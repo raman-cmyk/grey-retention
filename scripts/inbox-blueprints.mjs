@@ -22,9 +22,12 @@ import { launch, loadableOrigins } from '../lib/sandbox/browser.mjs'
 import { prepareHtml } from './inbox-screenshots.mjs'
 
 /** Emails measured per run at most. */
-export const perRun = 40
-/** A run's time (the job's lease is 2 minutes per email). */
-export const runBudgetMs = 8 * 60_000
+export const perRun = 30
+/**
+ * A run's time: with the screenshots before it, the whole job ends well
+ * inside its 30 minutes (each email's lease is 2 minutes).
+ */
+export const runBudgetMs = 5 * 60_000
 
 /** The origins a job's pictures may load from (its own signed links). */
 export function pictureOrigins(job) {
@@ -53,11 +56,16 @@ export async function run({
   browser,
   log = console.log,
   measure,
+  engine,
   now = Date.now
 }) {
-  const measureFor =
-    measure ??
-    (await import('../features/design-engine/stored.ts')).measureForStorage
+  const stored =
+    measure && engine
+      ? null
+      : await import('../features/design-engine/stored.ts')
+  const measureFor = measure ?? stored.measureForStorage
+  // The app tries a job again when it runs another engine version.
+  const version = engine ?? stored.ENGINE_VERSION
   const counts = { measured: 0, failed: 0, retry: 0 }
   const until = now() + runBudgetMs
   for (let n = 0; n < perRun && now() < until; n++) {
@@ -84,14 +92,15 @@ export async function run({
       }
       const measured = await measureFor(browser, html, pictureOrigins(job))
       if (measured.ok) {
-        if (await report({ blueprint: measured.blueprint })) counts.measured++
+        if (await report({ engine: version, blueprint: measured.blueprint }))
+          counts.measured++
         else counts.retry++
       } else if (measured.retry) {
         counts.retry++
         await report({ retry: measured.failure })
       } else {
         counts.failed++
-        await report({ failure: measured.failure })
+        await report({ engine: version, failure: measured.failure })
       }
     }
   }

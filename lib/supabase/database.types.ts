@@ -4336,7 +4336,7 @@ export type Database = {
           {
             foreignKeyName: 'inbox_blueprints_inbox_message_id_fkey'
             columns: ['inbox_message_id']
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: 'inbox_messages'
             referencedColumns: ['id']
           }
