@@ -262,7 +262,7 @@ function decoration(t: Tree, id: number, stop: number) {
   return { underline, strike }
 }
 
-/** A CSS font-family list with only names in it. */
+/** A CSS font-family list as names only, comma separated, no quotes. */
 export function cleanFamily(family: string): string {
   return family
     .split(',')
@@ -275,7 +275,6 @@ export function cleanFamily(family: string): string {
     )
     .filter(Boolean)
     .slice(0, 8)
-    .map((f) => (/\s/.test(f) ? `'${f}'` : f))
     .join(', ')
 }
 

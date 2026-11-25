@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Browser } from '@playwright/test'
+import { launch } from '@/lib/sandbox/browser.mjs'
 import { goldenEmails } from './emails'
 import { runGoldenSet } from './report'
 
@@ -24,9 +25,8 @@ describe.skipIf(!on)('design engine golden set', () => {
   let browser: Browser
   beforeAll(async () => {
     const { chromium } = await import('@playwright/test')
-    browser = await chromium.launch({
-      env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' }
-    })
+    // As the inbox job launches it: no secret, its OS sandbox where possible.
+    browser = await launch(chromium)
   })
   afterAll(async () => {
     await browser?.close()

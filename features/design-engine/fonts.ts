@@ -24,12 +24,13 @@ const serifName =
 const monoName = /mono|courier|consolas|menlo|monaco|\bcode\b/i
 
 export const safeStacks = {
-  serif: ['Georgia', "'Times New Roman'", 'Times', 'serif'],
+  serif: ['Georgia', 'Times New Roman', 'Times', 'serif'],
   sans: ['Helvetica', 'Arial', 'sans-serif'],
-  mono: ["'Courier New'", 'Courier', 'monospace']
+  mono: ['Courier New', 'Courier', 'monospace']
 } as const
 
-const unquote = (name: string) => name.replace(/^'|'$/g, '').toLowerCase()
+/** A name as CSS writes it: quoted when it has a space in it. */
+const cssName = (name: string) => (/\s/.test(name) ? `'${name}'` : name)
 
 /** Which safe stack a family list falls back to. */
 export function fontCategory(family: string): keyof typeof safeStacks {
@@ -41,20 +42,22 @@ export function fontCategory(family: string): keyof typeof safeStacks {
 }
 
 /**
- * The email-safe stack for a cleaned family list (names only, as the
- * blueprint keeps them): the list itself, then the closest safe fonts it
- * does not name yet. An empty list gets the safe sans stack.
+ * The email-safe stack for a cleaned family list (names only, comma
+ * separated, as the blueprint keeps them): the list itself, then the
+ * closest safe fonts it does not name yet, names with a space quoted. An
+ * empty list gets the safe sans stack.
  */
 export function safeFontStack(family: string): string {
   const names = family
     .split(',')
     .map((f) => f.trim())
-    .filter(Boolean)
-  if (!names.length) return safeStacks.sans.join(', ')
-  if (generic.has(unquote(names.at(-1)!))) return names.join(', ')
-  const have = new Set(names.map(unquote))
+    .filter((f) => /^[A-Za-z0-9 -]+$/.test(f))
+  if (!names.length) return safeStacks.sans.map(cssName).join(', ')
+  if (generic.has(names.at(-1)!.toLowerCase()))
+    return names.map(cssName).join(', ')
+  const have = new Set(names.map((n) => n.toLowerCase()))
   const extra = safeStacks[fontCategory(family)].filter(
-    (f) => !have.has(unquote(f))
+    (f) => !have.has(f.toLowerCase())
   )
-  return [...names, ...extra].join(', ')
+  return [...names, ...extra].map(cssName).join(', ')
 }

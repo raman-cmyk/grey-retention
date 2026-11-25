@@ -59,11 +59,15 @@ const clip = (text: string, max: number) => {
   return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), max / 2)).trim()}…`
 }
 
-/** The colours and font a library block is drawn in, read from the email itself. */
-export function brandFromBlueprint(
-  bp: Blueprint,
-  name = 'Your brand'
-): BlockBrand {
+/**
+ * The colours and font a library block is drawn in, read from the email
+ * itself, for previews only: the name is left empty (a preview footer then
+ * says "Your brand") and the store link is the email's own first https
+ * link, or none. An email for Klaviyo is drawn with the real brand
+ * (`copyDesign` refuses Klaviyo mode without one).
+ */
+export function brandFromBlueprint(bp: Blueprint): BlockBrand {
+  const name = ''
   const parts = bp.sections.flatMap((s) => partsOf(s.items))
   const texts = parts.filter((p): p is TextPart => p.type === 'text')
   const count = <T>(list: readonly T[]) => {
@@ -88,8 +92,7 @@ export function brandFromBlueprint(
             ? [p.href]
             : []
       )
-      .find((h): h is string => !!h && /^https:\/\//i.test(h)) ??
-    'https://example.com'
+      .find((h): h is string => !!h && /^https:\/\//i.test(h)) ?? null
   const logo = parts.find(
     (p): p is ImagePart =>
       p.type === 'image' && p.role === 'logo' && usableImage(p)
@@ -100,7 +103,7 @@ export function brandFromBlueprint(
   const dark = [...fills].sort((a, b) => luma(a) - luma(b))[0]
   return {
     name,
-    site: new URL(site).origin,
+    site: site ? new URL(site).origin : '',
     ...(logo?.src && /^https:/i.test(logo.src) ? { logo: logo.src } : {}),
     font: /^[A-Za-z0-9 -]{1,60}$/.test(font) ? font : '',
     ink,
@@ -179,7 +182,9 @@ function candidates(
   brand: BlockBrand
 ): { type: BlockType; content: unknown }[] {
   const w = wordsOf(section, brand.site)
-  const cta = w.button?.label ? clip(w.button.label, 40) : 'Shop now'
+  // Never invented button words: a block that needs a button needs the
+  // section's own (an empty one fails the block's schema, so it is skipped).
+  const cta = w.button?.label ? clip(w.button.label, 40) : ''
   const paras = w.paras.slice(0, 4).map((p) => clip(p, 600))
   const text = {
     type: 'text' as const,

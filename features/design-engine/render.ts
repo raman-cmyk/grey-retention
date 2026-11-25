@@ -16,6 +16,7 @@ import type {
   TextPart,
   TextRun
 } from './blueprint'
+import { blueprintSchema } from './blueprint'
 import { safeFontStack } from './fonts'
 
 /**
@@ -143,7 +144,12 @@ function pictureSrc(src: string, mode: DrawMode) {
       throw new DrawError(
         'Upload every picture to Klaviyo before it goes into an email.'
       )
-    return src
+    // The schema took only PNG, JPEG, GIF or WebP inline pictures.
+    if (
+      !/^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/]+={0,2}$/i.test(src)
+    )
+      throw new DrawError('Only PNG, JPEG, GIF or WebP pictures can be drawn.')
+    return escapeHtml(src)
   }
   return safeUrl(src)
 }
@@ -356,10 +362,25 @@ function markedRows(rows: string, ordinal: number) {
 
 /** The blueprint as a whole email document. */
 export function drawBlueprint(
-  bp: Blueprint,
+  input: Blueprint,
   options: DrawOptions = {}
 ): string {
-  const ctx: Ctx = { mode: options.mode ?? 'preview', headlines: 0 }
+  // Whatever a blueprint went through (stored, corrected), it is checked
+  // again before a byte of it reaches HTML.
+  const parsed = blueprintSchema.safeParse(input)
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    throw new DrawError(
+      `The blueprint is not valid: ${issue?.path.join('.') || 'blueprint'}: ${issue?.message ?? 'not valid'}`
+    )
+  }
+  const bp = parsed.data
+  const mode = options.mode ?? 'preview'
+  if (mode === 'klaviyo' && options.replaced?.size && !options.brand)
+    throw new DrawError(
+      'A section built from a library block needs the brand before it goes to Klaviyo.'
+    )
+  const ctx: Ctx = { mode, headlines: 0 }
   const rows: string[] = []
   for (const s of bp.sections) {
     const replaced = options.replaced?.get(s.ordinal)

@@ -76,6 +76,34 @@ describe('the likeness check', () => {
     expect(picture.some((p) => /shape changed by 4 %/.test(p))).toBe(true)
   })
 
+  it('holds dividers to the same 1 px as other sizes', () => {
+    const withDivider = (width: number) =>
+      blueprint({
+        sections: [
+          section({
+            items: [
+              {
+                type: 'divider',
+                gapBefore: 10,
+                x: 40,
+                width,
+                height: 1,
+                role: 'divider',
+                color: '#dddddd'
+              }
+            ]
+          })
+        ]
+      })
+    expect(compareBlueprints(withDivider(520), withDivider(521)).pass).toBe(
+      true
+    )
+    expect(
+      compareBlueprints(withDivider(520), withDivider(522)).sections[0]!
+        .problems[0]
+    ).toMatch(/a divider is 522 × 1 px where the original is 520 × 1 px/)
+  })
+
   it('fails a section whose parts or kind differ, or that is missing', () => {
     const bp = clone(blueprint())
     bp.sections[0]!.items = [text(), image(), button()]

@@ -164,7 +164,7 @@ function writeReport(out: string, rows: readonly GoldenRow[]) {
   const lines = [
     `# Design engine golden set: ${passed} of ${rows.length} pass`,
     '',
-    'Each test email is measured in the safe browser, drawn back from its blueprint, measured again and compared (same sections in the same order, columns within 2 px, sections within 5 % of their height, text, button and picture sizes within 1 px, picture shapes within 2 %, grey-box layouts at least 90 % alike, and no problem at 375 px).',
+    'Each test email is measured in the safe browser, drawn back from its blueprint, measured again and compared. Likeness: the same sections in the same number, kind and order; columns within 2 px of their width and place; each section within 5 % of its height (at least 2 px for a very short one); text sizes, buttons, pictures and dividers within 1 px; picture shapes within 2 %; grey-box layouts at least 90 % alike; and nothing past the screen or on top of something else at 375 px. Content unchanged: every part says and shows exactly what the original does (words, line breaks, bold, italic, colours, sizes, underlines, links, picture addresses and alt texts, button words, links and colours, fills, borders, corners and fonts).',
     '',
     '| Email | Shape | Result | Grey boxes | Size | Drawings | Why |',
     '| --- | --- | --- | --- | --- | --- | --- |',

@@ -2,8 +2,10 @@ name: Design engine
 
 # DES-ENGINE-001: the email design engine's golden set. Each of the 40 test
 # emails (features/design-engine/golden) is measured in Chromium with
-# JavaScript off and only inline pictures allowed, drawn back from its
-# blueprint, measured again and compared; at least 36 must pass. The
+# JavaScript off and only inline pictures allowed (Chromium's own OS sandbox
+# where the runner allows one), drawn back from its
+# blueprint, measured again and compared for likeness and unchanged content;
+# at least 36 must pass. The sandbox and limit tests use loopback servers. The
 # engine's other browser tests run too. No app, no database, no secret and
 # no outside request: the emails and their pictures are made in code.
 #
@@ -17,6 +19,7 @@ on:
       - 'features/design-engine/**'
       - 'features/blocks/**'
       - 'features/inbox/sections.ts'
+      - 'lib/sandbox/**'
       - 'scripts/inbox-screenshots.mjs'
       - 'scripts/section-render.mjs'
       - 'package.json'
@@ -26,6 +29,9 @@ on:
     branches: [main]
     paths:
       - 'features/design-engine/**'
+      - 'features/blocks/**'
+      - 'features/inbox/sections.ts'
+      - 'lib/sandbox/**'
   workflow_dispatch:
 
 permissions:

@@ -157,7 +157,7 @@ function compareItems(
     if (x.type === 'divider' && y.type === 'divider') {
       if (
         Math.abs(x.height - y.height) > limits.sizePx ||
-        Math.abs(x.width - y.width) > limits.columnPx
+        Math.abs(x.width - y.width) > limits.sizePx
       )
         problems.push(
           `${where}: a divider is ${Math.round(y.width)} × ${Math.round(y.height)} px where the original is ${Math.round(x.width)} × ${Math.round(x.height)} px.`

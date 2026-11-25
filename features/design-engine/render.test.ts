@@ -35,6 +35,38 @@ describe('drawing a blueprint', () => {
     expect(html).toContain('class="de-p"')
   })
 
+  it('checks the blueprint first: an unsafe colour, font name or picture never reaches HTML', () => {
+    const bad = [
+      blueprint({ page: 'red;background:url(x)' }),
+      blueprint({
+        sections: [
+          section({
+            items: [
+              text({ font: { ...text().font, family: "Arial'; } body {" } })
+            ]
+          })
+        ]
+      }),
+      blueprint({
+        sections: [
+          section({
+            items: [image({ src: 'data:text/html;base64,PHNjcmlwdD4=' })]
+          })
+        ]
+      })
+    ]
+    for (const bp of bad) expect(() => drawBlueprint(bp)).toThrow(DrawError)
+  })
+
+  it('needs the brand to draw a library block for Klaviyo', () => {
+    expect(() =>
+      drawBlueprint(blueprint(), {
+        mode: 'klaviyo',
+        replaced: new Map([[2, '<tr><td>Block</td></tr>']])
+      })
+    ).toThrow(/needs the brand/)
+  })
+
   it('escapes words, so they never become HTML or a Klaviyo tag', () => {
     const out = drawBlueprint(
       blueprint({
@@ -91,9 +123,7 @@ describe('drawing a blueprint', () => {
       blueprint({
         sections: [
           section({
-            items: [
-              text({ font: { ...text().font, family: "'Sample Serif'" } })
-            ]
+            items: [text({ font: { ...text().font, family: 'Sample Serif' } })]
           })
         ]
       })

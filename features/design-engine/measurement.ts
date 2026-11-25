@@ -112,6 +112,13 @@ const keptAttrs = new Set([
   'data-de-src'
 ])
 
+/** Attributes that hold a picture, inline pictures included. */
+const pictureAttrs = new Set(['src', 'data-de-src'])
+/** The longest inline picture kept (as `pictureSchema`). */
+export const maxPictureChars = 200_000
+/** The longest other attribute kept (a link over 2,000 is dropped later). */
+export const maxAttrChars = 4_000
+
 /** The parts of `DOMSnapshot.captureSnapshot`'s answer this reads. */
 export type DomSnapshot = {
   strings: string[]
@@ -293,7 +300,15 @@ export function fromSnapshot(snap: DomSnapshot, viewport: number): Measurement {
     const raw = doc.nodes.attributes?.[id] ?? []
     for (let i = 0; i + 1 < raw.length; i += 2) {
       const name = str(raw[i]).toLowerCase()
-      if (keptAttrs.has(name)) attrs[name] = str(raw[i + 1]).slice(0, 3_000_000)
+      if (!keptAttrs.has(name)) continue
+      const value = str(raw[i + 1])
+      // A value longer than a blueprint keeps is dropped, never cut (a cut
+      // address or picture would be a different one).
+      if (
+        value.length <=
+        (pictureAttrs.has(name) ? maxPictureChars : maxAttrChars)
+      )
+        attrs[name] = value
     }
     const k = layoutOf.get(id)
     nodes.push({

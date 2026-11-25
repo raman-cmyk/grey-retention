@@ -570,6 +570,19 @@ describe('the browser snapshot', () => {
     })
     expect(m.contentHeight).toBe(100)
     expect(() => fromSnapshot({ strings: [], documents: [] }, 700)).toThrow()
+    // An attribute longer than a blueprint keeps is dropped, never cut.
+    const long = structuredClone(snap)
+    long.strings[9] = 'x'.repeat(5_000)
+    long.strings.push('href', `https://example.com/${'y'.repeat(5_000)}`)
+    long.documents[0]!.nodes.attributes![3] = [
+      6,
+      7,
+      strings.length,
+      strings.length + 1
+    ]
+    expect(fromSnapshot(long, 700).nodes[3]!.attrs).toEqual({
+      'data-gr-section': '1'
+    })
     expect(style().display).toBe('block')
   })
 })

@@ -114,7 +114,7 @@ const inlinePicture =
  */
 export const pictureSchema = z
   .string()
-  .max(3_000_000)
+  .max(200_000)
   .refine(
     (v) => {
       if (inlinePicture.test(v)) return true
@@ -129,11 +129,11 @@ export const pictureSchema = z
   )
 
 export const fontSchema = z.strictObject({
-  /** A CSS font-family list, names only (letters, digits, spaces, hyphens). */
+  /** Font names, comma separated (letters, digits, spaces, hyphens): no quotes, semicolons or brackets. */
   family: z
     .string()
     .max(300)
-    .regex(/^[A-Za-z0-9 ,'-]*$/, 'Font names only'),
+    .regex(/^[A-Za-z0-9 ,-]*$/, 'Font names only, no quotes or signs'),
   size: z.number().finite().min(1).max(200),
   weight: z.int().min(100).max(900),
   /** CSS px between lines. */

@@ -14,7 +14,7 @@ describe('the closest library block', () => {
 
   it('reads the block brand from the email itself', () => {
     expect(brand).toMatchObject({
-      name: 'Your brand',
+      name: '',
       site: 'https://example.com',
       font: 'Arial',
       ink: '#333333',
@@ -22,6 +22,27 @@ describe('the closest library block', () => {
       accent: '#222222',
       radius: '4px'
     })
+  })
+
+  it('links a block to no made-up store: only the email’s own first https link, or none', () => {
+    const noLinks = blueprint({
+      sections: [
+        section({
+          items: [image({ href: null }), text(), button({ href: null })]
+        })
+      ]
+    })
+    expect(brandFromBlueprint(noLinks)).toMatchObject({ name: '', site: '' })
+  })
+
+  it('never invents button words: a block that needs a button needs the section’s own', () => {
+    const noButton = section({
+      kind: 'offer',
+      items: [text({ role: 'headline', runs: [{ text: 'Half off' }] })]
+    })
+    const f = fallbackFor(noButton, 'still differed', brand)
+    expect(f.block).toBe('text')
+    expect(f.rows).not.toContain('Shop now')
   })
 
   it('builds a section with a countdown timer from an offer block, never reusing the timer', () => {
