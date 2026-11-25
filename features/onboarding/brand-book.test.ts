@@ -193,6 +193,10 @@ describe('brandBookFrom (ONB-106b)', () => {
       expect(Object.keys(book)).toContain(part)
       expect(header).toContain(`"${part}"`)
     }
+    // UI-BRAND-2: the parts the owner corrected come before the reading.
+    expect(header).toMatch(
+      /"corrected" names parts the owner corrected: his words there outrank "strategy"/
+    )
   })
 
   it('never takes a dated ad offer, or a sentence with a number or a claim', () => {

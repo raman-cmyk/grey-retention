@@ -4,7 +4,7 @@ import { BrandScreen } from '@/features/brand-profile/screen'
 
 export const metadata: Metadata = { title: 'Brand' }
 
-/** Brand (UI-BRAND): replaces the old /brand page. */
-export default async function SettingsBrandPage() {
+/** Brand (UI-BRAND; a main page at /brand since UI-BRAND-2). */
+export default async function BrandPage() {
   return <BrandScreen view={await brandPage()} />
 }

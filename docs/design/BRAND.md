@@ -275,7 +275,7 @@ The top bar is the only navigation: the mark and page title on the left, a white
 
 - The menu is a white pill with 6 px padding. Each item is 44 px tall with 22 px side padding, 16 px text.
 - The current page is a `lime` pill with `forest` text, weight 600. Other items are `stone`, weight 500.
-- Five items at most: Home, Plan, Inspiration, Audiences, Results. Settings is the round button on the right. Ask GROS is the wide button beside it.
+- Six items at most: Home, Plan, Inspiration, Audiences, Results, Brand (Brand added by the owner's decision of 25 November 2026; the Brand book and Brand assets are pages under it). Settings is the round button on the right. Ask GROS is the wide button beside it.
 - The left side shows the mark (44 px) and the page title in `page-title`. On Home the title greets the store.
 - No sidebar on app pages. Only Ask GROS uses a side list, for past chats.
 - On a narrow screen the three parts wrap onto their own lines. Nothing is hidden behind a menu icon.

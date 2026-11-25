@@ -24,16 +24,21 @@ const context = {
 }
 type Result = { data: unknown; error: unknown }
 
-/** A session whose reads answer per table, whatever the filters. */
+/**
+ * A session whose reads answer per table, whatever the filters (a table
+ * not named answers with no rows).
+ */
 function db(tables: Record<string, Result>) {
   const chain = (result: Result) => {
     const link: Record<string, unknown> = {}
-    for (const step of ['select', 'eq', 'order']) link[step] = () => link
+    for (const step of ['select', 'eq', 'is', 'order']) link[step] = () => link
     link.limit = async () => result
     link.maybeSingle = async () => result
     return link
   }
-  return { from: (table: string) => chain(tables[table]!) }
+  return {
+    from: (table: string) => chain(tables[table] ?? { data: [], error: null })
+  }
 }
 
 const book = {
@@ -88,6 +93,65 @@ describe('brandPage', () => {
       writtenAt: '2026-11-24T10:00:00Z'
     })
     expect(view.history).toEqual([])
+    expect(view.rewrite).toBeNull()
+  })
+
+  it('says when the Brand book is being rewritten, or was not (UI-BRAND-2)', async () => {
+    const soon = new Date(Date.now() + 30_000).toISOString()
+    for (const [job, state] of [
+      [
+        {
+          status: 'queued',
+          updated_at: new Date().toISOString(),
+          lease_until: null
+        },
+        'waiting'
+      ],
+      [
+        {
+          status: 'running',
+          updated_at: new Date().toISOString(),
+          lease_until: soon
+        },
+        'writing'
+      ],
+      [
+        {
+          status: 'retry_wait',
+          updated_at: new Date().toISOString(),
+          lease_until: null
+        },
+        'failed'
+      ],
+      [
+        {
+          status: 'succeeded',
+          updated_at: new Date().toISOString(),
+          lease_until: null
+        },
+        null
+      ]
+    ] as const) {
+      supabase.createClient.mockResolvedValue(
+        db({
+          brand_events: { data: [], error: null },
+          brand_books: { data: [book], error: null },
+          job_runs: { data: [job], error: null }
+        })
+      )
+      const view = await brandPage()
+      expect(view.state === 'ready' && view.rewrite, job.status).toBe(state)
+    }
+    // A rewrite that cannot be read never hides the page.
+    supabase.createClient.mockResolvedValue(
+      db({
+        brand_events: { data: [], error: null },
+        brand_books: { data: [book], error: null },
+        job_runs: { data: null, error: { code: '42501' } }
+      })
+    )
+    const view = await brandPage()
+    expect(view.state === 'ready' && view.rewrite).toBeNull()
   })
 
   it('says no book is written yet only when there is none', async () => {
@@ -138,12 +202,73 @@ describe('brandBookPage', () => {
     )
     const view = await brandBookPage(context as never)
     if (view.state !== 'ready') throw new Error('not ready')
-    expect(view.book?.facts).toEqual(['Returns within 30 days'])
+    expect(view.book?.facts).toEqual([
+      { text: 'Returns within 30 days', own: false }
+    ])
     expect(view.brand).toEqual({ revision: 7, approvedRevision: 7 })
+    expect(view.rewrite).toBeNull()
     supabase.createClient.mockResolvedValue(
       db({
         brand_profiles: { data: null, error: null },
         brand_books: { data: null, error: { code: '42501' } }
+      })
+    )
+    expect((await brandBookPage(context as never)).state).toBe('error')
+  })
+
+  it('reads the owner’s corrections and shows every part to the owner (UI-BRAND-2)', async () => {
+    const tables = {
+      brand_profiles: {
+        data: { revision: 7, approved_revision: 7 },
+        error: null
+      },
+      brand_books: { data: [book], error: null },
+      brand_book_corrections: {
+        data: [
+          {
+            id: 'c1',
+            section: 'facts.returnDays',
+            original: null,
+            action: 'replace',
+            value: '30',
+            created_at: '2026-11-24T09:00:00Z'
+          }
+        ],
+        error: null
+      },
+      job_runs: {
+        data: [
+          {
+            status: 'running',
+            updated_at: new Date().toISOString(),
+            lease_until: new Date(Date.now() + 30_000).toISOString()
+          }
+        ],
+        error: null
+      }
+    }
+    supabase.createClient.mockResolvedValue(db(tables))
+    const view = await brandBookPage(context as never)
+    if (view.state !== 'ready') throw new Error('not ready')
+    expect(view.book?.facts).toEqual([
+      { text: 'Returns within 30 days', own: true }
+    ])
+    expect(view.book?.corrections.map((c) => c.text)).toEqual([
+      'Returns within 30 days'
+    ])
+    expect(view.book?.seen).toHaveLength(6)
+    expect(view.rewrite).toBe('writing')
+    // Staff see only the parts with lines.
+    const staff = await brandBookPage({
+      ...context,
+      tenantRole: 'staff'
+    } as never)
+    expect(staff.state === 'ready' && staff.book?.seen).toEqual([])
+    // Corrections that cannot be read: the page says it could not open.
+    supabase.createClient.mockResolvedValue(
+      db({
+        ...tables,
+        brand_book_corrections: { data: null, error: { code: '42501' } }
       })
     )
     expect((await brandBookPage(context as never)).state).toBe('error')

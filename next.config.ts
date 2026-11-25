@@ -59,13 +59,17 @@ const oldClientPages: [source: string, destination: string][] = [
   ['/get-started', '/setup'],
   // Not part of v2: the closest GROS screen.
   ['/optimizer', '/settings'],
-  // UI-BRAND: Brand and Brand assets are GROS pages under Settings. The
-  // old Copy & Voice address opens the Tone of voice card; the old Store
-  // tab (Shopify, hidden in v2) opens Brand as it did.
-  ['/brand', '/settings/brand'],
-  ['/brand/voice', '/settings/brand#tone'],
-  ['/store', '/settings/brand'],
-  ['/assets', '/settings/assets']
+  // UI-BRAND: Brand and Brand assets are GROS pages; since UI-BRAND-2 Brand
+  // is a main page at /brand (owner decision of 25 Nov), with the Brand
+  // book and Brand assets under it. The old Copy & Voice address opens the
+  // Tone of voice card; the old Store tab (Shopify, hidden in v2) opens
+  // Brand as it did; their short stay under Settings opens them too.
+  ['/brand/voice', '/brand#tone'],
+  ['/store', '/brand'],
+  ['/assets', '/brand/assets'],
+  ['/settings/brand', '/brand'],
+  ['/settings/brand/book', '/brand/book'],
+  ['/settings/assets', '/brand/assets']
 ]
 
 /** UI-KLV: the old Klaviyo detail pages and their GROS pages under Results. */

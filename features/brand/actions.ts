@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
 import type { FormResult } from '@/components/ui/action-form'
+import { rewriteBrandBookSoon } from '@/features/onboarding/brand-book-writes'
 const schema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('save'),
@@ -90,14 +91,17 @@ export async function brandAction(
           ? 'Brand context changed. Refresh before approving.'
           : 'Could not save. Check permissions and field values.'
     }
+  // UI-BRAND-2: approving queued the Brand book's rewrite (in the same
+  // transaction); it runs right after this reply.
+  if (v.kind === 'approve') rewriteBrandBookSoon(context.tenantId)
   revalidatePath('/setup')
-  revalidatePath('/settings/brand')
-  revalidatePath('/settings/brand/book')
+  revalidatePath('/brand')
+  revalidatePath('/brand/book')
   revalidatePath('/plan')
   return {
     message:
       v.kind === 'approve'
-        ? 'Brand version approved.'
+        ? 'Brand version approved. Rewriting the Brand book.'
         : 'Saved. Refresh retains your changes.'
   }
 }

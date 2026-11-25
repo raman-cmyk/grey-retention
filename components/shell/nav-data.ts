@@ -93,7 +93,7 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
     profileHref: '/settings/account',
     primary: [
       { label: 'Home', href: '/home', icon: 'dashboard' },
-      { label: 'Brand', href: '/settings/brand', icon: 'brand' },
+      { label: 'Brand', href: '/brand', icon: 'brand' },
       { label: 'Plan next 15 days', href: '/plan', icon: 'plan' },
       { label: `Ask ${assistantName}`, href: '/gros', icon: 'gros' },
       {
@@ -131,7 +131,7 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         icon: 'more',
         items: [
           { label: 'Get started', href: '/setup', icon: 'start' },
-          { label: 'Brand assets', href: '/settings/assets', icon: 'assets' },
+          { label: 'Brand assets', href: '/brand/assets', icon: 'assets' },
           { label: 'Results', href: '/results', icon: 'reports' }
         ]
       }

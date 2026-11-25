@@ -17,7 +17,8 @@ const noStore = { 'cache-control': 'no-store' }
  * GET reads them (each within 30 seconds, every model and Klaviyo call
  * capped) and answers with counts only. ONB-106c: with a live plan model,
  * a Brand book waiting for its strategist counts as one more waiting, so
- * the job still calls the run after a workspace's last read.
+ * the job still calls the run after a workspace's last read; UI-BRAND-2:
+ * so does each Brand book rewrite waiting (after approve or a correction).
  */
 export async function GET(request: NextRequest) {
   if (
@@ -43,6 +44,11 @@ export async function GET(request: NextRequest) {
         { error: 'Waiting reads unavailable' },
         { status: 500, headers: noStore }
       )
+    // UI-BRAND-2: a Brand book rewrite the owner's click left waiting.
+    const rewrites = await db.rpc('brand_book_writes_waiting').then(
+      (r) => (r.error ? 0 : (r.data ?? 0)),
+      () => 0
+    )
     const strategies = strategistReady()
       ? await booksNeedingStrategy(db, { limit: 1 }).then(
           (t) => t.length,
@@ -50,7 +56,7 @@ export async function GET(request: NextRequest) {
         )
       : 0
     return NextResponse.json(
-      { waiting: (waiting.data ?? 0) + strategies },
+      { waiting: (waiting.data ?? 0) + rewrites + strategies },
       { headers: noStore }
     )
   }

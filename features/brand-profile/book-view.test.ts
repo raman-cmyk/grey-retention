@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { BrandBookContent } from '@/features/onboarding/brand-book'
+import type { Correction } from '@/features/onboarding/brand-book-corrections'
 import { brandBookView, factWords } from './book-view'
+
+const theirs = (text: string) => ({ text, own: false })
 
 /** A Cedar Lane book as the readers and the strategist write it. */
 const cedarBook: BrandBookContent = {
@@ -84,10 +87,17 @@ describe('brandBookView', () => {
     expect(view.byStrategist).toBe(true)
     expect(view.brandName).toBe('Cedar Lane')
     expect(view.facts).toEqual([
-      'Free shipping over 75 USD',
-      'Delivery in 3 to 5 days',
-      'Returns within 30 days'
+      theirs('Free shipping over 75 USD'),
+      theirs('Delivery in 3 to 5 days'),
+      theirs('Returns within 30 days')
     ])
+    // The words the owner edits in Correct facts.
+    expect(view.factTexts).toEqual({
+      freeShipping: 'over 75',
+      returnDays: '30',
+      guaranteeDays: '',
+      deliveryDays: '3 to 5'
+    })
     // The owner's approved words, without empty ones.
     expect(view.owner).toEqual([
       { label: 'Positioning', text: 'Quiet layers for long weekends.' },
@@ -95,17 +105,28 @@ describe('brandBookView', () => {
     ])
     expect(view.unclear).toEqual(['Money-back guarantee'])
     expect(view.seen).toEqual([
-      { label: 'What you sell', lines: ['Outdoor layers made to last'] },
+      {
+        label: 'What you sell',
+        section: 'offering',
+        lines: [theirs('Outdoor layers made to last')]
+      },
       {
         label: 'Who your customers are',
-        lines: ['People who walk every weekend']
+        section: 'customers.who',
+        lines: [theirs('People who walk every weekend')]
       },
       {
         label: 'What customers worry about',
-        lines: ['Whether the size runs small']
+        section: 'customers.worries',
+        lines: [theirs('Whether the size runs small')]
       },
-      { label: 'How you sound', lines: ['Short, warm sentences'] }
+      {
+        label: 'How you sound',
+        section: 'voice',
+        lines: [theirs('Short, warm sentences')]
+      }
     ])
+    expect(view.corrections).toEqual([])
     expect(view.sending).toBe(
       'About 2 emails a week, usually at 10:00, to Newsletter'
     )
@@ -127,7 +148,7 @@ describe('brandBookView', () => {
       style: 'Short sentences, one idea each.'
     })
     // The reading never becomes a fact or the owner's words.
-    expect(view.facts.join(' ')).not.toMatch(/weekend/i)
+    expect(view.facts.map((f) => f.text).join(' ')).not.toMatch(/weekend/i)
   })
 
   it('says the owner has not approved, and the strategist has not read', () => {
@@ -146,7 +167,7 @@ describe('brandBookView', () => {
         'brand-book@1'
       )
     )!
-    expect(view.facts).toEqual(['Free shipping on every order'])
+    expect(view.facts).toEqual([theirs('Free shipping on every order')])
     expect(view.owner).toBeNull()
     expect(view.seen).toEqual([])
     expect(view.sending).toBeNull()
@@ -157,6 +178,136 @@ describe('brandBookView', () => {
       newArrivals: []
     })
     expect(brandBookView(row('not a book'))!.facts).toEqual([])
+  })
+})
+
+/** UI-BRAND-2: the owner's corrections in the book. */
+describe('brandBookView with the owner’s corrections', () => {
+  const correction = (
+    c: Partial<Correction> & Pick<Correction, 'section' | 'action'>
+  ): Correction => ({
+    id: `c-${c.section}-${c.action}`,
+    original: null,
+    value: null,
+    createdAt: '2026-11-24T09:00:00Z',
+    ...c
+  })
+  // The book as written after his corrections (ONB-058b applied them).
+  const corrected: BrandBookContent = {
+    ...cedarBook,
+    facts: { ...cedarBook.facts, returnDays: 14 },
+    observed: {
+      ...cedarBook.observed,
+      voice: ['Calm and plain'],
+      offering: ['Outdoor layers made to last', 'Linen shirts made in Porto']
+    }
+  }
+  const corrections = [
+    correction({
+      section: 'voice',
+      action: 'replace',
+      original: 'Short, warm sentences',
+      value: 'Calm   and PLAIN'
+    }),
+    correction({
+      section: 'offering',
+      action: 'add',
+      value: 'Linen shirts made in Porto'
+    }),
+    correction({
+      section: 'marketing',
+      action: 'remove',
+      original: 'Runs a summer sale'
+    }),
+    correction({ section: 'facts.returnDays', action: 'replace', value: '14' }),
+    correction({
+      section: 'facts.freeShipping',
+      action: 'replace',
+      value: 'always',
+      // Made after this version: the book does not hold it yet.
+      createdAt: '2026-11-24T11:00:00Z'
+    }),
+    correction({ section: 'facts.guaranteeDays', action: 'remove' })
+  ]
+
+  it('marks the lines and facts in his own words, case and spacing aside', () => {
+    const view = brandBookView(row(corrected), corrections)!
+    expect(view.seen.find((g) => g.section === 'voice')!.lines).toEqual([
+      { text: 'Calm and plain', own: true }
+    ])
+    expect(view.seen.find((g) => g.section === 'offering')!.lines).toEqual([
+      theirs('Outdoor layers made to last'),
+      { text: 'Linen shirts made in Porto', own: true }
+    ])
+    expect(view.facts).toEqual([
+      // His free shipping is not in this version yet: not marked.
+      theirs('Free shipping over 75 USD'),
+      theirs('Delivery in 3 to 5 days'),
+      { text: 'Returns within 14 days', own: true }
+    ])
+  })
+
+  it('lists his corrections in words, saying which this version does not hold yet', () => {
+    const view = brandBookView(row(corrected), corrections)!
+    expect(view.corrections).toEqual([
+      {
+        id: 'c-voice-replace',
+        label: 'How you sound',
+        text: 'Changed “Short, warm sentences” to “Calm   and PLAIN”',
+        pending: false
+      },
+      {
+        id: 'c-offering-add',
+        label: 'What you sell',
+        text: 'Added “Linen shirts made in Porto”',
+        pending: false
+      },
+      {
+        id: 'c-marketing-remove',
+        label: 'What works in your marketing',
+        text: 'Removed “Runs a summer sale”',
+        pending: false
+      },
+      {
+        id: 'c-facts.returnDays-replace',
+        label: 'Returns',
+        text: 'Returns within 14 days',
+        pending: false
+      },
+      {
+        id: 'c-facts.freeShipping-replace',
+        label: 'Free shipping',
+        text: 'Free shipping on every order',
+        pending: true
+      },
+      {
+        id: 'c-facts.guaranteeDays-remove',
+        label: 'Money-back guarantee',
+        text: 'Not known, so no email claims it',
+        pending: false
+      }
+    ])
+  })
+
+  it('names the sections he corrected in words', () => {
+    const view = brandBookView(
+      row({ ...corrected, corrected: ['facts.returnDays', 'voice'] })
+    )!
+    expect(view.corrected).toEqual(['Returns', 'How you sound'])
+  })
+
+  it('shows every part to the owner, empty ones too, so he can add a line', () => {
+    const view = brandBookView(row(cedarBook), [], { allParts: true })!
+    expect(view.seen.map((g) => [g.section, g.lines.length])).toEqual([
+      ['offering', 1],
+      ['customers.who', 1],
+      ['customers.love', 0],
+      ['customers.worries', 1],
+      ['voice', 1],
+      ['marketing', 0]
+    ])
+    // Staff see only the parts with lines.
+    expect(brandBookView(row(cedarBook))!.seen).toHaveLength(4)
   })
 })
 

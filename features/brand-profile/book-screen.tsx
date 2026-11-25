@@ -1,24 +1,40 @@
 import type { ReactNode } from 'react'
+import { ActionButton } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { Card } from '@/components/gros/card'
 import { AppPage, CardRow, defaultAssistant } from '@/components/gros/nav'
+import { Progress } from '@/components/gros/progress'
 import { EmptyState, ErrorState } from '@/components/gros/states'
+import { Status } from '@/components/gros/status'
+import { KeepFresh } from '@/features/strategy/refresh'
 import { formatBrandDate } from '@/lib/brand-time'
+import { retryBrandBookRewrite } from './book-actions'
+import {
+  CorrectionsList,
+  FactsForm,
+  OwnMark,
+  SeenGroups
+} from './book-corrections'
 import type { BookLines, BrandBookView } from './book-view'
 import type { BrandBookPageView } from './page-model'
-import { Status } from '@/components/gros/status'
+import { rewriteSteps, type RewriteState } from './rewrite-view'
 import { brandBookHref, brandHref, brandVersionHref } from './screen'
 
 /**
- * Brand book (UI-BRAND), a GROS page under Brand at
- * `/settings/brand/book`: what the agents read about the brand, for the
- * owner to review before he approves his brand. The confirmed parts (the
- * facts true on every source, his own approved words) are kept apart from
- * what the readers saw and from the Brand strategist's reading, which are
- * shown as what they are, never as facts (as the agents are told,
- * `brandBookHeader`): the confirmed parts first, the reading last. The
- * owner approves his brand on Brand, where he sees what he approves; this
- * page links there. Read only: corrections to the book have no screen yet.
+ * Brand book (UI-BRAND), a GROS page under Brand at `/brand/book`
+ * (UI-BRAND-2): what the agents read about the brand. The confirmed parts
+ * (the facts true on every source, the owner's own approved words) are
+ * kept apart from what the readers saw and from the Brand strategist's
+ * reading, which are shown as what they are, never as facts (as the
+ * agents are told, `brandBookHeader`): the confirmed parts first, the
+ * reading last. The owner approves his brand on Brand, where he sees what
+ * he approves; this page links there.
+ *
+ * UI-BRAND-2: the owner types corrections straight into the book (a line
+ * of what GROS saw, a confirmed fact, a line of his own); a correction is
+ * his own word, marked "Your correction", and the book is rewritten right
+ * away. While a rewrite runs, the page says so, reads itself again and
+ * holds its correction buttons; a failed rewrite shows Try again.
  */
 export function BrandBookScreen({
   view,
@@ -28,7 +44,7 @@ export function BrandBookScreen({
   assistant?: string
 }) {
   return (
-    <AppPage current="settings" title="Brand book" assistant={assistant}>
+    <AppPage current="brand" title="Brand book" assistant={assistant}>
       <div>
         <ButtonLink href={brandHref} label="Back to Brand" kind="quiet" />
       </div>
@@ -38,23 +54,68 @@ export function BrandBookScreen({
           reason={view.reason}
           action={<ButtonLink href={brandBookHref} label="Try again" />}
         />
-      ) : !view.book ? (
-        <>
-          <EmptyState
-            title="No Brand book yet"
-            action={<ButtonLink href="/setup" label="Open setup" />}
-          />
-          <BrandStatusCard brand={view.brand} owner={view.owner} />
-        </>
       ) : (
-        <Book
-          book={view.book}
-          view={view}
-          assistant={assistant}
-          timezone={view.timezone}
-        />
+        <>
+          {view.rewrite ? (
+            <RewriteCard state={view.rewrite} owner={view.owner} />
+          ) : null}
+          {!view.book ? (
+            <>
+              {view.rewrite ? null : (
+                <EmptyState
+                  title="No Brand book yet"
+                  action={<ButtonLink href="/setup" label="Open setup" />}
+                />
+              )}
+              <BrandStatusCard brand={view.brand} owner={view.owner} />
+            </>
+          ) : (
+            <Book
+              book={view.book}
+              view={view}
+              assistant={assistant}
+              timezone={view.timezone}
+              editable={view.owner && !working(view.rewrite)}
+            />
+          )}
+        </>
       )}
     </AppPage>
+  )
+}
+
+/** A rewrite that is about to run or running (not failed or stuck). */
+export const working = (state: RewriteState | null) =>
+  state === 'waiting' || state === 'writing'
+
+/**
+ * The Brand book's rewrite (after approve or a correction): its real
+ * steps, and the page reads itself again until it is done; failed or
+ * stuck, the owner's Try again.
+ */
+export function RewriteCard({
+  state,
+  owner
+}: {
+  state: RewriteState
+  owner: boolean
+}) {
+  const title = 'Rewriting the Brand book'
+  return (
+    <Card label={title}>
+      <div className="flex flex-col gap-[var(--space-4)]">
+        <Progress
+          title={title}
+          steps={rewriteSteps(state, owner)}
+          retry={
+            owner && !working(state) ? (
+              <ActionButton action={retryBrandBookRewrite} label="Try again" />
+            ) : undefined
+          }
+        />
+        {working(state) ? <KeepFresh /> : null}
+      </div>
+    </Card>
   )
 }
 
@@ -104,12 +165,15 @@ function Book({
   book,
   view,
   assistant,
-  timezone
+  timezone,
+  editable
 }: {
   book: BrandBookView
   view: Extract<BrandBookPageView, { state: 'ready' }>
   assistant: string
   timezone: string
+  /** The owner's correction buttons (not while the book is rewritten). */
+  editable: boolean
 }) {
   return (
     <>
@@ -150,22 +214,35 @@ function Book({
       <CardRow columns={3}>
         <Section title="Confirmed facts">
           <p className="type-caption text-[var(--stone)]">
-            True on every source {assistant} read. {assistant} never writes
-            against them.
+            True on every source {assistant} read, or set by you. {assistant}{' '}
+            never writes against them.
           </p>
           {book.facts.length ? (
-            <Items items={book.facts} label="Confirmed facts" />
+            <ul
+              aria-label="Confirmed facts"
+              className="flex flex-col gap-[var(--space-2)]"
+            >
+              {book.facts.map((fact) => (
+                <li key={fact.text} className="flex flex-col">
+                  <p className="type-body break-words">{fact.text}</p>
+                  {fact.own ? <OwnMark /> : null}
+                </li>
+              ))}
+            </ul>
           ) : (
             <p className="type-body text-[var(--stone)]">
               No fact is confirmed yet, so {assistant} claims none.
             </p>
           )}
+          {editable ? (
+            <FactsForm texts={book.factTexts} version={book.version} />
+          ) : null}
         </Section>
         <Section title="Your words">
           {book.owner === null ? (
             <p className="type-body text-[var(--stone)]">
-              Not in this version. Approve your brand, and {assistant} adds your
-              words the next time it writes the book.
+              Not in this version. Approve your brand, and {assistant} rewrites
+              the book with your words right away.
             </p>
           ) : book.owner.length === 0 ? (
             <p className="type-body text-[var(--stone)]">
@@ -199,17 +276,34 @@ function Book({
           )}
         </Section>
       </CardRow>
+      {book.corrections.length ? (
+        <Section title="Your corrections">
+          <p className="type-caption text-[var(--stone)]">
+            Your own word. It comes before what {assistant} saw and before the
+            strategist’s reading.
+          </p>
+          <CorrectionsList
+            corrections={book.corrections}
+            version={book.version}
+            editable={editable}
+            assistant={assistant}
+          />
+        </Section>
+      ) : null}
       <CardRow>
         <Section title={`What ${assistant} saw`}>
           <p className="type-caption text-[var(--stone)]">
             Seen on your pages, emails and reviews. Used for tone and ideas,
             never stated as a fact.
+            {editable ? ' Correct any line, or add your own.' : ''}
           </p>
           {book.seen.length || book.sending ? (
             <>
-              {book.seen.map((group) => (
-                <Group key={group.label} group={group} />
-              ))}
+              <SeenGroups
+                groups={book.seen}
+                version={book.version}
+                editable={editable}
+              />
               {book.sending ? (
                 <Group
                   group={{ label: 'How you send today', lines: [book.sending] }}
@@ -262,7 +356,7 @@ function Book({
       <Section title="Strategist’s reading">
         <p className="type-caption text-[var(--stone)]">
           A reading of this book, not a fact. It never comes before the facts,
-          your words or what to avoid.
+          your words, your corrections or what to avoid.
         </p>
         {book.reading ? (
           <>

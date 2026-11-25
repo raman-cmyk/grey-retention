@@ -3313,6 +3313,7 @@ export type Database = {
           not_before: string | null
           progress: Json
           push_key: string
+          reference_id: string | null
           run_id: string
           sample_draft: boolean
           slot: number
@@ -3336,6 +3337,7 @@ export type Database = {
           not_before?: string | null
           progress?: Json
           push_key?: string
+          reference_id?: string | null
           run_id: string
           sample_draft?: boolean
           slot: number
@@ -3359,6 +3361,7 @@ export type Database = {
           not_before?: string | null
           progress?: Json
           push_key?: string
+          reference_id?: string | null
           run_id?: string
           sample_draft?: boolean
           slot?: number
@@ -7381,6 +7384,7 @@ export type Database = {
         Returns: string
       }
       begin_klaviyo_key_check: { Args: { t: string }; Returns: undefined }
+      brand_book_writes_waiting: { Args: never; Returns: number }
       change_fixture_profile_evidence: {
         Args: {
           bounce: boolean
@@ -7404,6 +7408,35 @@ export type Database = {
         Returns: undefined
       }
       check_pending_subscriptions: { Args: never; Returns: number }
+      claim_brand_book_write: {
+        Args: { t?: string }
+        Returns: {
+          attempt: number
+          available_at: string
+          campaign_id: string | null
+          checkpoint: Json
+          created_at: string
+          created_by: string
+          error_code: string | null
+          failure_class: string | null
+          id: string
+          idempotency_key: string
+          input: Json
+          kind: string
+          lease_token: string | null
+          lease_until: string | null
+          max_attempts: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'job_runs'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_email_build: {
         Args: { target?: string }
         Returns: {
@@ -7675,6 +7708,10 @@ export type Database = {
         }
         Returns: string
       }
+      correct_brand_book_at: {
+        Args: { corrections: Json; expected_version: number; t: string }
+        Returns: number
+      }
       create_conversation: {
         Args: { t: string; title: string; visibility?: string }
         Returns: string
@@ -7689,7 +7726,13 @@ export type Database = {
         Returns: string
       }
       create_email_build: {
-        Args: { mode?: string; run: string; slot: number; t: string }
+        Args: {
+          mode?: string
+          reference?: string
+          run: string
+          slot: number
+          t: string
+        }
         Returns: string
       }
       create_email_result: {
@@ -7913,6 +7956,10 @@ export type Database = {
           fingerprint: string
           variant_id: string
         }[]
+      }
+      finish_brand_book_write: {
+        Args: { book_version: number; job: string; lease: string }
+        Returns: undefined
       }
       finish_capture_job: {
         Args: { job: string; lease: string; output: Json }
@@ -8505,6 +8552,7 @@ export type Database = {
         Args: { expected_revision: number; rule: string; t: string }
         Returns: number
       }
+      retry_brand_book_write: { Args: { t: string }; Returns: string }
       retry_email_file_import: {
         Args: { import: string; t: string }
         Returns: string
@@ -8870,6 +8918,10 @@ export type Database = {
       }
       withdraw_brand_book_correction: {
         Args: { correction: string; t: string }
+        Returns: undefined
+      }
+      withdraw_brand_book_correction_at: {
+        Args: { correction: string; expected_version: number; t: string }
         Returns: undefined
       }
     }

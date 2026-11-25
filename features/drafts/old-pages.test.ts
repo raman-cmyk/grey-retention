@@ -20,11 +20,14 @@ const expected: Record<string, string> = {
   '/campaign-agent': '/plan',
   '/get-started': '/setup',
   '/optimizer': '/settings',
-  // UI-BRAND: Brand and Brand assets under Settings.
-  '/brand': '/settings/brand',
-  '/brand/voice': '/settings/brand#tone',
-  '/store': '/settings/brand',
-  '/assets': '/settings/assets'
+  // UI-BRAND, UI-BRAND-2: Brand is a main page, Brand book and Brand
+  // assets under it; their addresses under Settings open them.
+  '/brand/voice': '/brand#tone',
+  '/store': '/brand',
+  '/assets': '/brand/assets',
+  '/settings/brand': '/brand',
+  '/settings/brand/book': '/brand/book',
+  '/settings/assets': '/brand/assets'
 }
 
 function pages(dir: string): string[] {
@@ -58,5 +61,20 @@ describe('retired old client pages', () => {
     for (const source of Object.keys(expected))
       expect(addresses).not.toContain(source)
     expect(addresses).not.toContain('/copy-review')
+  })
+
+  it('serve Brand, the Brand book and Brand assets at their own addresses (UI-BRAND-2)', async () => {
+    const app = join(import.meta.dirname, '../../app')
+    const addresses = pages(app).map((p) =>
+      p
+        .slice(app.length)
+        .replace(/\/\([^)]+\)/g, '')
+        .replace(/\/page\.tsx$/, '')
+    )
+    for (const page of ['/brand', '/brand/book', '/brand/assets'])
+      expect(addresses).toContain(page)
+    const redirects = await nextConfig.redirects!()
+    expect(redirects.map((r) => r.source)).not.toContain('/brand')
+    expect(redirects.map((r) => r.source)).not.toContain('/brand/book')
   })
 })

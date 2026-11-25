@@ -7,7 +7,7 @@ import { ErrorState } from '@/components/gros/states'
 /** The Brand book could not open: what happened, what to do, one button. */
 export default function BrandBookError({ retry }: { retry: () => void }) {
   return (
-    <AppPage current="settings" title="Brand book">
+    <AppPage current="brand" title="Brand book">
       <ErrorState
         title="Brand book did not open"
         reason="We could not read your Brand book just now. Nothing was changed."

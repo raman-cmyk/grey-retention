@@ -12,7 +12,7 @@ import { FocusShell, StepCards, onboardingSteps } from './steps'
 afterEach(cleanup)
 
 describe('TopBar and AppPage (UI-DS)', () => {
-  it('has the five menu items, the current one marked, and Ask GROS and Settings', () => {
+  it('has the six menu items, the current one marked, and Ask GROS and Settings', () => {
     render(<TopBar current="inspiration" title="Inspiration" />)
     expect(
       screen.getByRole('heading', { level: 1, name: 'Inspiration' })
@@ -23,8 +23,14 @@ describe('TopBar and AppPage (UI-DS)', () => {
       'Plan',
       'Inspiration',
       'Audiences',
-      'Results'
+      'Results',
+      // UI-BRAND-2: Brand is a main page (owner decision of 25 Nov).
+      'Brand'
     ])
+    expect(menu.getByRole('link', { name: 'Brand' })).toHaveAttribute(
+      'href',
+      '/brand'
+    )
     const here = menu.getByRole('link', { name: 'Inspiration' })
     expect(here).toHaveAttribute('aria-current', 'page')
     expect(here.className).toContain('bg-[var(--lime)]')

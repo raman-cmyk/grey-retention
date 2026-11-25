@@ -180,9 +180,9 @@ describe('sidebar (expanded)', () => {
   })
 
   it('opens a closed group that holds the current page, without saving it', async () => {
-    // UI-BRAND: Brand assets is a GROS page under Settings; its most
+    // UI-BRAND-2: Brand assets is a page under Brand (/brand); its most
     // specific item is still the one marked current.
-    location.pathname = '/settings/assets'
+    location.pathname = '/brand/assets'
     shell()
     const nav = within(desktopNav())
     const more = nav.getByRole('button', { name: 'More tools' })

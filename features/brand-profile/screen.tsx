@@ -25,17 +25,20 @@ import { ProfileSections } from './section-cards'
 import { sectionKeys } from './sections'
 
 /**
- * Brand (UI-BRAND), a GROS page under Settings at `/settings/brand`: the
- * brand version and the owner's Approve brand (the only way his own words
- * and rules reach the Brand book), the latest Brand book, the six profile
- * sections, the catalog, the permitted offers and the brand's history.
- * Every button calls the existing server action, which checks the owner
- * again; staff read the same page without its buttons.
+ * Brand (UI-BRAND), a main GROS page at `/brand` (UI-BRAND-2; it was under
+ * Settings at `/brand`, which now opens it): the brand version
+ * and the owner's Approve brand (which rewrites the Brand book right away),
+ * the latest Brand book and Brand assets (the two pages under Brand), the
+ * six profile sections, the catalog, the permitted offers and the brand's
+ * history. Every button calls the existing server action, which checks
+ * the owner again; staff read the same page without its buttons.
  */
-export const brandHref = '/settings/brand' as const
-export const brandBookHref = '/settings/brand/book' as const
+export const brandHref = '/brand' as const
+export const brandBookHref = '/brand/book' as const
 /** The Brand version card, where the owner approves his brand. */
-export const brandVersionHref = '/settings/brand#version' as const
+export const brandVersionHref = '/brand#version' as const
+/** Brand assets, the other page under Brand. */
+export const brandAssetsHref = '/brand/assets' as const
 
 /** A plain control on the GROS tokens (BRAND.md has no select or text box). */
 export const controlClass =
@@ -73,10 +76,7 @@ export function BrandScreen({
   assistant?: string
 }) {
   return (
-    <AppPage current="settings" title="Brand" assistant={assistant}>
-      <div>
-        <ButtonLink href="/settings" label="Back to Settings" kind="quiet" />
-      </div>
+    <AppPage current="brand" title="Brand" assistant={assistant}>
       {view.state === 'error' ? (
         <ErrorState
           title="Brand did not open"
@@ -86,7 +86,7 @@ export function BrandScreen({
       ) : (
         <>
           <MismatchCard mismatches={view.mismatches} owner={view.owner} />
-          <CardRow>
+          <CardRow columns={3}>
             <ApproveCard
               brand={view.brand}
               owner={view.owner}
@@ -94,9 +94,11 @@ export function BrandScreen({
             />
             <BookCard
               book={view.book}
+              rewrite={view.rewrite}
               timezone={view.timezone}
               assistant={assistant}
             />
+            <AssetsCard />
           </CardRow>
           <ProfileCard
             owner={view.owner}
@@ -238,16 +240,54 @@ export function ApproveCard({
   )
 }
 
+/** Brand assets, the other page under Brand (UI-BRAND-2). */
+function AssetsCard() {
+  const title = 'Brand assets'
+  return (
+    <Card label={title}>
+      <Stack>
+        <Title text={title} />
+        <p className="type-body text-[var(--stone)]">
+          Your logos, product photos and brand kit.
+        </p>
+        <div>
+          <ButtonLink
+            href={brandAssetsHref}
+            label="Open brand assets"
+            kind="outline"
+          />
+        </div>
+      </Stack>
+    </Card>
+  )
+}
+
 function BookCard({
   book,
+  rewrite,
   timezone,
   assistant
 }: {
   book: Extract<BrandPageView, { state: 'ready' }>['book']
+  rewrite: Extract<BrandPageView, { state: 'ready' }>['rewrite']
   timezone: string
   assistant: string
 }) {
   const title = 'Brand book'
+  // UI-BRAND-2: after approve or a correction the book is rewritten.
+  const status =
+    rewrite === 'waiting' || rewrite === 'writing' ? (
+      <div>
+        <Status kind="working" word="Rewriting" />
+      </div>
+    ) : rewrite ? (
+      <div className="flex flex-col items-start gap-[var(--space-2)]">
+        <Status kind="needs_you" />
+        <p className="type-body text-[var(--signal-ink)]">
+          The Brand book was not rewritten. Open it to try again.
+        </p>
+      </div>
+    ) : null
   if (book === 'unreadable')
     return (
       <Card label={title}>
@@ -266,6 +306,7 @@ function BookCard({
     <Card label={title}>
       <Stack>
         <Title text={title} />
+        {status}
         {book ? (
           <>
             <div className="flex flex-col gap-[var(--space-1)]">

@@ -2,18 +2,17 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
-import { workspaceTimezone } from '@/features/strategy/offers'
-import { staleBooks, within, writeBrandBook } from './brand-book'
-import { listCorrections } from './brand-book-corrections'
+import { staleBooks, within } from './brand-book'
+import {
+  runBrandBookWrites,
+  writeOnboardedBrandBook
+} from './brand-book-writes'
 import {
   booksNeedingStrategy,
   runBrandStrategist,
   strategistCallMs,
   strategistReady
 } from './strategist-run'
-import { listCatalog } from './catalog/read'
-import { listFindings } from './findings'
-import { readKlaviyoHistory } from './history/read'
 import { classifyFailure } from '@/features/integrations/failures'
 import { runAdsReadingJob } from './ads/live'
 import { adsRunMs } from './ads/worker'
@@ -51,16 +50,6 @@ export { dbMarginMs, readersRunMs, siteCallTimeoutMs }
 export const routeMs = 60_000
 /** The longest a Brand book write may take (a few small reads, one save). */
 export const bookMs = 4_000
-
-/** The Brand book from the workspace's own reads (the worker's client). */
-const writeOnboardedBrandBook = (db: Db, tenantId: string) =>
-  writeBrandBook(db, tenantId, {
-    findings: (d, t) => listFindings(d, t),
-    catalog: (d, t) => listCatalog(d, t),
-    history: readKlaviyoHistory,
-    timezone: workspaceTimezone,
-    corrections: listCorrections
-  })
 
 export type ReadersRun =
   | { state: 'done'; reads: number; failed: number; paused: number }
@@ -125,6 +114,12 @@ export async function runSourceReadings(
      */
     strategist?: (db: Db, tenantId: string) => Promise<unknown>
     strategyNeeded?: (db: Db) => Promise<string[]>
+    /**
+     * UI-BRAND-2: the Brand book rewrites the owner's clicks queued and
+     * did not run at once (approve, a correction, Try again), each
+     * started only while it still ends inside the reads' budget.
+     */
+    rewrites?: (db: Db, deadline: number) => Promise<unknown>
   } = {}
 ): Promise<ReadersRun> {
   const now = options.now ?? Date.now
@@ -180,7 +175,13 @@ export async function runSourceReadings(
     }
   }
   try {
-    // First the books a skipped or failed write left behind (the last two
+    // First the rewrites the owner's clicks left waiting (UI-BRAND-2).
+    await (
+      options.rewrites ??
+      ((d: Db, deadline: number) =>
+        runBrandBookWrites(d, { limit: 5, deadline, now, ms: waitMs }))
+    )(db, started + (options.budgetMs ?? readersRunMs))
+    // Then the books a skipped or failed write left behind (the last two
     // days), only while reads may still start.
     const stale = await (
       options.staleBooks ??
