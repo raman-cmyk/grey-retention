@@ -94,7 +94,7 @@ describe('sidebar (expanded)', () => {
     // UI-OLDc: the old Campaigns planner is the Plan now.
     expect(labels).toEqual([
       'Home',
-      'Brand & Store',
+      'Brand',
       'Plan next 15 days',
       'Ask GROS',
       'Inspiration'
@@ -180,12 +180,14 @@ describe('sidebar (expanded)', () => {
   })
 
   it('opens a closed group that holds the current page, without saving it', async () => {
-    location.pathname = '/assets'
+    // UI-BRAND: Brand assets is a GROS page under Settings; its most
+    // specific item is still the one marked current.
+    location.pathname = '/settings/assets'
     shell()
     const nav = within(desktopNav())
     const more = nav.getByRole('button', { name: 'More tools' })
     expect(more).toHaveAttribute('aria-expanded', 'true')
-    expect(nav.getByRole('link', { name: 'Assets' })).toHaveAttribute(
+    expect(nav.getByRole('link', { name: 'Brand assets' })).toHaveAttribute(
       'aria-current',
       'page'
     )

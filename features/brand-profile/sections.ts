@@ -36,7 +36,7 @@ export const sections: {
 }[] = [
   {
     key: 'identity',
-    title: 'Brand Identity',
+    title: 'Brand identity',
     group: 'truth',
     aiNote:
       'The AI reads the brand name, website and positioning once you approve the brand. The other fields are notes for your team; the AI does not read them yet.',
@@ -80,7 +80,7 @@ export const sections: {
   },
   {
     key: 'products',
-    title: 'Product Intelligence',
+    title: 'Products',
     group: 'truth',
     aiNote: 'Notes for your team. The AI does not read this section yet.',
     fields: [
@@ -95,7 +95,7 @@ export const sections: {
   },
   {
     key: 'tone',
-    title: 'Tone of Voice',
+    title: 'Tone of voice',
     group: 'voice',
     aiNote:
       'The AI reads Do and Don’t once you approve the brand. The four tiles are notes for your team; the AI does not read them yet.',
@@ -133,7 +133,7 @@ export const sections: {
   },
   {
     key: 'sample_copy',
-    title: 'Sample Copy',
+    title: 'Sample copy',
     group: 'voice',
     aiNote: 'Notes for your team. The AI does not read this section yet.',
     fields: [

@@ -63,8 +63,6 @@ export const config = {
     '/flow-messages/:path*',
     '/flows/:path*',
     '/metrics/:path*',
-    '/brand/:path*',
-    '/store/:path*',
     '/plan/:path*',
     // UI-RES-b: Results, a read with no server actions.
     '/results/:path*',

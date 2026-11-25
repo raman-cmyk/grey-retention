@@ -3,7 +3,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { login } from './accounts'
 import { newOwner } from './new-owner'
 
-// Each card is a region named by its own heading.
+// Each card is a region named by its own title.
 const card = (page: Page, title: string) =>
   page.getByRole('region', { name: title, exact: true })
 
@@ -13,21 +13,29 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
   // A fresh workspace: brand changes reset campaigns, so never touch the
   // shared accounts here.
   await newOwner(page, { prefix: 'brand', name: 'Brand profile studio' })
-  await page.goto('/brand')
+  // UI-BRAND: Brand is a GROS page under Settings, opened from its card.
+  await page.goto('/settings')
+  await card(page, 'Brand').getByRole('link', { name: 'Open brand' }).click()
+  await expect(page).toHaveURL(/\/settings\/brand$/)
   await expect(
-    page.getByRole('heading', { name: 'Brand & Store', level: 1 })
+    page.getByRole('heading', { name: 'Brand', level: 1 })
   ).toBeVisible()
-  await expect(page).toHaveTitle(/Brand Intelligence/)
-  // One tab left (no Store tab in v2), so no tab row.
+  await expect(page).toHaveTitle(/Brand/)
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Main' })
+      .getByRole('link', { name: 'Home', exact: true })
+  ).toBeVisible()
+  // No Store tab in v2.
   await expect(
     page.getByRole('navigation', { name: 'Brand & Store' })
   ).toHaveCount(0)
 
-  // First Identity save creates the brand the AI reads.
+  // First Identity save creates the brand the agents read.
   const brandName = `Juniper Field ${randomUUID().slice(0, 6)}`
   const niche = `Original niche ${randomUUID().slice(0, 8)}`
-  const identity = card(page, 'Brand Identity')
-  await identity.getByRole('button', { name: 'Edit Brand Identity' }).click()
+  const identity = card(page, 'Brand identity')
+  await identity.getByRole('button', { name: 'Edit Brand identity' }).click()
   await identity.getByLabel('Brand name', { exact: true }).fill(brandName)
   await identity
     .getByLabel('Positioning', { exact: true })
@@ -36,32 +44,53 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
   await identity
     .getByRole('checkbox', { name: /AI won’t change niche/ })
     .check()
-  await identity.getByRole('button', { name: 'Save Brand Identity' }).click()
+  await identity.getByRole('button', { name: 'Save brand identity' }).click()
   await expect(
     identity.getByText(/^Saved\. Your brand details changed/)
   ).toBeVisible()
   await expect(
-    identity.getByRole('button', { name: 'Edit Brand Identity' })
+    identity.getByRole('button', { name: 'Edit Brand identity' })
   ).toBeFocused()
 
-  // A new or changed brand always waits for the owner's approval.
-  await page.getByRole('button', { name: 'Approve brand v1' }).click()
-  await expect(page.getByText('Brand version approved.')).toBeVisible()
+  // A new or changed brand always waits for the owner's approval of
+  // exactly the version shown.
+  const version = card(page, 'Brand version')
+  await expect(version.getByText('Needs you')).toBeVisible()
+  await version.getByRole('button', { name: 'Approve brand v1' }).click()
+  await expect(version.getByText('Brand version approved.')).toBeVisible()
   await page.reload()
   await expect(page.getByText('Approved for AI use · version 1')).toBeVisible()
 
-  // Notes the AI does not read keep the approval.
-  await identity.getByRole('button', { name: 'Edit Brand Identity' }).click()
+  // The Brand book review opens from Brand; it shows where the brand
+  // stands but approves nothing itself (UI-BRAND review).
+  await card(page, 'Brand book')
+    .getByRole('link', { name: 'Review Brand book' })
+    .click()
+  await expect(page).toHaveURL(/\/settings\/brand\/book$/)
+  await expect(
+    page.getByRole('heading', { name: 'Brand book', level: 1 })
+  ).toBeVisible()
+  await expect(
+    card(page, 'Your brand').getByText('Approved for AI use · version 1')
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: /^Approve brand/ })
+  ).toHaveCount(0)
+  await page.getByRole('link', { name: 'Back to Brand' }).click()
+  await expect(page).toHaveURL(/\/settings\/brand$/)
+
+  // Notes the agents do not read keep the approval.
+  await identity.getByRole('button', { name: 'Edit Brand identity' }).click()
   await identity.getByLabel('Target audience', { exact: true }).fill('')
-  await identity.getByRole('button', { name: 'Save Brand Identity' }).click()
+  await identity.getByRole('button', { name: 'Save brand identity' }).click()
   await expect(identity.getByText('Saved.', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByText('Approved for AI use · version 1')).toBeVisible()
 
   // Redo with AI only fills empty fields, keeps the owner's words, and
   // labels the sample honestly.
-  await card(page, 'Brand Identity')
-    .getByRole('button', { name: 'Redo Brand Identity with AI' })
+  await card(page, 'Brand identity')
+    .getByRole('button', { name: 'Redo with AI: Brand identity' })
     .click()
   await expect(
     page.getByText(
@@ -69,7 +98,7 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
     )
   ).toBeVisible()
   await page.reload()
-  const redone = card(page, 'Brand Identity')
+  const redone = card(page, 'Brand identity')
   await expect(redone.getByText(niche)).toBeVisible()
   await expect(redone.getByText(brandName)).toBeVisible()
   await expect(
@@ -78,19 +107,19 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
     )
   ).toBeVisible()
   await expect(
-    redone.getByText(/has sample text \(not real AI\)/)
+    redone.getByText(/Has sample text \(not real AI\)/)
   ).toBeVisible()
   await expect(page.getByText('Approved for AI use · version 1')).toBeVisible()
 
   // Tone rules are stored as written and need approval again.
-  const tone = card(page, 'Tone of Voice')
-  await tone.getByRole('button', { name: 'Edit Tone of Voice' }).click()
+  const tone = card(page, 'Tone of voice')
+  await tone.getByRole('button', { name: 'Edit Tone of voice' }).click()
   await tone
     .getByLabel('Do', { exact: true })
     .fill(
       'Use U.S. spelling. Write like Mr. Pemberly’s field notes.\nBe brief.'
     )
-  await tone.getByRole('button', { name: 'Save Tone of Voice' }).click()
+  await tone.getByRole('button', { name: 'Save tone of voice' }).click()
   await expect(
     tone.getByText(/^Saved\. Your brand details changed/)
   ).toBeVisible()
@@ -100,18 +129,28 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
   await expect(
     page.getByRole('button', { name: 'Approve brand v2' })
   ).toBeVisible()
-
-  // The old Copy & Voice address opens that part of the profile.
-  await page.goto('/brand/voice')
-  await expect(page).toHaveURL(/\/brand#voice$/)
-  await expect(card(page, 'Tone of Voice')).toBeVisible()
-
-  // v2 is Klaviyo only: no Store tab, and an old /store link opens Brand.
+  // From the Brand book, the owner approves on Brand, where he sees what
+  // he approves.
+  await page.goto('/settings/brand/book')
+  await card(page, 'Your brand')
+    .getByRole('link', { name: 'Review and approve' })
+    .click()
+  await expect(page).toHaveURL(/\/settings\/brand#version$/)
   await expect(
-    page.getByRole('navigation', { name: 'Brand & Store' })
-  ).toHaveCount(0)
+    card(page, 'Brand version').getByRole('button', {
+      name: 'Approve brand v2'
+    })
+  ).toBeVisible()
+
+  // The old addresses open the new page: /brand, the old Copy & Voice
+  // address (the Tone of voice card) and the old Store tab.
+  await page.goto('/brand')
+  await expect(page).toHaveURL(/\/settings\/brand$/)
+  await page.goto('/brand/voice')
+  await expect(page).toHaveURL(/\/settings\/brand#tone$/)
+  await expect(card(page, 'Tone of voice')).toBeVisible()
   await page.goto('/store')
-  await expect(page).toHaveURL(/\/brand$/)
+  await expect(page).toHaveURL(/\/settings\/brand$/)
 })
 
 test('UIR-005 staff read the Brand profile without edit controls', async ({
@@ -122,10 +161,20 @@ test('UIR-005 staff read the Brand profile without edit controls', async ({
     'Role check; one layout is enough'
   )
   await login(page, 'staff')
-  await page.goto('/brand')
-  await expect(card(page, 'Brand Identity')).toBeVisible()
+  await page.goto('/settings/brand')
+  await expect(card(page, 'Brand identity')).toBeVisible()
   await expect(page.getByRole('button', { name: /^Edit/ })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /with AI$/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /with AI/ })).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: /^Approve brand/ })
+  ).toHaveCount(0)
+  await page.goto('/settings/brand/book')
+  await expect(
+    page.getByRole('heading', { name: 'Brand book', level: 1 })
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: /^Approve brand/ })
+  ).toHaveCount(0)
 })
 
 test('UIR-005 Brand profile fits 375px and edits by keyboard', async ({
@@ -134,7 +183,7 @@ test('UIR-005 Brand profile fits 375px and edits by keyboard', async ({
   test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
   await page.setViewportSize({ width: 375, height: 812 })
   await login(page, 'owner')
-  await page.goto('/brand')
+  await page.goto('/settings/brand')
   const fits = () =>
     page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
   expect(await fits()).toBe(true)
@@ -149,4 +198,6 @@ test('UIR-005 Brand profile fits 375px and edits by keyboard', async ({
   expect(await fits()).toBe(true)
   await card(page, 'Audience').getByRole('button', { name: 'Cancel' }).click()
   await expect(edit).toBeFocused()
+  await page.goto('/settings/brand/book')
+  expect(await fits()).toBe(true)
 })

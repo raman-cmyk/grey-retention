@@ -42,7 +42,7 @@ export async function BrandNote({
           ) : null}
         </div>
         <ButtonLink
-          href="/brand"
+          href="/settings/brand"
           label="Open the Brand profile"
           kind="outline"
         />

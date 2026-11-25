@@ -58,7 +58,14 @@ const oldClientPages: [source: string, destination: string][] = [
   // Onboarding is Setup (UI-ONBb..e).
   ['/get-started', '/setup'],
   // Not part of v2: the closest GROS screen.
-  ['/optimizer', '/settings']
+  ['/optimizer', '/settings'],
+  // UI-BRAND: Brand and Brand assets are GROS pages under Settings. The
+  // old Copy & Voice address opens the Tone of voice card; the old Store
+  // tab (Shopify, hidden in v2) opens Brand as it did.
+  ['/brand', '/settings/brand'],
+  ['/brand/voice', '/settings/brand#tone'],
+  ['/store', '/settings/brand'],
+  ['/assets', '/settings/assets']
 ]
 
 /** UI-KLV: the old Klaviyo detail pages and their GROS pages under Results. */

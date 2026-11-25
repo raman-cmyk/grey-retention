@@ -19,7 +19,12 @@ const expected: Record<string, string> = {
   '/email-library/:emailId': '/inspiration/use?reference=:emailId',
   '/campaign-agent': '/plan',
   '/get-started': '/setup',
-  '/optimizer': '/settings'
+  '/optimizer': '/settings',
+  // UI-BRAND: Brand and Brand assets under Settings.
+  '/brand': '/settings/brand',
+  '/brand/voice': '/settings/brand#tone',
+  '/store': '/settings/brand',
+  '/assets': '/settings/assets'
 }
 
 function pages(dir: string): string[] {

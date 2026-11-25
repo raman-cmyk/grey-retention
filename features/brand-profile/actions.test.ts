@@ -198,7 +198,7 @@ describe('saveBrandSection', () => {
       ],
       [
         { code: '23514', message: 'Save the Brand Identity first' },
-        'Save the Brand Identity first (it needs a brand name).'
+        'Save the brand identity first (it needs a brand name).'
       ],
       [
         { code: '23514', message: 'Check the section fields' },

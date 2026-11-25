@@ -39,7 +39,7 @@ describe('page titles (BAS-008)', () => {
           !isRetiredDesignerPath(route) && !isRetiredApprovalPath(route)
       )
       // Pages that only send people on elsewhere show no title.
-      .filter(({ route }) => !['/', '/brand/voice', '/store'].includes(route))
+      .filter(({ route }) => !['/'].includes(route))
       .filter(({ file }) => {
         const layout = join(file, '..', 'layout.tsx')
         return !titled(file) && !(existsSync(layout) && titled(layout))
