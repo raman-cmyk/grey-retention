@@ -4,6 +4,7 @@ import { ListRow, RowList, TextThumb } from '@/components/gros/list-row'
 import { AppPage, CardRow } from '@/components/gros/nav'
 import { Status, type StatusKind } from '@/components/gros/status'
 import { EmptyState, ErrorState } from '@/components/gros/states'
+import type { KlaviyoResults, KlaviyoRow } from './klaviyo'
 import type { ResultEmail, ResultsScreen as View } from './results-screen'
 
 /**
@@ -11,7 +12,17 @@ import type { ResultEmail, ResultsScreen as View } from './results-screen'
  * and its A versus B result, drawn from the read model (UI-RES-a) on the
  * GROS components. A read, no commands (master handoff section 11).
  */
-export function ResultsScreen({ view }: { view: View }) {
+export function ResultsScreen({
+  view,
+  klaviyo = null
+}: {
+  view: View
+  /**
+   * Klaviyo's own campaigns, flows and metrics (UI-KLV), or null when
+   * Klaviyo cannot be read (Settings says why).
+   */
+  klaviyo?: KlaviyoResults | null
+}) {
   return (
     <AppPage current="results" title="Results">
       {view.kind === 'error' ? (
@@ -34,7 +45,87 @@ export function ResultsScreen({ view }: { view: View }) {
           <EmailsCard view={view} />
         </>
       )}
+      {klaviyo ? <InKlaviyo klaviyo={klaviyo} /> : null}
     </AppPage>
+  )
+}
+
+/**
+ * What Klaviyo itself has (UI-KLV): its campaigns, flows and metrics, each
+ * row opening its own page under Results.
+ */
+function InKlaviyo({ klaviyo }: { klaviyo: KlaviyoResults }) {
+  return (
+    <>
+      <KlaviyoCard
+        title="Klaviyo campaigns"
+        empty="No campaigns in Klaviyo yet."
+        source={klaviyo.source}
+        rows={klaviyo.campaigns}
+      />
+      <CardRow>
+        <KlaviyoCard
+          title="Flows"
+          empty="No flows in Klaviyo yet."
+          source={klaviyo.source}
+          rows={klaviyo.flows}
+        />
+        <KlaviyoCard
+          title="Metrics"
+          empty="No metrics in Klaviyo yet."
+          source={klaviyo.source}
+          rows={klaviyo.metrics}
+        />
+      </CardRow>
+    </>
+  )
+}
+
+function KlaviyoCard({
+  title,
+  empty,
+  source,
+  rows
+}: {
+  title: string
+  empty: string
+  /** Where its numbers come from (sample data today), on the card. */
+  source: string
+  rows: KlaviyoRow[]
+}) {
+  return (
+    <Card label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <div className="flex flex-col gap-[var(--space-1)]">
+          <h2 className="type-heading">{title}</h2>
+          <p className="type-caption text-[var(--stone)]">{source}</p>
+        </div>
+        {rows.length ? (
+          <RowList label={title}>
+            {rows.map((row) => (
+              <ListRow
+                key={row.key}
+                thumbnail={<TextThumb />}
+                title={row.title}
+                // A long name and its details show whole, on a phone too.
+                wrap
+                details={row.details}
+                end={
+                  <ButtonLink
+                    href={row.href}
+                    label="Open"
+                    kind="outline"
+                    size="row"
+                  />
+                }
+              />
+            ))}
+          </RowList>
+        ) : (
+          <p className="type-body text-[var(--stone)]">{empty}</p>
+        )}
+      </div>
+    </Card>
   )
 }
 

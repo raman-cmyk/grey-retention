@@ -96,7 +96,7 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
   }
 })
 
-test('Klaviyo detail pages render with a heading and no overflow', async ({
+test('Klaviyo pages render with a heading and no overflow', async ({
   page
 }) => {
   await login(page)
@@ -119,18 +119,39 @@ test('Klaviyo detail pages render with a heading and no overflow', async ({
         .getByRole('link', { name: 'Audiences', exact: true })
     ).toHaveAttribute('aria-current', 'page')
   }
+  // UI-KLV: a Klaviyo campaign's, a flow's, a flow email's and a metric's
+  // page are GROS pages under Results, and their old addresses open them.
+  for (const [old, moved] of [
+    [
+      '/campaigns/klaviyo/CMPspr001?from=campaigns',
+      '/results/campaigns/CMPspr001?from=campaigns'
+    ],
+    ['/flows/FLWpst004?from=flows', '/results/flows/FLWpst004?from=flows'],
+    ['/flow-messages/FLWpst004M2', '/results/flow-emails/FLWpst004M2'],
+    [
+      '/metrics/METord005?from=metrics',
+      '/results/metrics/METord005?from=metrics'
+    ]
+  ] as const) {
+    await page.goto(old)
+    await expect(page).toHaveURL(new RegExp(`${moved.replace('?', '\\?')}$`))
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Main' })
+        .getByRole('link', { name: 'Results', exact: true })
+    ).toHaveAttribute('aria-current', 'page')
+  }
   for (const path of [
     '/audiences/lists/LSTnews01',
     '/audiences/segments/SEGeng030',
-    '/campaigns/klaviyo/CMPspr001?from=campaigns',
-    '/flows/FLWpst004?from=flows',
-    '/flow-messages/FLWpst004M2',
-    '/metrics/METord005?from=metrics'
+    '/results/campaigns/CMPspr001',
+    '/results/flows/FLWpst004',
+    '/results/flow-emails/FLWpst004M2',
+    '/results/metrics/METord005'
   ]) {
     await page.goto(path)
-    // Sample data when the workspace's Klaviyo is connected, otherwise the
-    // "Klaviyo details" notice (or Audiences' Klaviyo not connected); each
-    // has one page heading.
+    // Sample data when the workspace's Klaviyo is connected, otherwise
+    // Klaviyo not connected; each has one page heading.
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     expect(
       await page.evaluate(
