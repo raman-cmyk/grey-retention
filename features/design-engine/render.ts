@@ -164,6 +164,17 @@ function placedCell(x: number, width: number, avail: number, inner: string) {
   }
 }
 
+function placeholder(p: ImagePart, mode: DrawMode) {
+  if (mode === 'klaviyo')
+    throw new DrawError(
+      'A picture of this email could not be kept: replace it before it goes to Klaviyo.'
+    )
+  const w = Math.max(1, Math.round(p.width))
+  const h = Math.max(1, Math.round(p.height))
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="#e3e3e3"/></svg>`
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
+}
+
 function imageRow(p: ImagePart, avail: number, ctx: Ctx) {
   const { left, right } = sides(p.x, p.width, avail)
   const align = alignOf(left, right)
@@ -175,9 +186,10 @@ function imageRow(p: ImagePart, avail: number, ctx: Ctx) {
         : ''
   const radius = p.radius ? `border-radius:${pxv(p.radius)};` : ''
   const size = `width:${pxv(p.width)};height:${pxv(p.height)};`
-  const img = p.src
-    ? `<img class="de-i" src="${pictureSrc(p.src, ctx.mode)}" alt="${escapeHtml(p.alt)}" width="${Math.round(p.width)}" height="${Math.round(p.height)}" style="display:block;${margin}${size}${radius}border:0;outline:none;text-decoration:none">`
-    : `<div class="de-i" style="display:block;${margin}${size}${radius}background:#e3e3e3"></div>`
+  // A picture that could not be kept is drawn as a grey picture of its
+  // size, so it is still a picture where it was (previews only).
+  const src = p.src ? pictureSrc(p.src, ctx.mode) : placeholder(p, ctx.mode)
+  const img = `<img class="de-i" src="${src}" alt="${escapeHtml(p.alt)}" width="${Math.round(p.width)}" height="${Math.round(p.height)}" style="display:block;${margin}${size}${radius}border:0;outline:none;text-decoration:none">`
   const linked = p.href
     ? `<a href="${safeUrl(p.href)}" target="_blank" style="text-decoration:none">${img}</a>`
     : img

@@ -17,6 +17,7 @@ import {
   type TextPart
 } from './blueprint'
 import { sectionName } from './likeness'
+import { movingPicture } from './measure'
 
 /**
  * DES-ENGINE-001: a section that cannot be copied (a countdown timer, a
@@ -45,7 +46,6 @@ export type Fallback = {
 const blockName = (type: BlockType) =>
   blockCatalog.find((b) => b.type === type)?.name ?? type
 
-const movingPicture = /^data:image\/gif|\.gif(?:[?#]|$)|countdown|timer/i
 const usableImage = (p: ImagePart) =>
   !!p.src &&
   !movingPicture.test(p.src) &&

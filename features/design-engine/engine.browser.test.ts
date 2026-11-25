@@ -79,6 +79,43 @@ describe.skipIf(!on)('the design engine in the browser', () => {
     expect(result.html).not.toContain(timerPicture)
   }, 60_000)
 
+  it('leaves out a moving picture with no words and still copies every section after it', async () => {
+    const html = classic({
+      title: 'Banner',
+      rows: [
+        logoRow(),
+        row(
+          `<img src="${timerPicture}" width="600" height="200" alt="" style="display:block">`
+        ),
+        textRow(para(520, 24), '24px 40px', {
+          size: 16,
+          line: 24,
+          align: 'center'
+        }),
+        row(button({ label: 'Shop now', bg: '#222222' }), 'padding:0 0 30px'),
+        footerRow()
+      ]
+    })
+    const result = await copyDesign(browser, html)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.sections.map((s) => s.result)).toEqual([
+      'copied',
+      'left_out',
+      'copied',
+      'copied',
+      'copied'
+    ])
+    expect(fallbackLines(result)[0]).toMatch(
+      /^Section 2 \(hero\) has a countdown timer or moving picture, which cannot be copied, and it has nothing a library block can draw, so it was left out\.$/
+    )
+    expect(
+      result.sections
+        .filter((s) => s.result === 'copied')
+        .flatMap((s) => s.problems)
+    ).toEqual([])
+    expect(result.likeness.sections.map((s) => s.ordinal)).toEqual([1, 3, 4, 5])
+  }, 60_000)
+
   it('catches a redraw that is not alike: a column made 10 px narrower', async () => {
     const html = classic({
       title: 'Grid',

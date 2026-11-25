@@ -121,6 +121,25 @@ describe('the likeness check', () => {
     ).toBeCloseTo(0.5)
   })
 
+  it('leaves sections built from a block out of both scores', () => {
+    const drawn = clone(blueprint())
+    drawn.sections[1]!.items = [text()]
+    drawn.sections[1]!.height = 90
+    const result = compareBlueprints(
+      blueprint(),
+      drawn,
+      new Map(),
+      new Set([2])
+    )
+    expect(result).toMatchObject({ pass: true, picture: 1, problems: [] })
+    expect(result.sections.map((s) => s.ordinal)).toEqual([1])
+    // Left out of the redraw altogether: not counted as missing.
+    const without = { ...blueprint(), sections: [section()] }
+    expect(
+      compareBlueprints(blueprint(), without, new Map(), new Set([2])).pass
+    ).toBe(true)
+  })
+
   it('adds the phone problems to their sections', () => {
     const result = compareBlueprints(
       blueprint(),

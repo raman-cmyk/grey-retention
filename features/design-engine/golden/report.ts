@@ -136,10 +136,19 @@ export async function runGoldenSet(
       problems: result.problems
     })
     if (out) {
-      writeFileSync(
-        join(out, `${email.id}.jpg`),
-        await sideBySide(browser, email, result)
-      )
+      try {
+        writeFileSync(
+          join(out, `${email.id}.jpg`),
+          await sideBySide(browser, email, result)
+        )
+      } catch (e) {
+        // A picture that cannot be taken is noted; the report is still written.
+        rows
+          .at(-1)!
+          .problems.push(
+            `The side-by-side picture could not be taken: ${e instanceof Error ? e.message : String(e)}`
+          )
+      }
       writeFileSync(join(out, `${email.id}.redraw.html`), result.html)
     }
   }

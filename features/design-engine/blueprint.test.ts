@@ -49,11 +49,15 @@ describe('blueprint', () => {
     expect(parseBlueprint(bad).ok).toBe(false)
   })
 
-  it('needs sections numbered in order', () => {
-    const parsed = parseBlueprint(
-      blueprint({ sections: [section({ ordinal: 2 })] })
-    )
-    expect(parsed).toMatchObject({ ok: false })
+  it('needs sections numbered in order, top to bottom (a redraw may skip one left out)', () => {
+    const backwards = blueprint({
+      sections: [section({ ordinal: 2 }), section({ ordinal: 1 })]
+    })
+    expect(parseBlueprint(backwards)).toMatchObject({ ok: false })
+    const skipped = blueprint({
+      sections: [section({ ordinal: 1 }), section({ ordinal: 3 })]
+    })
+    expect(parseBlueprint(skipped).ok).toBe(true)
   })
 
   it('keeps rows nested at most four deep', () => {

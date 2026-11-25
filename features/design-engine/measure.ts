@@ -22,7 +22,7 @@ import type {
   Measurement,
   Rect
 } from './measurement'
-import { markRoles } from './roles'
+import { markRoles, type RoleContext } from './roles'
 
 /**
  * DES-ENGINE-001, the measuring tool: a blueprint from what the safe
@@ -60,7 +60,7 @@ const unsupportedTags: Readonly<Record<string, string>> = {
   canvas: 'a drawing (canvas)'
 }
 /** A picture that moves or counts down cannot be copied (owner decision of 25 Nov). */
-const movingPicture =
+export const movingPicture =
   /^data:image\/gif|\.gif(?:[?#]|$)|countdown|timer|sendtric|niftyimages|motionmail|mailtimers|promofeatures/i
 
 type Tree = {
@@ -225,6 +225,7 @@ function linkOf(t: Tree, id: number): string | null {
   return null
 }
 function safeLink(href: string): string | null {
+  if (href.length > 2_000) return null
   try {
     const u = new URL(href.trim())
     if (!['https:', 'http:', 'mailto:'].includes(u.protocol)) return null
@@ -281,9 +282,9 @@ export function cleanFamily(family: string): string {
 function fontFrom(s: MeasuredStyle, lineHeight: number): FontSpec {
   return {
     family: cleanFamily(s.fontFamily),
-    size: r2(s.fontSize),
+    size: r2(Math.min(200, Math.max(1, s.fontSize))),
     weight: s.fontWeight,
-    lineHeight: r2(Math.max(1, lineHeight)),
+    lineHeight: r2(Math.min(400, Math.max(1, lineHeight))),
     italic: s.italic,
     letterSpacing: r2(Math.max(-20, Math.min(60, s.letterSpacing))),
     transform: s.transform
@@ -389,7 +390,7 @@ function textPiece(
     if (href) run.href = href
     runs.push(run)
   }
-  const tidy = tidyRuns(runs)
+  const tidy = fitRuns(tidyRuns(runs))
   if (!tidy.length) return null
   if (derived && lines.length >= 2) {
     // Line breaks with no words on their line make lines of their own; a
@@ -431,6 +432,25 @@ const sameLook = (a: TextRun, b: TextRun) =>
   a.underline === b.underline &&
   a.strike === b.strike &&
   a.href === b.href
+
+/**
+ * Runs within the blueprint's limits: at most 200, each at most 5,000
+ * characters (the rest of a very long text joins the last run, plain).
+ */
+export function fitRuns(runs: readonly TextRun[]): TextRun[] {
+  const out = runs
+    .slice(0, 199)
+    .map((r) => ({ ...r, text: r.text.slice(0, 5_000) }))
+  if (runs.length > 199)
+    out.push({
+      text: runs
+        .slice(199)
+        .map((r) => r.text)
+        .join('')
+        .slice(0, 5_000)
+    })
+  return out
+}
 
 /**
  * White space as a browser shows it: runs of blanks become one, none at
@@ -640,9 +660,15 @@ function piecesOf(
   }
   // Inline content may wrap blocks (a link around a table): those are
   // read as if they were the owner's own children.
+  const cannot = (kid: number) => {
+    const n = t.byId[kid]!
+    if (!(n.tag in unsupportedTags) || !t.shown[kid]) return false
+    ctx.unsupported ??= unsupportedTags[n.tag]!
+    return true
+  }
   const visit = (kid: number) => {
     const n = t.byId[kid]!
-    if (n.tag === '#other') return
+    if (n.tag === '#other' || cannot(kid)) return
     if (n.tag === '#text') {
       inline.push(kid)
       return
@@ -684,7 +710,7 @@ function piecesOf(
   }
   const visitInline = (kid: number) => {
     const n = t.byId[kid]!
-    if (n.tag === '#other') return
+    if (n.tag === '#other' || cannot(kid)) return
     if (n.tag === 'img') {
       if (isPicture(t, n)) inlineImages.push(kid)
       return
@@ -887,8 +913,27 @@ function nodesOf(
   behind: string,
   frameWidth: number
 ): Node[] {
-  if (++ctx.depth > 400)
+  if (ctx.depth >= maxDepth)
     throw new Error('This email nests too deep to measure.')
+  ctx.depth++
+  try {
+    return bandNodes(ctx, pieces, behind, frameWidth)
+  } finally {
+    ctx.depth--
+  }
+}
+
+/** Real emails nest a few dozen boxes deep; deeper ones are refused. */
+const maxDepth = 200
+/** The most columns side by side the blueprint keeps. */
+const maxColumns = 12
+
+function bandNodes(
+  ctx: Ctx,
+  pieces: readonly Piece[],
+  behind: string,
+  frameWidth: number
+): Node[] {
   const out: Node[] = []
   for (const band of bands(pieces)) {
     if (band.length === 1) {
@@ -929,6 +974,11 @@ function nodesOf(
             items: [node]
           })
       }
+    }
+    if (!columns.length) continue
+    if (columns.length > maxColumns) {
+      ctx.unsupported ??= `more than ${maxColumns} columns side by side`
+      columns.length = maxColumns
     }
     const rect = unionOf(columns.map((c) => c.rect))!
     out.push({ t: 'row', rect, columns })
@@ -1024,7 +1074,34 @@ export type MeasureResult =
  * The blueprint of a measured email. Sections are its `data-gr-section`
  * elements; an email without any gives an error (mark it first).
  */
-export function blueprintFrom(m: Measurement): MeasureResult {
+export type MeasureOptions = {
+  /**
+   * Number sections by their marks rather than by position: a redraw keeps
+   * its source's numbers, also when a section was left out of it.
+   */
+  ordinalsFromMarks?: boolean
+  /** The source's reading of roles, so a redraw is read the same way. */
+  roles?: RoleContext
+}
+
+export function blueprintFrom(
+  m: Measurement,
+  options: MeasureOptions = {}
+): MeasureResult {
+  try {
+    return measureEmail(m, options)
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : 'The email could not be measured.'
+    }
+  }
+}
+
+function measureEmail(m: Measurement, options: MeasureOptions): MeasureResult {
   const t = treeOf(m)
   const marked = new Map<string, number[]>()
   for (const n of m.nodes)
@@ -1035,13 +1112,31 @@ export function blueprintFrom(m: Measurement): MeasureResult {
       if (!list.some((a) => isAncestor(t, a, n.id))) list.push(n.id)
       marked.set(key, list)
     }
-  const groups = [...marked.values()]
-    .map((ids) => ({ ids, rect: unionOf(ids.map((i) => t.byId[i]!.box!))! }))
+  const groups = [...marked.entries()]
+    .map(([key, ids]) => ({
+      mark: Number(key),
+      ids,
+      rect: unionOf(ids.map((i) => t.byId[i]!.box!))!
+    }))
     .filter((g) => g.rect.w > 0 && g.rect.h > 0)
     .sort((a, b) => a.rect.y - b.rect.y)
     .slice(0, maxBlueprintSections)
   if (!groups.length)
     return { ok: false, error: 'The email has no sections to measure.' }
+  if (
+    options.ordinalsFromMarks &&
+    !groups.every(
+      (g, i) =>
+        Number.isInteger(g.mark) &&
+        g.mark >= 1 &&
+        g.mark <= maxBlueprintSections &&
+        (i === 0 || g.mark > groups[i - 1]!.mark)
+    )
+  )
+    return {
+      ok: false,
+      error: 'The sections are not marked 1, 2, 3… in order.'
+    }
   const html = m.nodes.find((n) => n.tag === 'html')
   const body = m.nodes.find((n) => n.tag === 'body')
   let page = body?.style?.background ?? html?.style?.background ?? '#ffffff'
@@ -1105,7 +1200,7 @@ export function blueprintFrom(m: Measurement): MeasureResult {
       0
     )
     sections.push({
-      ordinal: i + 1,
+      ordinal: options.ordinalsFromMarks ? g.mark : i + 1,
       kind: 'mixed',
       gapBefore: Math.max(0, sy - prev),
       x: sx - snap(left),
@@ -1135,7 +1230,7 @@ export function blueprintFrom(m: Measurement): MeasureResult {
       )
     }
   }
-  const parsed = parseBlueprint(markRoles(draft))
+  const parsed = parseBlueprint(markRoles(draft, options.roles))
   return parsed.ok
     ? { ok: true, blueprint: parsed.blueprint }
     : { ok: false, error: parsed.error }

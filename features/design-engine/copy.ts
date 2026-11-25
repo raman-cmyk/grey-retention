@@ -16,6 +16,7 @@ import {
   type Likeness
 } from './likeness'
 import { blueprintFrom } from './measure'
+import { roleContextOf, type RoleContext } from './roles'
 import { drawBlueprint, sentBytes, type DrawMode } from './render'
 
 /**
@@ -180,13 +181,20 @@ function correct(
   return { plan: { ...plan, sections }, changed }
 }
 
+/**
+ * A redraw measured at the desktop window (numbered by its marks, which are
+ * its source's numbers, and read against its source's roles) and at a
+ * phone's width.
+ */
 async function measureDrawn(
   browser: Browser,
   html: string,
+  roles: RoleContext,
   options: BrowserOptions
 ) {
   const desktop = blueprintFrom(
-    await measureHtml(browser, html, desktopWindow, options)
+    await measureHtml(browser, html, desktopWindow, options),
+    { ordinalsFromMarks: true, roles }
   )
   if (!desktop.ok) return desktop
   const phone = phoneProblems(
@@ -211,12 +219,15 @@ export async function copyDesign(
   )
   if (!measured.ok) return measured
   const source = measured.blueprint
+  const roles = roleContextOf(source)
   const brand = options.brand ?? brandFromBlueprint(source)
   const mode = options.mode ?? 'preview'
   const fallbacks = new Map<number, Fallback>()
+  /** What a section still had wrong when it went to a library block. */
+  const lastProblems = new Map<number, string[]>()
   const tries = new Map<number, number>()
   for (const s of source.sections)
-    if (s.unsupported)
+    if (s.unsupported) {
       fallbacks.set(
         s.ordinal,
         fallbackFor(
@@ -226,35 +237,48 @@ export async function copyDesign(
           mode
         )
       )
+      lastProblems.set(s.ordinal, [`It has ${s.unsupported}.`])
+    }
   const draw = (bp: Blueprint) =>
     drawBlueprint(bp, {
       mode,
       replaced: new Map([...fallbacks].map(([k, f]) => [k, f.rows])),
       brand
     })
+  const check = async (out: string) => {
+    const got = await measureDrawn(browser, out, roles, options)
+    if (!got.ok) return got
+    return {
+      ok: true as const,
+      drawn: got.blueprint,
+      likeness: compareBlueprints(
+        source,
+        got.blueprint,
+        got.phone,
+        new Set(fallbacks.keys())
+      )
+    }
+  }
   let plan = source
   let drawings = 0
   let last: { html: string; drawn: Blueprint; likeness: Likeness } | null = null
   for (let attempt = 0; attempt <= retries; attempt++) {
     const out = draw(plan)
-    const got = await measureDrawn(browser, out, options)
+    const got = await check(out)
     drawings++
     if (!got.ok)
       return {
         ok: false,
         error: `The redraw could not be measured: ${got.error}`
       }
-    const likeness = compareBlueprints(source, got.blueprint, got.phone)
-    last = { html: out, drawn: got.blueprint, likeness }
-    const failing = new Set(
-      likeness.sections
-        .filter((s) => !s.pass && !fallbacks.has(s.ordinal))
-        .map((s) => s.ordinal)
-    )
+    last = { html: out, drawn: got.drawn, likeness: got.likeness }
     for (const s of source.sections)
       if (!fallbacks.has(s.ordinal)) tries.set(s.ordinal, attempt + 1)
+    const failing = new Set(
+      got.likeness.sections.filter((s) => !s.pass).map((s) => s.ordinal)
+    )
     if (!failing.size || attempt === retries) break
-    const next = correct(plan, source, got.blueprint, failing)
+    const next = correct(plan, source, got.drawn, failing)
     if (!next.changed) break
     plan = next.plan
   }
@@ -262,42 +286,41 @@ export async function copyDesign(
   // What still fails is built from the closest library block.
   let added = false
   for (const s of last.likeness.sections) {
-    if (s.pass || fallbacks.has(s.ordinal)) continue
+    if (s.pass) continue
     const section = source.sections.find((x) => x.ordinal === s.ordinal)!
     const n = tries.get(s.ordinal) ?? 1
-    const why = `still differed from the original after ${n} ${n === 1 ? 'try' : 'tries'} (${(s.problems[0] ?? 'it did not match').replace(/\.$/, '').replace(/^It /, 'it ')})`
+    const first = (s.problems[0] ?? 'it did not match')
+      .replace(/\.$/, '')
+      .replace(/^It /, 'it ')
+    const why = `still differed from the original after ${n} ${n === 1 ? 'try' : 'tries'} (${first})`
     fallbacks.set(s.ordinal, fallbackFor(section, why, brand, mode))
+    lastProblems.set(s.ordinal, s.problems)
     added = true
   }
   if (added) {
     const out = draw(plan)
-    const got = await measureDrawn(browser, out, options)
+    const got = await check(out)
     drawings++
     if (!got.ok)
       return {
         ok: false,
         error: `The redraw could not be measured: ${got.error}`
       }
-    last = {
-      html: out,
-      drawn: got.blueprint,
-      likeness: compareBlueprints(source, got.blueprint, got.phone)
-    }
+    last = { html: out, drawn: got.drawn, likeness: got.likeness }
   }
+  const final = last
   const sections: SectionOutcome[] = source.sections.map((s) => {
     const f = fallbacks.get(s.ordinal)
-    const verdict = last!.likeness.sections.find((x) => x.ordinal === s.ordinal)
     if (f)
       return {
         ordinal: s.ordinal,
         kind: s.kind,
         result: f.block ? 'library' : 'left_out',
         tries: s.unsupported ? 0 : (tries.get(s.ordinal) ?? 0),
-        problems: s.unsupported
-          ? [`It has ${s.unsupported}.`]
-          : (verdict?.problems ?? []),
+        problems: lastProblems.get(s.ordinal) ?? [],
         fallback: { block: f.block, blockName: f.blockName, reason: f.reason }
       }
+    const verdict = final.likeness.sections.find((x) => x.ordinal === s.ordinal)
     return {
       ordinal: s.ordinal,
       kind: s.kind,
@@ -307,8 +330,8 @@ export async function copyDesign(
       fallback: null
     }
   })
-  const bytes = sentBytes(last.html)
-  const problems = [...last.likeness.problems]
+  const bytes = sentBytes(final.html)
+  const problems = [...final.likeness.problems]
   if (bytes > GMAIL_CLIP_BYTES)
     problems.push(
       `The email is ${Math.round(bytes / 1024)} KB; Gmail cuts emails above ${Math.round(GMAIL_CLIP_BYTES / 1024)} KB.`
@@ -318,10 +341,10 @@ export async function copyDesign(
   )
   return {
     ok: true,
-    html: last.html,
+    html: final.html,
     source,
-    drawn: last.drawn,
-    likeness: last.likeness,
+    drawn: final.drawn,
+    likeness: final.likeness,
     sections,
     pass: copiedOk && problems.length === 0,
     bytes,

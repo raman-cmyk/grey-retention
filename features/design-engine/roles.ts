@@ -193,8 +193,37 @@ function markRows(items: Item[], width: number): Item[] {
   })
 }
 
+/**
+ * What roles are read against: the biggest words, the main button's size
+ * and the number of sections. A redraw is read against its source's, so a
+ * section built from a library block cannot change how the copied
+ * sections around it are read.
+ */
+export type RoleContext = {
+  biggestText: number
+  mainButton: { width: number; height: number } | null
+  last: number
+}
+
+/** The role context of a measured email. */
+export function roleContextOf(bp: Blueprint): RoleContext {
+  const parts = bp.sections.flatMap((s) => partsOf(s.items))
+  const buttons = parts.filter((p) => p.type === 'button')
+  const main = [...buttons].sort(
+    (a, b) => b.width * b.height - a.width * a.height
+  )[0]
+  return {
+    biggestText: Math.max(
+      0,
+      ...parts.map((p) => (p.type === 'text' ? p.font.size : 0))
+    ),
+    mainButton: main ? { width: main.width, height: main.height } : null,
+    last: Math.max(0, ...bp.sections.map((s) => s.ordinal))
+  }
+}
+
 /** The blueprint with every part's role, each section's kind and the phone rows marked. */
-export function markRoles(bp: Blueprint): Blueprint {
+export function markRoles(bp: Blueprint, given?: RoleContext): Blueprint {
   const rowsMarked: Blueprint = {
     ...bp,
     sections: bp.sections.map((s) => ({
@@ -203,19 +232,26 @@ export function markRoles(bp: Blueprint): Blueprint {
     }))
   }
   const placed = placedParts(rowsMarked)
-  const texts = placed.flatMap((p) => (p.part.type === 'text' ? [p.part] : []))
-  const biggestText = Math.max(0, ...texts.map((t) => t.font.size))
+  const own = roleContextOf(rowsMarked)
+  const context = given ?? own
   const buttons = placed.flatMap((p) =>
     p.part.type === 'button' ? [p.part] : []
   )
+  // The main button: the one of the main button's size (the largest when
+  // reading an email on its own).
   const mainButton =
-    [...buttons].sort((a, b) => b.width * b.height - a.width * a.height)[0] ??
+    (context.mainButton &&
+      buttons.find(
+        (b) =>
+          Math.abs(b.width - context.mainButton!.width) <= 1 &&
+          Math.abs(b.height - context.mainButton!.height) <= 1
+      )) ||
     null
   const ctx = {
     width: bp.width,
-    biggestText,
+    biggestText: context.biggestText,
     mainButton,
-    last: bp.sections.length
+    last: context.last
   }
   const roles = new Map<Part, PartRole>()
   for (const p of placed) roles.set(p.part, roleOf(p, ctx))

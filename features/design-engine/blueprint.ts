@@ -268,7 +268,10 @@ export const itemSchema: z.ZodType<Item> = z.lazy(() =>
 )
 
 export const sectionSchema = z.strictObject({
-  /** 1, 2, 3… top to bottom, as the inbox numbers sections (`data-gr-section`). */
+  /**
+   * 1, 2, 3… top to bottom, as the inbox numbers sections
+   * (`data-gr-section`); a redraw keeps its source's numbers.
+   */
   ordinal: z.int().min(1).max(maxBlueprintSections),
   kind: z.enum(sectionKinds),
   /** Space between this section and the one above it (or the email's top). */
@@ -316,11 +319,13 @@ export const blueprintSchema = z
         code: 'custom',
         message: `Rows are nested ${deepest} deep; at most ${maxNesting} are kept.`
       })
+    // A measured email numbers them 1, 2, 3…; a redraw keeps its source's
+    // numbers, so one may be missing where a section was left out.
     bp.sections.forEach((s, i) => {
-      if (s.ordinal !== i + 1)
+      if (i > 0 && s.ordinal <= bp.sections[i - 1]!.ordinal)
         ctx.addIssue({
           code: 'custom',
-          message: 'Sections are numbered 1, 2, 3… in order.'
+          message: 'Sections are numbered in order, top to bottom.'
         })
     })
   })

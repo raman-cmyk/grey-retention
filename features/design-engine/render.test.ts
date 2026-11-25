@@ -118,11 +118,18 @@ describe('drawing a blueprint', () => {
     )
   })
 
-  it('draws a picture it could not keep as a grey box of the same size', () => {
-    const out = drawBlueprint(
-      blueprint({ sections: [section({ items: [image({ src: null })] })] })
+  it('draws a picture it could not keep as a grey picture of the same size, never in Klaviyo mode', () => {
+    const lost = blueprint({
+      sections: [section({ items: [image({ src: null })] })]
+    })
+    const out = drawBlueprint(lost)
+    const src =
+      /<img class="de-i" src="data:image\/svg\+xml;base64,([^"]+)"/.exec(out)
+    expect(Buffer.from(src![1]!, 'base64').toString()).toContain(
+      'width="600" height="300"'
     )
-    expect(out).toContain('width:600px;height:300px;background:#e3e3e3')
+    expect(out).toContain('width="600" height="300" style="display:block;')
+    expect(() => drawBlueprint(lost, { mode: 'klaviyo' })).toThrow(DrawError)
   })
 
   it('draws an outlined button with its border inside its size', () => {

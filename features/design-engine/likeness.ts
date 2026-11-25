@@ -310,12 +310,23 @@ function sectionPicture(a: Blueprint, b: Blueprint, ordinal: number) {
   )
 }
 
-/** The source against its redraw (and the redraw's phone problems, by section). */
+/**
+ * The source against its redraw (and the redraw's phone problems, by
+ * section). Sections in `skip` (built from a library block, or left out)
+ * are not compared and count for neither score.
+ */
 export function compareBlueprints(
-  source: Blueprint,
-  drawn: Blueprint,
-  phone: ReadonlyMap<number, readonly string[]> = new Map()
+  fullSource: Blueprint,
+  fullDrawn: Blueprint,
+  phone: ReadonlyMap<number, readonly string[]> = new Map(),
+  skip: ReadonlySet<number> = new Set()
 ): Likeness {
+  const kept = (bp: Blueprint): Blueprint => ({
+    ...bp,
+    sections: bp.sections.filter((s) => !skip.has(s.ordinal))
+  })
+  const source = kept(fullSource)
+  const drawn = kept(fullDrawn)
   const problems: string[] = []
   if (source.sections.length !== drawn.sections.length)
     problems.push(
