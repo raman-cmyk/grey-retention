@@ -26,6 +26,16 @@ const form = (values: Record<string, string>) => {
 }
 
 let rpc: ReturnType<typeof vi.fn>
+/** The brand's approved version as the page's session reads it. */
+const profileRead = (approved: number | null) => () => {
+  const link: Record<string, unknown> = {}
+  for (const step of ['select', 'eq']) link[step] = () => link
+  link.maybeSingle = async () => ({
+    data: { approved_revision: approved },
+    error: null
+  })
+  return link
+}
 beforeEach(() => {
   vi.stubEnv('AUTH_MODE', 'supabase')
   auth.requireRequestContext.mockResolvedValue({
@@ -33,7 +43,7 @@ beforeEach(() => {
     tenantRole: 'owner'
   })
   rpc = vi.fn(async () => ({ data: null, error: null }))
-  supabase.createClient.mockResolvedValue({ rpc })
+  supabase.createClient.mockResolvedValue({ rpc, from: profileRead(3) })
 })
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -66,6 +76,14 @@ describe('brandAction', () => {
     expect(
       await brandAction({}, form({ kind: 'approve', revision: '4' }))
     ).toEqual({ error: 'Brand context changed. Refresh before approving.' })
+    expect(writes.rewriteBrandBookSoon).not.toHaveBeenCalled()
+  })
+
+  it('rewrites nothing when the version shown is already approved', async () => {
+    supabase.createClient.mockResolvedValue({ rpc, from: profileRead(4) })
+    expect(
+      await brandAction({}, form({ kind: 'approve', revision: '4' }))
+    ).toEqual({ message: 'Brand version approved.' })
     expect(writes.rewriteBrandBookSoon).not.toHaveBeenCalled()
   })
 

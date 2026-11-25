@@ -357,15 +357,33 @@ async function catalogStatusOf(db: Db, tenantId: string) {
 export async function writeBrandBook(
   db: Db,
   tenantId: string,
-  reads: {
-    findings: (db: Db, t: string) => Promise<Finding[]>
-    catalog: (db: Db, t: string) => Promise<CatalogEntry[]>
-    history: (db: Db, t: string) => Promise<StoredHistory | null>
-    timezone: (db: Db, t: string) => Promise<string>
-    /** ONB-058: the owner's live corrections, oldest first. */
-    corrections: (db: Db, t: string) => Promise<Correction[]>
-  }
+  reads: BookReads
 ): Promise<number | null> {
+  const book = await composeBrandBook(db, tenantId, reads)
+  return book ? saveBrandBook(db, tenantId, book) : null
+}
+
+/** What a Brand book is written from (the worker's reads). */
+export type BookReads = {
+  findings: (db: Db, t: string) => Promise<Finding[]>
+  catalog: (db: Db, t: string) => Promise<CatalogEntry[]>
+  history: (db: Db, t: string) => Promise<StoredHistory | null>
+  timezone: (db: Db, t: string) => Promise<string>
+  /** ONB-058: the owner's live corrections, oldest first. */
+  corrections: (db: Db, t: string) => Promise<Correction[]>
+}
+
+/**
+ * The Brand book from the workspace's findings, catalog, history, profile
+ * and the owner's corrections, cut to size; null for a real brand with
+ * only sample data. Saves nothing (UI-BRAND-2: the rewrite job saves it
+ * under its lease). A failed read throws.
+ */
+export async function composeBrandBook(
+  db: Db,
+  tenantId: string,
+  reads: BookReads
+): Promise<BrandBookContent | null> {
   const [findings, catalog, history, timezone, profile, status, corrections] =
     await Promise.all([
       reads.findings(db, tenantId),
@@ -401,7 +419,7 @@ export async function writeBrandBook(
       : null
   })
   if (book.sample && profile?.synthetic !== true) return null
-  return saveBrandBook(db, tenantId, withCorrections(book, corrections))
+  return withCorrections(book, corrections)
 }
 
 /**

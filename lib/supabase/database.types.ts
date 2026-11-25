@@ -7958,8 +7958,14 @@ export type Database = {
         }[]
       }
       finish_brand_book_write: {
-        Args: { book_version: number; job: string; lease: string }
-        Returns: undefined
+        Args: {
+          based_on: number
+          content: Json
+          job: string
+          lease: string
+          written_by: string
+        }
+        Returns: number
       }
       finish_capture_job: {
         Args: { job: string; lease: string; output: Json }
@@ -8162,6 +8168,10 @@ export type Database = {
       }
       preview_optimizer: {
         Args: { observed_at: string; t: string }
+        Returns: string
+      }
+      queue_brand_book_write_as_worker: {
+        Args: { cause: string; ref: string; t: string }
         Returns: string
       }
       queue_ready_l1: { Args: { t: string }; Returns: number }

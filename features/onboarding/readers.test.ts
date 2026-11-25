@@ -107,7 +107,8 @@ describe('runSourceReadings', () => {
     const book = vi.fn(async () => 1)
     await runSourceReadings(db, { read, book, staleBooks: async () => [] })
     expect(book).toHaveBeenCalledOnce()
-    expect(book).toHaveBeenCalledWith(db, 't1')
+    // UI-BRAND-2: through the rewrite queue, named by the read.
+    expect(book).toHaveBeenCalledWith(db, 't1', { cause: 'read', ref: 'j1' })
   })
 
   it('first runs the Brand book rewrites the owner’s clicks left waiting, inside the reads’ budget (UI-BRAND-2)', async () => {

@@ -51,6 +51,10 @@ export async function brandAction(
     return { error: 'Sign in through local Supabase to persist brand inputs.' }
   const v = parsed.data
   let error: { code?: string } | null = null
+  // UI-BRAND-2: approving a version that is not approved yet rewrites the
+  // Brand book (the database queues it with the approval); approving it
+  // again changes nothing.
+  let rewrites = false
   if (v.kind === 'save')
     ({ error } = await db.rpc('save_brand', {
       t: context.tenantId,
@@ -61,11 +65,18 @@ export async function brandAction(
       voice: v.voice,
       prohibitions: v.prohibitions
     }))
-  if (v.kind === 'approve')
-    ({ error } = await db.rpc('approve_brand', {
+  if (v.kind === 'approve') {
+    const before = await db
+      .from('brand_profiles')
+      .select('approved_revision')
+      .eq('tenant_id', context.tenantId)
+      .maybeSingle()
+    rewrites = before.data?.approved_revision !== v.revision
+    ;({ error } = await db.rpc('approve_brand', {
       t: context.tenantId,
       expected_revision: v.revision
     }))
+  }
   if (v.kind === 'product')
     ({ error } = await db.rpc('create_product', {
       t: context.tenantId,
@@ -93,7 +104,7 @@ export async function brandAction(
     }
   // UI-BRAND-2: approving queued the Brand book's rewrite (in the same
   // transaction); it runs right after this reply.
-  if (v.kind === 'approve') rewriteBrandBookSoon(context.tenantId)
+  if (rewrites) rewriteBrandBookSoon(context.tenantId)
   revalidatePath('/setup')
   revalidatePath('/brand')
   revalidatePath('/brand/book')
@@ -101,7 +112,9 @@ export async function brandAction(
   return {
     message:
       v.kind === 'approve'
-        ? 'Brand version approved. Rewriting the Brand book.'
+        ? rewrites
+          ? 'Brand version approved. Rewriting the Brand book.'
+          : 'Brand version approved.'
         : 'Saved. Refresh retains your changes.'
   }
 }

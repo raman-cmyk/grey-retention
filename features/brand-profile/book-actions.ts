@@ -13,7 +13,8 @@ import { factInput, factKeys, type FactKey } from './book-facts'
  * correction is the owner's own word: it outranks what the readers saw and
  * the strategist's reading, and needs no approval (it is not a brand
  * version). Owner only, here and in the database (`correct_brand_book_at`,
- * `withdraw_brand_book_correction_at`, `retry_brand_book_write`), against
+ * `withdraw_brand_book_correction_at`, `retry_brand_book_write`; since
+ * migration 090095 ONB-058's older commands are the owner's only too), against
  * the Brand book version the page showed (a newer one is refused). The
  * database queues the rewrite with the change; it runs right after the
  * reply (`rewriteBrandBookSoon`), so the agents read the corrected book.

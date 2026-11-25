@@ -26,7 +26,7 @@ import { sectionKeys } from './sections'
 
 /**
  * Brand (UI-BRAND), a main GROS page at `/brand` (UI-BRAND-2; it was under
- * Settings at `/brand`, which now opens it): the brand version
+ * Settings at `/settings/brand`, which now opens it): the brand version
  * and the owner's Approve brand (which rewrites the Brand book right away),
  * the latest Brand book and Brand assets (the two pages under Brand), the
  * six profile sections, the catalog, the permitted offers and the brand's
