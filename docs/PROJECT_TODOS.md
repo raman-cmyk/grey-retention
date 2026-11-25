@@ -1,6 +1,6 @@
 # Project to-dos and owner decisions
 
-Updated: 7 November 2026. Canonical owner follow-up record for future project discussions. Technical implementation and verification history stays in [BUILD_LEDGER.md](BUILD_LEDGER.md).
+Updated: 25 November 2026. Canonical owner follow-up record for future project discussions. Technical implementation and verification history stays in [BUILD_LEDGER.md](BUILD_LEDGER.md).
 
 ## How to use
 
@@ -26,6 +26,8 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Open question for design (17 Nov 2026, UI-SETb; built as noted until decided): on Settings' Team card an invite's row has two buttons, Resend (outline) and Cancel invite (quiet), and a teammate's row two, Make Manager or Make Staff (outline) and Deactivate (quiet), where BRAND.md says one action per row. A role change, Deactivate and Reactivate ask first with the browser's own confirm. BRAND.md has no select, so the role at invite is two buttons, Invite as Staff (main) and Invite as Manager (outline).
 - Open question for design (17 Nov 2026, UI-SETd; built as noted until decided): BRAND.md has no select, checkbox or multi-line field, but Holidays (type, country, every year, notes), Support and Feature requests need them. They are plain controls on the GROS tokens (mist fill, radius md, forest focus), like DST-002c's mode pick. Holidays and events is its own page under Settings, reached from a small card with one sentence and Open holidays.
 - Open question for design (20 Nov 2026, UI-AUDb, UI-INSb, UI-LRNc; built as noted until decided): BRAND.md's ListRow keeps a title to one line, but at 375 px a segment's, brand's, email's or rule's name and its details were cut to a few letters. Built: on Audiences, Inspiration and Learned a row's name and details show whole, on as many lines as they need, and on a phone a row's button drops under its words (as ListRow already meant). Other lists still cut a title to one line. At 1280 px and wider nothing moves. Between 1024 and about 1180 px, Home's designed-email rows (the mode pick and Create email) and Settings' Team member and invite rows now put their buttons under the words; before, the words were squeezed to "Autumn…".
+- 25 Nov 2026 (approved, email design): three ways to design an email on one engine, as in the plan "GROS email design: upload, library and scratch". (1) A library email is copied 1:1 in **structure**: same sections, columns, widths, spacing, text, button and image sizes; colours, fonts, logo, words and photos are the brand's own (rule 8 holds). (2) An upload the owner marks as **the brand's own design** keeps everything (layout, colours, fonts, photos) and changes only the content (words, products, prices, links, codes); an upload marked as **someone else's email** is treated like a library email. (3) HTML and .eml uploads first; pictures, PDFs and Figma links later, as close to 1:1 rather than exact. (4) An upload becomes a **private library item** of that brand only, reusable later, never shown to other brands. (5) A section that cannot be copied (a countdown timer, a GIF with text) is built from the closest library block, and the email's page says which section and why. Build order: engine → library 1:1 → upload 1:1 (with the add-your-own-email page) → scratch from the real library → inbox quality.
+- 25 Nov 2026 (approved, Brand): (1) **Brand gets its own item in the main menu** next to Create email, not only a card under Settings. (2) **The owner can type corrections straight into the Brand book**; a correction is the owner's own word and outranks what GROS read or guessed. (3) **Approving the brand rewrites the Brand book right away.** (4) The brand's history shows in plain words; the detailed record is kept but not shown.
 
 ## Legal pages (proposal)
 
@@ -65,6 +67,9 @@ Owner picks #4, #12 and #15 (IMG-ADAPTER, 20 Nov 2026, `lib/providers/image-work
 | EML-AB-001       | Test layer 3: A coded blocks vs B designed sections (design studio), one Klaviyo draft per email with A and B     | Not started; owner picks the default                              |
 | PICKS-1115       | Build the 61 owner-picked additions (AGENT_MAP.md, D27), plus the resumable build job (#81) they need             | Approved 15 Nov; not started                                      |
 | MEM-DONT-001     | Do's and don'ts memory from results, inspector rejections and owner edits                                         | Not started                                                       |
+| DES-ENGINE-001   | Step 1 of the design plan: blueprint, measuring tool, safe drawing code and likeness check, 40-email test set     | Approved 25 Nov; in progress                                      |
+| DES-ENGINE-002–5 | Steps 2–5: library 1:1, upload 1:1 (+ add-your-own-email page), scratch from the real library, inbox quality      | Approved 25 Nov; each starts after the previous step passes       |
+| UI-BRAND-2       | Brand in the main menu, owner corrections typed into the Brand book, approve rewrites the book right away         | Approved 25 Nov; in progress                                      |
 | SCHED-LATE-001   | Scheduled runs fire every 5.5–9 hours, not every 30 minutes (GitHub delays them); queued work can wait            | Observed 20 Nov; pg_cron is a proposal (see Open decisions)       |
 
 ## Research follow-ups
@@ -99,3 +104,7 @@ Owner corrected the block target to 2,000+, introduced strategic segmentation an
 ### 15 November 2026 (UI direction)
 
 Owner rejected the first black-and-white minimal UI prototype. Owner decisions: (1) brand guidelines come first, then pages are designed one at a time in Claude Design before any page is built in code; (2) the look follows his three references: soft rounded white cards on a light grey page, lime green accent with deep green, big numbers, pill navigation, a split onboarding screen with step cards and a sidebar AI workspace; (3) every page is crafted with care, not batch-produced. Proposal, not yet approved: brand guidelines draft 1 (lime `#B9F26C`, forest `#14401F`, Urbanist), Onboarding step 1 and Home. This direction uses pills, tinted cards and one decorative shape per lime card, which `docs/DESIGN_RULES.md` currently forbids; update that file once the owner approves the brand sheet. Not done: the Pinterest inspiration sweep the owner asked for.
+
+### 25 November 2026 (email design and Brand)
+
+Owner answered the nine questions of the email design plan and the Brand rebuild (all listed under Confirmed direction). He took every suggestion except two Brand ones: Brand goes in the main menu, and he wants to correct the Brand book directly rather than through the Brand page.
