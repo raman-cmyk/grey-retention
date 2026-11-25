@@ -363,7 +363,8 @@ export function drawBlueprint(
   const rows: string[] = []
   for (const s of bp.sections) {
     const replaced = options.replaced?.get(s.ordinal)
-    rows.push(spacer(s.gapBefore, s.around))
+    // A section left out leaves no gap of its own either.
+    if (replaced !== '') rows.push(spacer(s.gapBefore, s.around))
     if (replaced !== undefined) {
       rows.push(markedRows(replaced, s.ordinal))
       continue

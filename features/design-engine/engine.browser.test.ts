@@ -116,6 +116,13 @@ describe.skipIf(!on)('the design engine in the browser', () => {
     expect(result.likeness.sections.map((s) => s.ordinal)).toEqual([1, 3, 4, 5])
   }, 60_000)
 
+  it('refuses, as a result, to draw for Klaviyo a picture that is not uploaded', async () => {
+    expect(await copyDesign(browser, timerEmail, { mode: 'klaviyo' })).toEqual({
+      ok: false,
+      error: 'Upload every picture to Klaviyo before it goes into an email.'
+    })
+  }, 60_000)
+
   it('catches a redraw that is not alike: a column made 10 px narrower', async () => {
     const html = classic({
       title: 'Grid',

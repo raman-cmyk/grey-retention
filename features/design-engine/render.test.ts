@@ -151,6 +151,15 @@ describe('drawing a blueprint', () => {
     expect(out).toContain('width:156px;padding:12px 0 12px')
   })
 
+  it('leaves out a section with nothing to draw, gap and all', () => {
+    const bp = blueprint()
+    bp.sections[1]!.gapBefore = 40
+    expect(drawBlueprint(bp)).toContain('<td height="40"')
+    const out = drawBlueprint(bp, { replaced: new Map([[2, '']]) })
+    expect(out).not.toContain('<td height="40"')
+    expect(out).not.toContain('data-gr-section="2"')
+  })
+
   it('puts a section drawn by a library block in its place, marked', () => {
     const out = drawBlueprint(blueprint(), {
       replaced: new Map([[2, '<tr data-block="cta"><td>Block</td></tr>']])

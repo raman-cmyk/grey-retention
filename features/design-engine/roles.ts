@@ -237,16 +237,19 @@ export function markRoles(bp: Blueprint, given?: RoleContext): Blueprint {
   const buttons = placed.flatMap((p) =>
     p.part.type === 'button' ? [p.part] : []
   )
-  // The main button: the one of the main button's size (the largest when
-  // reading an email on its own).
+  // The main button: the one of the main button's size, or else the
+  // largest (the largest when reading an email on its own).
+  const largest =
+    [...buttons].sort((a, b) => b.width * b.height - a.width * a.height)[0] ??
+    null
   const mainButton =
     (context.mainButton &&
       buttons.find(
         (b) =>
-          Math.abs(b.width - context.mainButton!.width) <= 1 &&
-          Math.abs(b.height - context.mainButton!.height) <= 1
+          Math.abs(b.width - context.mainButton!.width) <= 2 &&
+          Math.abs(b.height - context.mainButton!.height) <= 2
       )) ||
-    null
+    largest
   const ctx = {
     width: bp.width,
     biggestText: context.biggestText,

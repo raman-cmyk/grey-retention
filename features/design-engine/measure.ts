@@ -384,7 +384,8 @@ function textPiece(
     if (s.fontWeight !== main6.weight) run.weight = s.fontWeight
     if (s.italic !== main6.italic) run.italic = s.italic
     if (s.color && s.color !== main6.color) run.color = s.color
-    if (Math.abs(s.fontSize - main6.size) >= 0.5) run.size = r2(s.fontSize)
+    if (Math.abs(s.fontSize - main6.size) >= 0.5)
+      run.size = r2(Math.min(200, Math.max(1, s.fontSize)))
     if (deco.underline) run.underline = true
     if (deco.strike) run.strike = true
     if (href) run.href = href
@@ -438,6 +439,8 @@ const sameLook = (a: TextRun, b: TextRun) =>
  * characters (the rest of a very long text joins the last run, plain).
  */
 export function fitRuns(runs: readonly TextRun[]): TextRun[] {
+  if (runs.length <= 200)
+    return runs.map((r) => ({ ...r, text: r.text.slice(0, 5_000) }))
   const out = runs
     .slice(0, 199)
     .map((r) => ({ ...r, text: r.text.slice(0, 5_000) }))
@@ -1119,7 +1122,7 @@ function measureEmail(m: Measurement, options: MeasureOptions): MeasureResult {
       rect: unionOf(ids.map((i) => t.byId[i]!.box!))!
     }))
     .filter((g) => g.rect.w > 0 && g.rect.h > 0)
-    .sort((a, b) => a.rect.y - b.rect.y)
+    .sort((a, b) => a.rect.y - b.rect.y || a.mark - b.mark)
     .slice(0, maxBlueprintSections)
   if (!groups.length)
     return { ok: false, error: 'The email has no sections to measure.' }
@@ -1210,7 +1213,9 @@ function measureEmail(m: Measurement, options: MeasureOptions): MeasureResult {
       around,
       items: inner.items,
       bottom: sb - inner.end,
-      unsupported: ctx.unsupported
+      unsupported: capItems(inner.items, 300)
+        ? 'more than 200 parts in one place'
+        : ctx.unsupported
     })
     prev = Math.max(prev, sb)
   }
@@ -1234,6 +1239,20 @@ function measureEmail(m: Measurement, options: MeasureOptions): MeasureResult {
   return parsed.ok
     ? { ok: true, blueprint: parsed.blueprint }
     : { ok: false, error: parsed.error }
+}
+
+/**
+ * Keeps every list of items within the blueprint's limits (200 in a
+ * column, `top` in a section); true when something had to be cut, and the
+ * section is then built from a library block.
+ */
+function capItems(items: Item[], top = 200): boolean {
+  let cut = items.length > top
+  if (cut) items.length = top
+  for (const item of items)
+    if (item.type === 'row')
+      for (const c of item.columns) if (capItems(c.items)) cut = true
+  return cut
 }
 
 function isAncestor(t: Tree, a: number, b: number) {

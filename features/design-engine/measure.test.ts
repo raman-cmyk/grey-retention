@@ -461,6 +461,15 @@ describe('measuring odd emails', () => {
     expect(fitted).toHaveLength(200)
     expect(fitted.at(-1)!.text.startsWith('w199 ')).toBe(true)
     expect(fitRuns([{ text: 'x'.repeat(6_000) }])[0]!.text).toHaveLength(5_000)
+    // Exactly 200 runs stay as they are, the last link included.
+    const two = [
+      ...runs.slice(0, 199),
+      { text: 'Unsubscribe', href: 'https://example.com/u' }
+    ]
+    expect(fitRuns(two).at(-1)).toEqual({
+      text: 'Unsubscribe',
+      href: 'https://example.com/u'
+    })
   })
 })
 

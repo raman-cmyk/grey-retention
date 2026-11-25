@@ -36,6 +36,8 @@ export type GoldenRow = {
   drawings: number
   sections: Extract<CopyResult, { ok: true }>['sections']
   problems: string[]
+  /** The side-by-side picture could not be taken (the result still stands). */
+  pictureError?: string
 }
 
 /** Grey boxes of a layout as a small SVG, `scale` of its size. */
@@ -133,7 +135,7 @@ export async function runGoldenSet(
       bytes: result.bytes,
       drawings: result.drawings,
       sections: result.sections,
-      problems: result.problems
+      problems: [...result.problems]
     })
     if (out) {
       try {
@@ -143,11 +145,8 @@ export async function runGoldenSet(
         )
       } catch (e) {
         // A picture that cannot be taken is noted; the report is still written.
-        rows
-          .at(-1)!
-          .problems.push(
-            `The side-by-side picture could not be taken: ${e instanceof Error ? e.message : String(e)}`
-          )
+        rows.at(-1)!.pictureError =
+          `The side-by-side picture could not be taken: ${e instanceof Error ? e.message : String(e)}`
       }
       writeFileSync(join(out, `${email.id}.redraw.html`), result.html)
     }
@@ -174,6 +173,7 @@ function writeReport(out: string, rows: readonly GoldenRow[]) {
         r.error ??
         [
           ...r.problems,
+          ...(r.pictureError ? [r.pictureError] : []),
           ...r.sections.flatMap((s) =>
             s.fallback
               ? [s.fallback.reason]
@@ -189,7 +189,19 @@ function writeReport(out: string, rows: readonly GoldenRow[]) {
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Design engine golden set</title></head><body style="font:14px Arial;margin:24px"><h1>Design engine golden set: ${passed} of ${rows.length} pass</h1>${rows
     .map(
       (r) =>
-        `<h2 id="${r.id}">${escape(r.id)}: ${r.pass ? 'pass' : 'FAIL'}</h2><p>${escape(r.title)}${r.error ? ` · ${escape(r.error)}` : ''}</p><ul>${[...r.problems, ...r.sections.flatMap((s) => (s.fallback ? [s.fallback.reason] : s.problems.map((p) => `Section ${s.ordinal}: ${p}`)))].map((p) => `<li>${escape(p)}</li>`).join('')}</ul>${r.error ? '' : `<img src="${r.id}.jpg" style="max-width:100%">`}`
+        `<h2 id="${r.id}">${escape(r.id)}: ${r.pass ? 'pass' : 'FAIL'}</h2><p>${escape(r.title)}${r.error ? ` · ${escape(r.error)}` : ''}</p><ul>${[
+          ...r.problems,
+          ...(r.pictureError ? [r.pictureError] : []),
+          ...r.sections.flatMap((s) =>
+            s.fallback
+              ? [s.fallback.reason]
+              : s.problems.map((p) => `Section ${s.ordinal}: ${p}`)
+          )
+        ]
+          .map((p) => `<li>${escape(p)}</li>`)
+          .join(
+            ''
+          )}</ul>${r.error ? '' : `<img src="${r.id}.jpg" style="max-width:100%">`}`
     )
     .join('')}</body></html>`
   writeFileSync(join(out, 'index.html'), html)

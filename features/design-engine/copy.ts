@@ -17,7 +17,7 @@ import {
 } from './likeness'
 import { blueprintFrom } from './measure'
 import { roleContextOf, type RoleContext } from './roles'
-import { drawBlueprint, sentBytes, type DrawMode } from './render'
+import { DrawError, drawBlueprint, sentBytes, type DrawMode } from './render'
 
 /**
  * DES-ENGINE-001, the engine's loop: measure an HTML email, draw it back
@@ -245,111 +245,123 @@ export async function copyDesign(
       replaced: new Map([...fallbacks].map(([k, f]) => [k, f.rows])),
       brand
     })
-  const check = async (out: string) => {
-    const got = await measureDrawn(browser, out, roles, options)
-    if (!got.ok) return got
-    return {
-      ok: true as const,
-      drawn: got.blueprint,
-      likeness: compareBlueprints(
-        source,
-        got.blueprint,
-        got.phone,
-        new Set(fallbacks.keys())
-      )
+  try {
+    return await loop()
+  } catch (error) {
+    // A drawing refused (Klaviyo mode with a picture that is not https).
+    if (error instanceof DrawError) return { ok: false, error: error.message }
+    throw error
+  }
+  async function loop(): Promise<CopyResult> {
+    const check = async (out: string) => {
+      const got = await measureDrawn(browser, out, roles, options)
+      if (!got.ok) return got
+      return {
+        ok: true as const,
+        drawn: got.blueprint,
+        likeness: compareBlueprints(
+          source,
+          got.blueprint,
+          got.phone,
+          new Set(fallbacks.keys())
+        )
+      }
     }
-  }
-  let plan = source
-  let drawings = 0
-  let last: { html: string; drawn: Blueprint; likeness: Likeness } | null = null
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const out = draw(plan)
-    const got = await check(out)
-    drawings++
-    if (!got.ok)
-      return {
-        ok: false,
-        error: `The redraw could not be measured: ${got.error}`
-      }
-    last = { html: out, drawn: got.drawn, likeness: got.likeness }
-    for (const s of source.sections)
-      if (!fallbacks.has(s.ordinal)) tries.set(s.ordinal, attempt + 1)
-    const failing = new Set(
-      got.likeness.sections.filter((s) => !s.pass).map((s) => s.ordinal)
-    )
-    if (!failing.size || attempt === retries) break
-    const next = correct(plan, source, got.drawn, failing)
-    if (!next.changed) break
-    plan = next.plan
-  }
-  if (!last) return { ok: false, error: 'Nothing was drawn.' }
-  // What still fails is built from the closest library block.
-  let added = false
-  for (const s of last.likeness.sections) {
-    if (s.pass) continue
-    const section = source.sections.find((x) => x.ordinal === s.ordinal)!
-    const n = tries.get(s.ordinal) ?? 1
-    const first = (s.problems[0] ?? 'it did not match')
-      .replace(/\.$/, '')
-      .replace(/^It /, 'it ')
-    const why = `still differed from the original after ${n} ${n === 1 ? 'try' : 'tries'} (${first})`
-    fallbacks.set(s.ordinal, fallbackFor(section, why, brand, mode))
-    lastProblems.set(s.ordinal, s.problems)
-    added = true
-  }
-  if (added) {
-    const out = draw(plan)
-    const got = await check(out)
-    drawings++
-    if (!got.ok)
-      return {
-        ok: false,
-        error: `The redraw could not be measured: ${got.error}`
-      }
-    last = { html: out, drawn: got.drawn, likeness: got.likeness }
-  }
-  const final = last
-  const sections: SectionOutcome[] = source.sections.map((s) => {
-    const f = fallbacks.get(s.ordinal)
-    if (f)
+    let plan = source
+    let drawings = 0
+    let last: { html: string; drawn: Blueprint; likeness: Likeness } | null =
+      null
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const out = draw(plan)
+      const got = await check(out)
+      drawings++
+      if (!got.ok)
+        return {
+          ok: false,
+          error: `The redraw could not be measured: ${got.error}`
+        }
+      last = { html: out, drawn: got.drawn, likeness: got.likeness }
+      for (const s of source.sections)
+        if (!fallbacks.has(s.ordinal)) tries.set(s.ordinal, attempt + 1)
+      const failing = new Set(
+        got.likeness.sections.filter((s) => !s.pass).map((s) => s.ordinal)
+      )
+      if (!failing.size || attempt === retries) break
+      const next = correct(plan, source, got.drawn, failing)
+      if (!next.changed) break
+      plan = next.plan
+    }
+    if (!last) return { ok: false, error: 'Nothing was drawn.' }
+    // What still fails is built from the closest library block.
+    let added = false
+    for (const s of last.likeness.sections) {
+      if (s.pass) continue
+      const section = source.sections.find((x) => x.ordinal === s.ordinal)!
+      const n = tries.get(s.ordinal) ?? 1
+      const first = (s.problems[0] ?? 'it did not match')
+        .replace(/\.$/, '')
+        .replace(/^It /, 'it ')
+      const why = `still differed from the original after ${n} ${n === 1 ? 'try' : 'tries'} (${first})`
+      fallbacks.set(s.ordinal, fallbackFor(section, why, brand, mode))
+      lastProblems.set(s.ordinal, s.problems)
+      added = true
+    }
+    if (added) {
+      const out = draw(plan)
+      const got = await check(out)
+      drawings++
+      if (!got.ok)
+        return {
+          ok: false,
+          error: `The redraw could not be measured: ${got.error}`
+        }
+      last = { html: out, drawn: got.drawn, likeness: got.likeness }
+    }
+    const final = last
+    const sections: SectionOutcome[] = source.sections.map((s) => {
+      const f = fallbacks.get(s.ordinal)
+      if (f)
+        return {
+          ordinal: s.ordinal,
+          kind: s.kind,
+          result: f.block ? 'library' : 'left_out',
+          tries: s.unsupported ? 0 : (tries.get(s.ordinal) ?? 0),
+          problems: lastProblems.get(s.ordinal) ?? [],
+          fallback: { block: f.block, blockName: f.blockName, reason: f.reason }
+        }
+      const verdict = final.likeness.sections.find(
+        (x) => x.ordinal === s.ordinal
+      )
       return {
         ordinal: s.ordinal,
         kind: s.kind,
-        result: f.block ? 'library' : 'left_out',
-        tries: s.unsupported ? 0 : (tries.get(s.ordinal) ?? 0),
-        problems: lastProblems.get(s.ordinal) ?? [],
-        fallback: { block: f.block, blockName: f.blockName, reason: f.reason }
+        result: 'copied',
+        tries: tries.get(s.ordinal) ?? 1,
+        problems: verdict?.problems ?? [],
+        fallback: null
       }
-    const verdict = final.likeness.sections.find((x) => x.ordinal === s.ordinal)
-    return {
-      ordinal: s.ordinal,
-      kind: s.kind,
-      result: 'copied',
-      tries: tries.get(s.ordinal) ?? 1,
-      problems: verdict?.problems ?? [],
-      fallback: null
-    }
-  })
-  const bytes = sentBytes(final.html)
-  const problems = [...final.likeness.problems]
-  if (bytes > GMAIL_CLIP_BYTES)
-    problems.push(
-      `The email is ${Math.round(bytes / 1024)} KB; Gmail cuts emails above ${Math.round(GMAIL_CLIP_BYTES / 1024)} KB.`
+    })
+    const bytes = sentBytes(final.html)
+    const problems = [...final.likeness.problems]
+    if (bytes > GMAIL_CLIP_BYTES)
+      problems.push(
+        `The email is ${Math.round(bytes / 1024)} KB; Gmail cuts emails above ${Math.round(GMAIL_CLIP_BYTES / 1024)} KB.`
+      )
+    const copiedOk = sections.every(
+      (s) => s.result === 'copied' && s.problems.length === 0
     )
-  const copiedOk = sections.every(
-    (s) => s.result === 'copied' && s.problems.length === 0
-  )
-  return {
-    ok: true,
-    html: final.html,
-    source,
-    drawn: final.drawn,
-    likeness: final.likeness,
-    sections,
-    pass: copiedOk && problems.length === 0,
-    bytes,
-    problems,
-    drawings
+    return {
+      ok: true,
+      html: final.html,
+      source,
+      drawn: final.drawn,
+      likeness: final.likeness,
+      sections,
+      pass: copiedOk && problems.length === 0,
+      bytes,
+      problems,
+      drawings
+    }
   }
 }
 
