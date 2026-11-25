@@ -61,7 +61,8 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
   await page.reload()
   await expect(page.getByText('Approved for AI use · version 1')).toBeVisible()
 
-  // The Brand book review opens from Brand and offers the same approval.
+  // The Brand book review opens from Brand; it shows where the brand
+  // stands but approves nothing itself (UI-BRAND review).
   await card(page, 'Brand book')
     .getByRole('link', { name: 'Review Brand book' })
     .click()
@@ -70,8 +71,11 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
     page.getByRole('heading', { name: 'Brand book', level: 1 })
   ).toBeVisible()
   await expect(
-    card(page, 'Brand version').getByText('Approved for AI use · version 1')
+    card(page, 'Your brand').getByText('Approved for AI use · version 1')
   ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: /^Approve brand/ })
+  ).toHaveCount(0)
   await page.getByRole('link', { name: 'Back to Brand' }).click()
   await expect(page).toHaveURL(/\/settings\/brand$/)
 
@@ -124,6 +128,18 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Approve brand v2' })
+  ).toBeVisible()
+  // From the Brand book, the owner approves on Brand, where he sees what
+  // he approves.
+  await page.goto('/settings/brand/book')
+  await card(page, 'Your brand')
+    .getByRole('link', { name: 'Review and approve' })
+    .click()
+  await expect(page).toHaveURL(/\/settings\/brand#version$/)
+  await expect(
+    card(page, 'Brand version').getByRole('button', {
+      name: 'Approve brand v2'
+    })
   ).toBeVisible()
 
   // The old addresses open the new page: /brand, the old Copy & Voice

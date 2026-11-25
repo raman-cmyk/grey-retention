@@ -56,7 +56,7 @@ function ready(
 const card = (name: string) => screen.getByRole('region', { name })
 
 describe('BrandBookScreen', () => {
-  it('is a page under Brand, with the approval of the version shown', () => {
+  it('is a page under Brand, and sends the approval to Brand', () => {
     render(<BrandBookScreen view={ready()} />)
     expect(
       screen.getByRole('heading', { name: 'Brand book', level: 1 })
@@ -65,11 +65,29 @@ describe('BrandBookScreen', () => {
       'href',
       '/settings/brand'
     )
+    // He approves on Brand, where he sees the words he approves: this page
+    // shows the book, not those fields, so it has no Approve button.
+    expect(screen.queryByRole('button', { name: /^Approve/ })).toBeNull()
+    const brand = card('Your brand')
+    expect(brand).toHaveTextContent(
+      'Version 3 waits for your approval. Approve it on Brand, where you see what you approve.'
+    )
+    expect(within(brand).getByText('Needs you')).toBeVisible()
     expect(
-      within(card('Brand version')).getByRole('button', {
-        name: 'Approve brand v3'
-      })
-    ).toBeVisible()
+      within(brand).getByRole('link', { name: 'Review and approve' })
+    ).toHaveAttribute('href', '/settings/brand#version')
+    cleanup()
+    render(
+      <BrandBookScreen
+        view={ready({ brand: { revision: 3, approvedRevision: 3 } })}
+      />
+    )
+    expect(card('Your brand')).toHaveTextContent(
+      'Approved for AI use · version 3'
+    )
+    expect(
+      within(card('Your brand')).getByRole('link', { name: 'Open brand' })
+    ).toHaveAttribute('href', '/settings/brand#version')
     expect(card('This version')).toHaveTextContent(
       'Version5Written Nov 24, 2026 · Cedar Lane · https://cedarlane.example'
     )
@@ -80,11 +98,26 @@ describe('BrandBookScreen', () => {
     render(<BrandBookScreen view={ready()} />)
     const facts = card('Confirmed facts')
     expect(within(facts).getByText('Returns within 30 days')).toBeVisible()
-    expect(facts).toHaveTextContent(
+    // What is not clear is never among the confirmed facts.
+    expect(facts).not.toHaveTextContent(/disagree|Free shipping/)
+    const seen = card('What GROS saw')
+    expect(seen).toHaveTextContent('never stated as a fact')
+    expect(seen).toHaveTextContent(
       'Your sources disagree on these, so GROS makes no claim about them.'
     )
-    expect(within(facts).getByText('Free shipping')).toBeVisible()
-    expect(card('What GROS saw')).toHaveTextContent('never stated as a fact')
+    expect(within(seen).getByText('Free shipping')).toBeVisible()
+    // The confirmed parts come first and the reading last, as the agents
+    // obey them.
+    const order = screen
+      .getAllByRole('heading', { level: 2 })
+      .map((h) => h.textContent)
+    expect(order.indexOf('What to avoid')).toBeLessThan(
+      order.indexOf('Strategist’s reading')
+    )
+    expect(order.indexOf('Your words')).toBeLessThan(
+      order.indexOf('What GROS saw')
+    )
+    expect(order.at(-1)).toBe('Strategist’s reading')
     expect(
       within(card('What GROS saw')).getByText('Outdoor layers made to last')
     ).toBeVisible()
@@ -121,14 +154,19 @@ describe('BrandBookScreen', () => {
       'href',
       '/setup'
     )
+    expect(card('Your brand')).toBeInTheDocument()
   })
 
   it('gives staff the book without the approval button', () => {
     render(<BrandBookScreen view={ready({ owner: false })} />)
     expect(screen.queryByRole('button')).toBeNull()
-    expect(card('Brand version')).toHaveTextContent(
-      'Only the workspace owner can approve the brand.'
+    expect(card('Your brand')).toHaveTextContent(
+      'Version 3 waits for the owner’s approval.'
     )
+    expect(within(card('Your brand')).queryByText('Needs you')).toBeNull()
+    expect(
+      within(card('Your brand')).getByRole('link', { name: 'Open brand' })
+    ).toBeVisible()
   })
 
   it('says plainly when the book cannot be read', () => {

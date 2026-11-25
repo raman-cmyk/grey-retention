@@ -135,6 +135,91 @@ const diagnosticWords: Record<string, string> = {
   metadata_unavailable: 'The file’s details could not be saved'
 }
 
+const jobKindWords: Record<string, string> = {
+  'assets.classify': 'Sort the sample files',
+  'drive.sync': 'Read the sample Drive folder',
+  'commerce.sync': 'Read the sample catalog',
+  'brand.extract': 'Read the brand kit text',
+  'brand.read_site': 'Read your website',
+  'brand.read_catalog': 'Read your Klaviyo catalog',
+  'brand.read_history': 'Read your past Klaviyo emails',
+  'brand.read_ads': 'Read your ads',
+  'brand.read_reviews': 'Read your reviews'
+}
+
+const jobStatusWords: Record<string, string> = {
+  queued: 'Waiting to run',
+  retry_wait: 'Waiting to try again',
+  leased: 'Running',
+  running: 'Running',
+  succeeded: 'Done',
+  failed: 'Stopped',
+  cancelled: 'Cancelled'
+}
+
+/** A setup job in the owner's words (never its raw kind or state). */
+export function jobWords(job: {
+  kind: string
+  status: string
+  attempt: number
+  error_code: string | null
+}) {
+  return {
+    title: jobKindWords[job.kind] ?? 'Another setup step',
+    details: [
+      jobStatusWords[job.status] ?? 'Waiting',
+      `Try ${job.attempt} of 4`,
+      job.error_code ? 'It hit a problem' : ''
+    ]
+  }
+}
+
+const connectionStatusWords: Record<string, string> = {
+  connected: 'Connected',
+  disconnected: 'Not connected',
+  expired: 'Expired',
+  error: 'Stopped working'
+}
+export const connectionStatuses = Object.keys(connectionStatusWords)
+
+/** A sample connection's state in words, with when it was last read. */
+export function connectionLine(
+  c:
+    | { status: string; last_sync_at: string | null; last_error: string | null }
+    | undefined
+) {
+  const read = c?.last_sync_at ? new Date(c.last_sync_at) : null
+  return [
+    connectionStatusWords[c?.status ?? 'disconnected'] ?? 'Not connected',
+    read && !Number.isNaN(read.getTime())
+      ? `Last read ${new Intl.DateTimeFormat('en-US', {
+          timeZone: 'UTC',
+          dateStyle: 'medium',
+          timeStyle: 'short'
+        }).format(read)} UTC`
+      : 'Not read yet',
+    c?.last_error ? 'The last read hit a problem' : ''
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+export const connectionStatusWord = (status: string) =>
+  connectionStatusWords[status] ?? status
+
+const importSourceWords: Record<string, string> = {
+  upload: 'Files',
+  zip: 'ZIP',
+  drive: 'Sample Drive folder'
+}
+const importStateWords: Record<string, string> = {
+  started: 'uploading',
+  running: 'uploading',
+  complete: 'done',
+  completed: 'done',
+  failed: 'stopped'
+}
+
 const isCategory = (value: string | null): value is AssetCategory =>
   (assetCategories as readonly string[]).includes(value ?? '')
 
@@ -226,8 +311,12 @@ export function assetsView(input: {
         : null
     })),
     importsLine:
-      setup.imports.map((i) => `${i.source}: ${i.state}`).join(' · ') ||
-      'No uploads yet',
+      setup.imports
+        .map(
+          (i) =>
+            `${importSourceWords[i.source] ?? 'Upload'}: ${importStateWords[i.state] ?? 'in progress'}`
+        )
+        .join(' · ') || 'No uploads yet',
     kit: setup.kit,
     jobs: setup.jobs,
     readiness: setup.readiness,

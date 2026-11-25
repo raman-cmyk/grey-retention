@@ -189,6 +189,25 @@ describe('BrandScreen', () => {
     expect(
       screen.getAllByRole('region', { name: 'Brand book' })[1]
     ).toHaveTextContent('Not written yet.')
+
+    cleanup()
+    // A failed read is said so, never shown as a book not written yet.
+    render(<BrandScreen view={view({ book: 'unreadable' })} />)
+    const failed = card('Brand book')
+    expect(failed).toHaveTextContent(
+      'Your Brand book could not be read just now. Nothing was changed.'
+    )
+    expect(failed).not.toHaveTextContent('Not written yet')
+    expect(
+      within(failed).getByRole('link', { name: 'Try again' })
+    ).toHaveAttribute('href', '/settings/brand')
+  })
+
+  it('anchors the Brand version card the Brand book links to', () => {
+    render(<BrandScreen view={view()} />)
+    expect(document.getElementById('version')).toContainElement(
+      card('Brand version')
+    )
   })
 
   it('warns when the profile looks like another brand', () => {

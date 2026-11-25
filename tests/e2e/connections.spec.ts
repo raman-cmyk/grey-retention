@@ -107,7 +107,7 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
   await page.goto('/settings/assets')
   // Only the two sources whose sample sync jobs ran show a sync time;
   // connecting Klaviyo alone never claims one.
-  await expect(page.getByText(/Last sync: 20/)).toHaveCount(2)
+  await expect(page.getByText(/Last read /)).toHaveCount(2)
   await page.getByRole('button', { name: 'Queue drive sync' }).click()
   await page.getByRole('button', { name: 'Run queued setup jobs' }).click()
   await page.goto('/settings/assets')

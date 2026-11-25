@@ -6,7 +6,8 @@ import { EmptyState, ErrorState } from '@/components/gros/states'
 import { formatBrandDate } from '@/lib/brand-time'
 import type { BookLines, BrandBookView } from './book-view'
 import type { BrandBookPageView } from './page-model'
-import { ApproveCard, brandBookHref, brandHref } from './screen'
+import { Status } from '@/components/gros/status'
+import { brandBookHref, brandHref, brandVersionHref } from './screen'
 
 /**
  * Brand book (UI-BRAND), a GROS page under Brand at
@@ -15,8 +16,9 @@ import { ApproveCard, brandBookHref, brandHref } from './screen'
  * facts true on every source, his own approved words) are kept apart from
  * what the readers saw and from the Brand strategist's reading, which are
  * shown as what they are, never as facts (as the agents are told,
- * `brandBookHeader`). The approval is the Brand page's own, for exactly the
- * version shown. Read only: corrections to the book have no screen yet.
+ * `brandBookHeader`): the confirmed parts first, the reading last. The
+ * owner approves his brand on Brand, where he sees what he approves; this
+ * page links there. Read only: corrections to the book have no screen yet.
  */
 export function BrandBookScreen({
   view,
@@ -42,11 +44,7 @@ export function BrandBookScreen({
             title="No Brand book yet"
             action={<ButtonLink href="/setup" label="Open setup" />}
           />
-          <ApproveCard
-            brand={view.brand}
-            owner={view.owner}
-            assistant={assistant}
-          />
+          <BrandStatusCard brand={view.brand} owner={view.owner} />
         </>
       ) : (
         <Book
@@ -57,6 +55,48 @@ export function BrandBookScreen({
         />
       )}
     </AppPage>
+  )
+}
+
+/**
+ * Where the owner's brand version stands, and the way to approve it on
+ * Brand, where he sees the positioning, voice and rules he approves (this
+ * page shows the book, not those fields).
+ */
+function BrandStatusCard({
+  brand,
+  owner
+}: {
+  brand: Extract<BrandBookPageView, { state: 'ready' }>['brand']
+  owner: boolean
+}) {
+  const title = 'Your brand'
+  const approved = brand !== null && brand.approvedRevision === brand.revision
+  return (
+    <Card label={title}>
+      <div className="flex flex-col items-start gap-[var(--space-5)]">
+        <div className="flex w-full flex-wrap items-center justify-between gap-[var(--space-3)]">
+          <h2 className="type-heading">{title}</h2>
+          {brand && !approved && owner ? <Status kind="needs_you" /> : null}
+        </div>
+        <p className="type-body">
+          {!brand
+            ? 'No brand yet. Save the brand identity on Brand first.'
+            : approved
+              ? `Approved for AI use · version ${brand.revision}`
+              : owner
+                ? `Version ${brand.revision} waits for your approval. Approve it on Brand, where you see what you approve.`
+                : `Version ${brand.revision} waits for the owner’s approval.`}
+        </p>
+        <ButtonLink
+          href={brandVersionHref}
+          label={
+            owner && brand && !approved ? 'Review and approve' : 'Open brand'
+          }
+          kind={owner && brand && !approved ? 'main' : 'outline'}
+        />
+      </div>
+    </Card>
   )
 }
 
@@ -74,11 +114,6 @@ function Book({
   return (
     <>
       <CardRow>
-        <ApproveCard
-          brand={view.brand}
-          owner={view.owner}
-          assistant={assistant}
-        />
         <Section title="This version">
           <div className="flex flex-col gap-[var(--space-1)]">
             <p className="type-label text-[var(--stone)]">Version</p>
@@ -109,8 +144,10 @@ function Book({
             </p>
           ) : null}
         </Section>
+        <BrandStatusCard brand={view.brand} owner={view.owner} />
       </CardRow>
-      <CardRow>
+      {/* Confirmed first, in the order the agents obey them. */}
+      <CardRow columns={3}>
         <Section title="Confirmed facts">
           <p className="type-caption text-[var(--stone)]">
             True on every source {assistant} read. {assistant} never writes
@@ -123,12 +160,6 @@ function Book({
               No fact is confirmed yet, so {assistant} claims none.
             </p>
           )}
-          {book.unclear.length ? (
-            <Group
-              group={{ label: 'Not clear', lines: book.unclear }}
-              note={`Your sources disagree on these, so ${assistant} makes no claim about them.`}
-            />
-          ) : null}
         </Section>
         <Section title="Your words">
           {book.owner === null ? (
@@ -158,6 +189,15 @@ function Book({
             </dl>
           )}
         </Section>
+        <Section title="What to avoid">
+          {book.avoid.length ? (
+            <Items items={book.avoid} label="What to avoid" />
+          ) : (
+            <p className="type-body text-[var(--stone)]">
+              No claims are off limits for this kind of store.
+            </p>
+          )}
+        </Section>
       </CardRow>
       <CardRow>
         <Section title={`What ${assistant} saw`}>
@@ -179,6 +219,12 @@ function Book({
           ) : (
             <p className="type-body text-[var(--stone)]">Nothing seen yet.</p>
           )}
+          {book.unclear.length ? (
+            <Group
+              group={{ label: 'Not clear', lines: book.unclear }}
+              note={`Your sources disagree on these, so ${assistant} makes no claim about them.`}
+            />
+          ) : null}
         </Section>
         <Section title="Products">
           {book.products.count !== null ? (
@@ -213,53 +259,42 @@ function Book({
           ) : null}
         </Section>
       </CardRow>
-      <CardRow>
-        <Section title="Strategist’s reading">
-          <p className="type-caption text-[var(--stone)]">
-            A reading of this book, not a fact. It never comes before the facts,
-            your words or what to avoid.
+      <Section title="Strategist’s reading">
+        <p className="type-caption text-[var(--stone)]">
+          A reading of this book, not a fact. It never comes before the facts,
+          your words or what to avoid.
+        </p>
+        {book.reading ? (
+          <>
+            {book.reading.positioning ? (
+              <Group
+                group={{
+                  label: 'Positioning',
+                  lines: [book.reading.positioning]
+                }}
+              />
+            ) : null}
+            {book.reading.parts.map((group) => (
+              <Group key={group.label} group={group} />
+            ))}
+            {book.reading.voice.map((group) => (
+              <Group key={group.label} group={group} />
+            ))}
+            {book.reading.style ? (
+              <Group
+                group={{
+                  label: 'How sentences are written',
+                  lines: [book.reading.style]
+                }}
+              />
+            ) : null}
+          </>
+        ) : (
+          <p className="type-body text-[var(--stone)]">
+            Not read yet. The strategist reads each new version of the book.
           </p>
-          {book.reading ? (
-            <>
-              {book.reading.positioning ? (
-                <Group
-                  group={{
-                    label: 'Positioning',
-                    lines: [book.reading.positioning]
-                  }}
-                />
-              ) : null}
-              {book.reading.parts.map((group) => (
-                <Group key={group.label} group={group} />
-              ))}
-              {book.reading.voice.map((group) => (
-                <Group key={group.label} group={group} />
-              ))}
-              {book.reading.style ? (
-                <Group
-                  group={{
-                    label: 'How sentences are written',
-                    lines: [book.reading.style]
-                  }}
-                />
-              ) : null}
-            </>
-          ) : (
-            <p className="type-body text-[var(--stone)]">
-              Not read yet. The strategist reads each new version of the book.
-            </p>
-          )}
-        </Section>
-        <Section title="What to avoid">
-          {book.avoid.length ? (
-            <Items items={book.avoid} label="What to avoid" />
-          ) : (
-            <p className="type-body text-[var(--stone)]">
-              No claims are off limits for this kind of store.
-            </p>
-          )}
-        </Section>
-      </CardRow>
+        )}
+      </Section>
     </>
   )
 }

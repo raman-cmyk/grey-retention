@@ -62,8 +62,11 @@ export type BrandPageView =
       offers: PermittedOffer[]
       /** null when the history could not be read. */
       history: BrandHistoryEvent[] | null
-      /** The latest Brand book's version and when it was written. */
-      book: { version: number; writtenAt: string } | null
+      /**
+       * The latest Brand book's version and when it was written; null when
+       * none is written yet, `unreadable` when it could not be read.
+       */
+      book: { version: number; writtenAt: string } | 'unreadable' | null
     }
 
 type Db = NonNullable<Awaited<ReturnType<typeof createClient>>>
@@ -144,9 +147,11 @@ export async function brandPage(): Promise<BrandPageView> {
           action: e.action,
           at: e.created_at
         })),
-    book: book.row
-      ? { version: book.row.version, writtenAt: book.row.created_at }
-      : null
+    book: book.error
+      ? 'unreadable'
+      : book.row
+        ? { version: book.row.version, writtenAt: book.row.created_at }
+        : null
   }
 }
 

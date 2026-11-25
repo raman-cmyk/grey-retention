@@ -34,6 +34,8 @@ import { sectionKeys } from './sections'
  */
 export const brandHref = '/settings/brand' as const
 export const brandBookHref = '/settings/brand/book' as const
+/** The Brand version card, where the owner approves his brand. */
+export const brandVersionHref = '/settings/brand#version' as const
 
 /** A plain control on the GROS tokens (BRAND.md has no select or text box). */
 export const controlClass =
@@ -187,47 +189,52 @@ export function ApproveCard({
   const title = 'Brand version'
   const approved = brand !== null && brand.approvedRevision === brand.revision
   return (
-    <Card label={title}>
-      <Stack>
-        <ActionAnswers>
-          <div className="flex flex-wrap items-center justify-between gap-[var(--space-3)]">
-            <Title text={title} />
-            {brand && !approved && owner ? <Status kind="needs_you" /> : null}
-          </div>
-          {!brand ? (
-            <p className="type-body text-[var(--stone)]">
-              No brand yet. Save the brand identity below first.
-            </p>
-          ) : (
-            <>
-              <div className="flex flex-col gap-[var(--space-1)]">
-                <p className="type-label text-[var(--stone)]">Version</p>
-                <p className="type-number-lg">{brand.revision}</p>
-              </div>
-              <p className="type-body">
-                {approved
-                  ? `Approved for AI use · version ${brand.revision}`
-                  : brand.approvedRevision === null
-                    ? `Not approved yet. ${assistant} plans and writes only from a version you approve.`
-                    : `Your brand details changed since version ${brand.approvedRevision}. Drafts and planning wait until you approve version ${brand.revision}.`}
+    <div id="version" className="scroll-mt-[var(--space-6)]">
+      <Card label={title}>
+        <Stack>
+          <ActionAnswers>
+            <div className="flex flex-wrap items-center justify-between gap-[var(--space-3)]">
+              <Title text={title} />
+              {brand && !approved && owner ? <Status kind="needs_you" /> : null}
+            </div>
+            {!brand ? (
+              <p className="type-body text-[var(--stone)]">
+                No brand yet. Save the brand identity below first.
               </p>
-              {owner && !approved ? (
-                <ActionButton
-                  action={brandAction}
-                  label={`Approve brand v${brand.revision}`}
-                  fields={{ kind: 'approve', revision: String(brand.revision) }}
-                />
-              ) : null}
-              {!owner && !approved ? (
-                <p className="type-caption text-[var(--stone)]">
-                  Only the workspace owner can approve the brand.
+            ) : (
+              <>
+                <div className="flex flex-col gap-[var(--space-1)]">
+                  <p className="type-label text-[var(--stone)]">Version</p>
+                  <p className="type-number-lg">{brand.revision}</p>
+                </div>
+                <p className="type-body">
+                  {approved
+                    ? `Approved for AI use · version ${brand.revision}`
+                    : brand.approvedRevision === null
+                      ? `Not approved yet. ${assistant} plans and writes only from a version you approve.`
+                      : `Your brand details changed since version ${brand.approvedRevision}. Drafts and planning wait until you approve version ${brand.revision}.`}
                 </p>
-              ) : null}
-            </>
-          )}
-        </ActionAnswers>
-      </Stack>
-    </Card>
+                {owner && !approved ? (
+                  <ActionButton
+                    action={brandAction}
+                    label={`Approve brand v${brand.revision}`}
+                    fields={{
+                      kind: 'approve',
+                      revision: String(brand.revision)
+                    }}
+                  />
+                ) : null}
+                {!owner && !approved ? (
+                  <p className="type-caption text-[var(--stone)]">
+                    Only the workspace owner can approve the brand.
+                  </p>
+                ) : null}
+              </>
+            )}
+          </ActionAnswers>
+        </Stack>
+      </Card>
+    </div>
   )
 }
 
@@ -236,11 +243,25 @@ function BookCard({
   timezone,
   assistant
 }: {
-  book: { version: number; writtenAt: string } | null
+  book: Extract<BrandPageView, { state: 'ready' }>['book']
   timezone: string
   assistant: string
 }) {
   const title = 'Brand book'
+  if (book === 'unreadable')
+    return (
+      <Card label={title}>
+        <Stack>
+          <Title text={title} />
+          <p className="type-body text-[var(--signal-ink)]">
+            Your Brand book could not be read just now. Nothing was changed.
+          </p>
+          <div>
+            <ButtonLink href={brandHref} label="Try again" />
+          </div>
+        </Stack>
+      </Card>
+    )
   return (
     <Card label={title}>
       <Stack>
@@ -424,7 +445,7 @@ function AddProductCard() {
           <Field label="Product web address" name="url" type="url" required />
           <div className="grid gap-[var(--space-4)] sm:grid-cols-2">
             <Field
-              label="Price in cents"
+              label="Price in the smallest unit of your currency"
               name="price_minor"
               type="number"
               min={0}

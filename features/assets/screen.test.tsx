@@ -238,9 +238,15 @@ describe('AssetsScreen', () => {
     expect(
       formOf(within(kit).getByRole('button', { name: 'Approve kit v2' }))
     ).toEqual({ kind: 'kit_approve', revision: '2' })
+    // The fixture kit reader is a sample tool, not part of the kit.
+    expect(
+      within(kit).queryByRole('button', {
+        name: 'Queue fixture kit extraction'
+      })
+    ).toBeNull()
     expect(
       formOf(
-        within(kit).getByRole('button', {
+        within(card('Sample kit reader')).getByRole('button', {
           name: 'Queue fixture kit extraction'
         })
       )
@@ -260,11 +266,29 @@ describe('AssetsScreen', () => {
       within(card('Readiness')).getByText('Classified usable assets')
     ).toBeVisible()
     expect(card('Readiness')).toHaveTextContent('Done')
-    for (const name of ['klaviyo', 'sample catalog', 'drive'])
-      expect(card(`Sample ${name}`)).toBeInTheDocument()
+    // Setup jobs and connections in the owner's words, never raw states.
+    const jobs = card('Setup jobs')
+    expect(jobs).toHaveTextContent('Sort the sample filesDone · Try 1 of 4')
+    expect(jobs).not.toHaveTextContent(/assets\.classify|succeeded/)
+    for (const name of [
+      'Sample Klaviyo',
+      'Sample catalog',
+      'Sample Drive folder'
+    ])
+      expect(card(name)).toBeInTheDocument()
+    const drive = card('Sample Drive folder')
+    expect(drive).toHaveTextContent(
+      'Connected · Last read Nov 20, 2026, 10:00 AM UTC'
+    )
+    expect(card('Sample Klaviyo')).toHaveTextContent(
+      'Not connected · Not read yet'
+    )
+    expect(
+      within(drive).getByRole('option', { name: 'Stopped working' })
+    ).toHaveValue('error')
     expect(
       formOf(
-        within(card('Sample drive')).getByRole('button', {
+        within(card('Sample Drive folder')).getByRole('button', {
           name: 'Save drive fixture'
         })
       )
@@ -276,14 +300,19 @@ describe('AssetsScreen', () => {
     })
     expect(
       formOf(
-        within(card('Sample drive')).getByRole('button', {
+        within(card('Sample Drive folder')).getByRole('button', {
           name: 'Queue drive sync'
         })
       )
     ).toEqual({ kind: 'queue', job: 'drive.sync', sourceText: '' })
     cleanup()
     render(<AssetsScreen view={ready({ owner: false })} />)
-    for (const name of ['Setup jobs', 'Readiness', 'Sample drive'])
+    for (const name of [
+      'Setup jobs',
+      'Readiness',
+      'Sample kit reader',
+      'Sample Drive folder'
+    ])
       expect(screen.queryByRole('region', { name })).toBeNull()
     expect(screen.queryByText(/Review classification/)).toBeNull()
     expect(screen.queryByRole('button', { name: /^Approve kit/ })).toBeNull()
@@ -298,8 +327,8 @@ describe('AssetsScreen', () => {
 
   it('offers no sample Klaviyo with live Klaviyo on', () => {
     render(<AssetsScreen view={ready({ live: true })} />)
-    expect(screen.queryByRole('region', { name: 'Sample klaviyo' })).toBeNull()
-    expect(card('Sample sample catalog')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Sample Klaviyo' })).toBeNull()
+    expect(card('Sample catalog')).toBeInTheDocument()
   })
 
   it('says plainly when the files cannot be read', () => {

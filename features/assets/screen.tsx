@@ -16,6 +16,10 @@ import {
   assetCategories,
   assetFilters,
   filterWords,
+  connectionLine,
+  connectionStatuses,
+  connectionStatusWord,
+  jobWords,
   type AssetTile,
   type AssetsView
 } from './view'
@@ -219,39 +223,6 @@ function KitCard({ view }: { view: Ready }) {
               ) : null}
             </>
           )}
-          {view.owner ? (
-            <ActionButton
-              action={onboardingAction}
-              label="Queue fixture kit extraction"
-              kind="outline"
-              fields={{ kind: 'queue', job: 'brand.extract' }}
-            >
-              <div className="flex flex-col gap-[var(--space-2)]">
-                <label
-                  htmlFor="kit-text"
-                  className="gros-field-label text-[var(--ink)]"
-                >
-                  Brand kit source text
-                </label>
-                <textarea
-                  id="kit-text"
-                  name="sourceText"
-                  rows={3}
-                  required
-                  maxLength={10000}
-                  aria-describedby="kit-text-help"
-                  className={`${control} py-[var(--space-3)]`}
-                />
-                <p
-                  id="kit-text-help"
-                  className="type-caption text-[var(--stone)]"
-                >
-                  Sample reader: finds six-digit colors like #18302C and “font:
-                  Name”. It reads nothing else.
-                </p>
-              </div>
-            </ActionButton>
-          ) : null}
         </ActionAnswers>
       </Stack>
     </Card>
@@ -434,6 +405,12 @@ const fixtureName = {
   shopify: 'sample catalog',
   drive: 'drive'
 } as const
+/** Each sample connection's card title. */
+const fixtureTitle = {
+  klaviyo: 'Sample Klaviyo',
+  shopify: 'Sample catalog',
+  drive: 'Sample Drive folder'
+} as const
 
 /**
  * The sample data tools, for the owner only (the actions refuse anyone
@@ -461,19 +438,18 @@ function SampleTools({ view }: { view: Ready }) {
                 </p>
               ) : (
                 <RowList label="Setup jobs">
-                  {view.jobs.map((job) => (
-                    <ListRow
-                      key={job.id}
-                      thumbnail={<IconThumb icon={<Cog size={18} />} />}
-                      title={job.kind}
-                      details={[
-                        job.status,
-                        `Try ${job.attempt} of 4`,
-                        job.error_code ?? ''
-                      ]}
-                      end={null}
-                    />
-                  ))}
+                  {view.jobs.map((job) => {
+                    const words = jobWords(job)
+                    return (
+                      <ListRow
+                        key={job.id}
+                        thumbnail={<IconThumb icon={<Cog size={18} />} />}
+                        title={words.title}
+                        details={words.details}
+                        end={null}
+                      />
+                    )
+                  })}
                 </RowList>
               )}
               <ActionButton
@@ -491,6 +467,45 @@ function SampleTools({ view }: { view: Ready }) {
                   sourceText: ''
                 }}
               />
+            </ActionAnswers>
+          </Stack>
+        </Card>
+      </CardRow>
+      <CardRow>
+        <Card label="Sample kit reader">
+          <Stack>
+            <ActionAnswers>
+              <Title text="Sample kit reader" />
+              <ActionButton
+                action={onboardingAction}
+                label="Queue fixture kit extraction"
+                fields={{ kind: 'queue', job: 'brand.extract' }}
+              >
+                <div className="flex flex-col gap-[var(--space-2)]">
+                  <label
+                    htmlFor="kit-text"
+                    className="gros-field-label text-[var(--ink)]"
+                  >
+                    Brand kit source text
+                  </label>
+                  <textarea
+                    id="kit-text"
+                    name="sourceText"
+                    rows={3}
+                    required
+                    maxLength={10000}
+                    aria-describedby="kit-text-help"
+                    className={`${control} py-[var(--space-3)]`}
+                  />
+                  <p
+                    id="kit-text-help"
+                    className="type-caption text-[var(--stone)]"
+                  >
+                    Sample reader: finds six-digit colors like #18302C and
+                    “font: Name”. It reads nothing else.
+                  </p>
+                </div>
+              </ActionButton>
             </ActionAnswers>
           </Stack>
         </Card>
@@ -519,19 +534,14 @@ function SampleTools({ view }: { view: Ready }) {
         {providers.map((provider) => {
           const c = view.connections.find((c) => c.provider === provider)
           const name = fixtureName[provider]
+          const title = fixtureTitle[provider]
           return (
-            <Card key={provider} size="small" label={`Sample ${name}`}>
+            <Card key={provider} size="small" label={title}>
               <Stack>
                 <ActionAnswers>
-                  <Title text={`Sample ${name}`} />
+                  <Title text={title} />
                   <p className="type-caption break-words text-[var(--stone)]">
-                    {[
-                      c?.status ?? 'disconnected',
-                      `Last sync: ${c?.last_sync_at ?? 'Not synced'}`,
-                      c?.last_error ?? ''
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
+                    {connectionLine(c)}
                   </p>
                   <ActionButton
                     key={c?.revision ?? 0}
@@ -550,11 +560,11 @@ function SampleTools({ view }: { view: Ready }) {
                       name="status"
                       defaultValue={c?.status ?? 'connected'}
                     >
-                      {['connected', 'disconnected', 'expired', 'error'].map(
-                        (s) => (
-                          <option key={s}>{s}</option>
-                        )
-                      )}
+                      {connectionStatuses.map((s) => (
+                        <option key={s} value={s}>
+                          {connectionStatusWord(s)}
+                        </option>
+                      ))}
                     </Select>
                     {provider === 'drive' ? (
                       <Field
