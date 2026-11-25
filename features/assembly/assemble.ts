@@ -1,4 +1,5 @@
 import type { AiProviderRequest } from '@/lib/providers/contracts'
+import { amount } from './amount'
 import {
   customerWordsKey,
   customerWordsRule
@@ -688,15 +689,8 @@ export function checkWritten(
   }
 }
 
-/** A price string as a number, or null ("$24.00", "€1.234,50", "Rs 900"). */
-export function amount(price: string): number | null {
-  const digits = price.replace(/[^\d.,]/g, '')
-  const normal = /^\d{1,3}(\.\d{3})+(,\d+)?$|^\d+,\d{1,2}$/.test(digits)
-    ? digits.replace(/\./g, '').replace(',', '.')
-    : digits.replace(/,/g, '')
-  const n = Number(normal)
-  return digits && Number.isFinite(n) && n > 0 ? n : null
-}
+/** A price string as a number, or null (`amount.ts`, a leaf module). */
+export { amount }
 
 /**
  * The product as a block shows it. The old price shows only for a

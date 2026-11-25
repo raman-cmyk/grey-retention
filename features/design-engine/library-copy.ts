@@ -6,6 +6,7 @@ import {
   photoTools,
   sizedPhotos,
   swapWithCrops,
+  type Cut,
   type PhotoTools
 } from './photos'
 import type { DrawMode } from './render'
@@ -48,8 +49,6 @@ export type LibraryCopyInput = {
    * the locked browser; the default), a cropper (tests), or none.
    */
   crop?: 'canvas' | Cropper | null
-  /** https origins the store's photos may be fetched from. */
-  origins?: readonly string[]
   /** The photo tools (tests); default: `photoTools` in this browser. */
   tools?: PhotoTools
   /**
@@ -65,6 +64,12 @@ export type LibraryCopyResult =
       leaks: Leak[]
       /** The library Footer block was added (the original had no footer text). */
       footerAdded: boolean
+      /**
+       * The cut photos, by the placeholder address each has in `html`
+       * until it is hosted (the browser job uploads them; a preview puts
+       * them inline with `withCutsInline`).
+       */
+      cuts: Cut[]
     })
   | { ok: false; error: string }
 
@@ -119,8 +124,9 @@ export async function libraryCopy(
   input: LibraryCopyInput
 ): Promise<LibraryCopyResult> {
   try {
-    const tools =
-      input.tools ?? photoTools(browser, { origins: input.origins ?? [] })
+    // Photos only from the fixed list of hosts (`photoOrigins`), never one
+    // a store's own data names.
+    const tools = input.tools ?? photoTools(browser)
     const crop = input.crop === undefined ? 'canvas' : input.crop
     // Photos of unknown size are read first (a catalog keeps none).
     const products = await Promise.all(
@@ -177,7 +183,12 @@ export async function libraryCopy(
       sourceNames: input.sourceNames,
       vocabulary: [...input.vocabulary, ...swapOwnWords(input.brand)]
     })
-    return { ...result, leaks, footerAdded }
+    return {
+      ...result,
+      leaks,
+      footerAdded,
+      cuts: ((swapped as { cuts?: Cut[] }).cuts ?? []) as Cut[]
+    }
   } catch (error) {
     if (error instanceof LeakCheckError)
       return { ok: false, error: error.message }
@@ -187,3 +198,7 @@ export async function libraryCopy(
     }
   }
 }
+
+/** The copy's HTML with each cut photo inline (previews and the gate's pictures). */
+export const withCutsInline = (html: string, cuts: readonly Cut[]) =>
+  cuts.reduce((out, c) => out.split(c.placeholder).join(c.inline), html)

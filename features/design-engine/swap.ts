@@ -13,7 +13,7 @@ import {
   type TextPart,
   type TextRun
 } from './blueprint'
-import { amount } from '@/features/assembly/assemble'
+import { amount } from '@/features/assembly/amount'
 import { limits } from './likeness'
 import { lightness, paletteMapper, type PaletteMapper } from './palette'
 import {
@@ -58,6 +58,8 @@ export type SwapPicture = {
   width: number
   height: number
   alt: string
+  /** Why the photo cannot be used (it could not be fetched or read), if so. */
+  unusable?: string
 }
 
 export type SwapBrand = {
@@ -100,7 +102,7 @@ export type Cropper = (
   photo: SwapPicture,
   width: number,
   height: number
-) => SwapPicture | null
+) => SwapPicture | { failed: string } | null
 
 export type SwapInput = {
   source: Blueprint
@@ -161,15 +163,21 @@ const fits = (pic: SwapPicture, w: number, h: number) =>
     limits.aspectShare
 
 /** A photo for a slot `w` × `h`: its own shape fits, or the cropper cuts it. */
+/** A photo for a slot, or why it cannot be used (a string), or null (not that shape). */
 function fitted(
   pic: SwapPicture,
   w: number,
   h: number,
   cropper: Cropper | null | undefined
-): SwapPicture | null {
+): SwapPicture | string | null {
   if (fits(pic, w, h)) return pic
-  return cropper?.(pic, Math.round(w), Math.round(h)) ?? null
+  const got = cropper?.(pic, Math.round(w), Math.round(h)) ?? null
+  if (got && 'failed' in got) return got.failed
+  if (!got && pic.unusable) return pic.unusable
+  return got
 }
+const usable = (got: SwapPicture | string | null): got is SwapPicture =>
+  !!got && typeof got === 'object'
 
 const shapeWords = (w: number, h: number) => {
   const r = shape(w, h)
@@ -487,7 +495,7 @@ export function swapBrand(input: SwapInput): SwapResult {
       for (let k = 0; k < icons.length; k++) {
         const icon = icons[(iconCursor + k) % icons.length]!
         const got = fitted(icon, p.width, p.height, input.cropper)
-        if (got) {
+        if (usable(got)) {
           iconCursor = (iconCursor + k + 1) % icons.length
           return {
             ...base,
@@ -502,10 +510,15 @@ export function swapBrand(input: SwapInput): SwapResult {
     if (p.role === 'product_photo' && ctx.product) {
       const photo = ctx.product.photo
       const got = photo && fitted(photo, p.width, p.height, input.cropper)
-      if (got) {
+      if (usable(got)) {
         usedPhotos.add(photo!.src)
         return { ...base, src: got.src, alt: ctx.product.title }
       }
+      if (typeof got === 'string')
+        return none(
+          `has a product photo that could not be used (${got})`,
+          photo
+        )
       return none(
         `shows ${shapeWords(p.width, p.height)} product photos, and the store's photos are not that shape`,
         photo
@@ -513,12 +526,14 @@ export function swapBrand(input: SwapInput): SwapResult {
     }
     // Other pictures: the brand's own photos first, then its products'.
     const unused = brandPhotos.filter((ph) => !usedPhotos.has(ph.src))
+    let why: string | null = null
     for (const ph of [...unused, ...brandPhotos]) {
       const got = fitted(ph, p.width, p.height, input.cropper)
-      if (got) {
+      if (usable(got)) {
         usedPhotos.add(ph.src)
         return { ...base, src: got.src, alt: ph.alt || brand.name }
       }
+      if (typeof got === 'string') why ??= got
     }
     const closest = [...unused, ...brandPhotos].sort(
       (a, b) =>
@@ -526,6 +541,11 @@ export function swapBrand(input: SwapInput): SwapResult {
         Math.abs(shape(b.width, b.height) - shape(p.width, p.height))
     )[0]
     if (closest) usedPhotos.add(closest.src)
+    if (why)
+      return none(
+        `has a picture, and the brand’s photo could not be used (${why})`,
+        closest
+      )
     return none(
       `has a ${shapeWords(p.width, p.height)} picture, and the brand has no photo of that shape`,
       closest
