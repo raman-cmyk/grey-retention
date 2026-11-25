@@ -38,6 +38,8 @@ import {
   type LetterCopy
 } from './letter-steps'
 import type { Store } from './ports'
+import type { LibraryCopyPort } from './library-copy'
+import { libraryStep } from './library-step'
 import { buildSteps, type BuildStep, type RoundStep } from './step-names'
 
 /**
@@ -347,6 +349,12 @@ export async function runBuildStep(
     studio?: StudioStepPorts
     /** DST-006e: the owner's studio is on but this claim cannot run it. */
     studioSkipped?: boolean
+    /**
+     * DES-ENGINE-002b2: the library copy's ports, only with the owner's
+     * switch on (`DESIGN_LIBRARY_COPY=on`); a Copy email's design step then
+     * copies the chosen email's design for the brand (`libraryStep`).
+     */
+    library?: LibraryCopyPort
   }
 ): Promise<StepResult> {
   if (!(buildSteps as readonly string[]).includes(step))
@@ -451,7 +459,70 @@ export async function runBuildStep(
   /** The studio's outcome once its pictures are in (DST-006d). */
   let studioDone:
     { work?: object; budget?: { until: number; waits: number } } | undefined
-  if (ctx.studio) {
+  const draw = (from: CopyOutput) =>
+    designStep({
+      planned,
+      store,
+      sendAt: sections.sendAt,
+      sample: sections.sample,
+      copy: from,
+      rules: sections.rules,
+      ai: sections.layout.source === 'agent' || content?.source === 'agent'
+    })
+  // DST-005: the hard checks on the email as drawn, before it is stored.
+  const checksOf = checksFor(store, sections.rules)
+  // DES-ENGINE-002b2: Copy with the library copy on. The chosen email's
+  // design is copied 1:1 for the brand by the browser job; short of a copy
+  // that passes, the coded blocks are drawn and the log says why (D16).
+  // The studio never redraws a library copy.
+  const copyOf =
+    ctx.library && sections.reference?.mode === 'copy'
+      ? sections.reference.emailId
+      : undefined
+  const studioPorts = copyOf ? undefined : ctx.studio
+  if (copyOf && ctx.library) {
+    const coded = draw(plain)
+    if (!coded.ok) return coded
+    const library = await libraryStep({
+      port: ctx.library,
+      emailId: copyOf,
+      store,
+      draft: plain.draft,
+      rules: sections.rules,
+      coded: coded.email,
+      saved,
+      checks: checksOf
+    })
+    if (library.kind === 'waiting')
+      return {
+        ok: true,
+        waiting: 'design',
+        work: library.work,
+        seconds: library.seconds
+      }
+    if (library.kind === 'email')
+      return {
+        ok: true,
+        done: 'design',
+        email: withSubjectB(
+          library.email,
+          plain,
+          subjectBSafe(store, library.email)
+        )
+      }
+    await ctx.fallbacks.record({
+      tenantId: ctx.tenantId,
+      campaignId: ctx.campaignId ?? null,
+      agent: 'design-library',
+      reasonCode: library.reasonCode,
+      reason: clip(library.reason, 500),
+      fallback: 'Drew the email with its coded blocks.',
+      attempts: 1,
+      detail: {},
+      dedupeKey: `design-library:${keyPart(ctx.callerKey)}:${keyPart(library.reasonCode)}`
+    })
+  }
+  if (studioPorts) {
     // DST-006c: the designed heroes from the studio, the rest coded.
     const locked = (progress.data.content as LockedContent | undefined)
       ?.sections
@@ -488,7 +559,7 @@ export async function runBuildStep(
             }
           : {})
       },
-      ctx.studio
+      studioPorts
     )
     if ('waiting' in studio)
       return {
@@ -511,25 +582,13 @@ export async function runBuildStep(
           reason: 'The design studio stopped before it finished.',
           key: 'not-finished'
         }
-      : !ctx.studio && ctx.studioSkipped
+      : !ctx.studio && ctx.studioSkipped && !copyOf
         ? {
             reasonCode: 'studio_no_time',
             reason: 'The design studio had no time left for this email.',
             key: 'no-time'
           }
         : null
-  const draw = (from: CopyOutput) =>
-    designStep({
-      planned,
-      store,
-      sendAt: sections.sendAt,
-      sample: sections.sample,
-      copy: from,
-      rules: sections.rules,
-      ai: sections.layout.source === 'agent' || content?.source === 'agent'
-    })
-  // DST-005: the hard checks on the email as drawn, before it is stored.
-  const checksOf = checksFor(store, sections.rules)
   let made = draw(drawn)
   let problems = made.ok ? checksOf(made.email.html, made.email) : []
   const pictured = drawn.draft.blocks.some(
@@ -561,7 +620,7 @@ export async function runBuildStep(
   // before it is stored; short of a pass it is drawn with its coded blocks
   // (D16), and the owner's log says why in fixed words (never the critic's
   // own: it may read the email's words, a code among them).
-  const views = ctx.studio?.email
+  const views = studioPorts?.email
   if (studioEmail && views && studioDone?.work && studioDone.budget) {
     // The views' own window, from when they were first asked for (kept in
     // the work); the rounds' time is theirs.
@@ -570,7 +629,7 @@ export async function runBuildStep(
     const viewsUntil =
       Number.isSafeInteger(kept) && (kept as number) > 0
         ? (kept as number)
-        : ctx.studio!.now() + emailViewsMs
+        : studioPorts!.now() + emailViewsMs
     const check = await checkWholeEmail(
       {
         html: studioEmail.html,
@@ -578,7 +637,7 @@ export async function runBuildStep(
         until: viewsUntil,
         waits: studioDone.budget.waits
       },
-      { ...views, fits: ctx.studio!.fits, now: ctx.studio!.now }
+      { ...views, fits: studioPorts!.fits, now: studioPorts!.now }
     )
     if ('wait' in check || 'paused' in check) {
       // Saved as the studio's own waits are: one more of its 6.

@@ -2,7 +2,11 @@ import { z } from 'zod'
 import type { Draft } from '@/features/assembly/assemble'
 import type { CatalogProduct } from '@/features/assembly/inputs'
 import type { BlockBrand } from '@/features/blocks/brand'
-import type { SwapBrand, SwapProduct } from '@/features/design-engine/swap'
+import type {
+  SwapBrand,
+  SwapPicture,
+  SwapProduct
+} from '@/features/design-engine/swap'
 import type { WordPools, WordRules } from '@/features/design-engine/words'
 import type { Store } from './ports'
 
@@ -11,24 +15,94 @@ import type { Store } from './ports'
  * design step. The inspiration email's stored blueprint is copied 1:1 in
  * structure with the brand's own colours, fonts, logo, photos, products,
  * prices, offer and the Copywriter's words (`libraryCopy`, run by the
- * browser job). This module turns the build's saved steps into the copy's
- * input (`copyInput`), names the ports the step uses (`LibraryCopyPort`,
- * live in `library-copy-live.ts`, faked in tests) and says, in plain words,
- * why an email that asked for Copy was drawn with coded blocks instead.
+ * browser job, `scripts/design-copies.mjs`). This module turns the build's
+ * saved steps into the copy's input (`copyInput`), names the ports the
+ * step uses (`LibraryCopyPort`, live in `library-copy-live.ts`, faked in
+ * tests), the record the browser job hands back (`copyRecord`), and says,
+ * in plain words, why an email that asked for Copy was drawn with coded
+ * blocks instead.
+ *
+ * The input never says where photos may be fetched from: the browser job
+ * fetches only from the server's fixed list (`photoOrigins`), whatever a
+ * store's catalog links to.
  */
+
+/**
+ * The owner's switch for the library copy in "Create email": off unless
+ * `DESIGN_LIBRARY_COPY=on` (on in the local fake mode and the tests).
+ */
+export const libraryCopyOn = (
+  env: Readonly<Record<string, string | undefined>>
+) => env.DESIGN_LIBRARY_COPY?.trim() === 'on'
+
+/** At most this many cut photos one copy uploads (the bucket's rule). */
+export const maxCopyPhotos = 24
+
+const text = (max: number) => z.string().max(max)
+const picture = z.looseObject({
+  src: text(2_000),
+  width: z.number().min(0).max(20_000),
+  height: z.number().min(0).max(20_000),
+  alt: text(300)
+})
+const pool = z.array(text(2_000)).max(80)
 
 /** What the browser job is given (stored in `email_copies.input`). */
 export const copyInputSchema = z.object({
-  brand: z.custom<SwapBrand>((v) => typeof v === 'object' && v !== null),
-  products: z.array(z.custom<SwapProduct>()).max(12),
-  words: z.custom<WordPools>(),
-  rules: z.custom<WordRules>(),
-  vocabulary: z.array(z.string().max(2_000)).max(600),
-  sourceNames: z.array(z.string().max(200)).max(6),
-  origins: z.array(z.string().max(200)).max(24),
+  brand: z.looseObject({
+    name: text(200),
+    site: text(2_000),
+    ink: text(20),
+    background: text(20),
+    accent: text(20),
+    dark: text(20),
+    headingFont: text(200),
+    bodyFont: text(200),
+    logo: picture.nullable(),
+    logoOnDark: picture.nullable().optional(),
+    photos: z.array(picture).max(8).optional()
+  }),
+  products: z
+    .array(
+      z.looseObject({
+        id: text(200),
+        title: text(300),
+        price: text(40),
+        compareAt: text(40).nullable().optional(),
+        url: text(2_000),
+        photo: picture.nullable()
+      })
+    )
+    .max(12),
+  words: z.object({
+    headline: pool,
+    subheadline: pool.optional(),
+    eyebrow: pool.optional(),
+    body: pool,
+    button: pool,
+    caption: pool.optional()
+  }),
+  rules: z.object({
+    offer: z
+      .object({ code: text(60), percent: z.number().min(0).max(100) })
+      .nullable(),
+    maxDiscountPercent: z.number().min(0).max(100),
+    amounts: z.array(text(40)).max(40).optional(),
+    claims: z.array(text(600)).max(40).optional()
+  }),
+  vocabulary: z.array(text(2_000)).max(600),
+  sourceNames: z.array(text(200)).max(6),
   mode: z.enum(['preview', 'klaviyo'])
 })
-export type CopyInput = z.infer<typeof copyInputSchema>
+export type CopyInput = {
+  brand: SwapBrand
+  products: SwapProduct[]
+  words: WordPools
+  rules: WordRules
+  vocabulary: string[]
+  sourceNames: string[]
+  mode: 'preview' | 'klaviyo'
+}
 
 /** A section of the copy as the email's page tells it. */
 export const copiedSection = z.object({
@@ -43,20 +117,42 @@ export type CopiedSection = z.infer<typeof copiedSection>
 /** What the browser job records (`email_copies.result`). */
 export const copyRecord = z.object({
   html: z.string().min(1).max(300_000),
-  sections: z.array(copiedSection).max(41),
+  sections: z.array(copiedSection).min(1).max(41),
   pass: z.boolean(),
   leaks: z
-    .array(z.object({ kind: z.string(), value: z.string().max(200) }))
+    .array(z.object({ kind: z.string().max(20), value: z.string().max(200) }))
     .max(200),
   footerAdded: z.boolean(),
-  /** The cut photos uploaded, by index (`copy/<build>/<i>.jpg`). */
-  photos: z.array(z.int().min(0).max(23)).max(24)
+  /** The cut photos uploaded, by index (`<workspace>/<build>/<i>.jpg`). */
+  photos: z
+    .array(
+      z
+        .int()
+        .min(0)
+        .max(maxCopyPhotos - 1)
+    )
+    .max(maxCopyPhotos)
 })
 export type CopyRecord = z.infer<typeof copyRecord>
 
-/** The placeholder a cut photo has until its link is signed. */
+/** The placeholder a cut photo has until its link is signed (`cutPlaceholder`). */
 export const photoPlaceholder = (index: number) =>
   `https://email-copies.invalid/${index}.jpg`
+
+/** Where the browser job stores a cut photo (the private `email-copies` bucket). */
+export const copyPhotoPath = (tenant: string, build: string, index: number) =>
+  `${tenant}/${build}/${index}.jpg`
+
+/** Why the browser job could not copy an email, in the owner's words. */
+export const copyFailures = {
+  copy_failed: 'the copy could not be drawn',
+  too_many_photos: 'it needs more photos than one copy can hold',
+  blueprint_gone: 'its measured design is no longer stored',
+  source_missing: 'the original email is no longer stored',
+  copy_job_failed: 'the copying job failed 4 times',
+  input_invalid: 'what GROS saved for the copy could not be read'
+} as const
+export type CopyFailure = keyof typeof copyFailures
 
 export type BlueprintState =
   | { state: 'ready'; messageId: string; sourceNames: string[] }
@@ -70,9 +166,12 @@ export type CopyState =
 
 /** The ports the design step uses for a library copy. */
 export type LibraryCopyPort = {
-  /** The chosen email's stored blueprint, if the workspace follows it. */
+  /** The chosen email's stored blueprint, if the workspace may see it. */
   blueprint: (competitorEmailId: string) => Promise<BlueprintState>
-  /** Asks for the copy (stored once) or reads it; links signed when done. */
+  /**
+   * Asks for the copy (stored once) or reads it; when done, its photos'
+   * placeholders are their signed links.
+   */
   copy: (
     messageId: string,
     input: CopyInput,
@@ -94,6 +193,12 @@ export const copyWords = {
     `The design of the email you chose in Inspiration could not be copied (${reason.replace(/\.$/, '')}), so this email was made with coded blocks.`
 } as const
 
+/** Why the chosen email's blueprint cannot be used, in the owner's words. */
+export const blueprintWords = {
+  hidden: 'you no longer follow its brand, or you hid it in Inspiration',
+  none: 'it has no stored copy that can be measured'
+} as const
+
 const headlineKeys = /^(?:heading|headline|title|name)$/i
 const bodyKeys =
   /^(?:sub|subheading|detail|paras?|body|text|note|quote|answer|question|description|story)$/i
@@ -110,7 +215,7 @@ export function wordsFromDraft(draft: Draft): WordPools {
   }
   const add = (list: string[], v: unknown) => {
     if (typeof v === 'string' && v.trim() && !/^https?:|^data:/i.test(v))
-      list.push(v.replace(/\s+/g, ' ').trim())
+      list.push(v.replace(/\s+/g, ' ').trim().slice(0, 2_000))
     if (Array.isArray(v)) for (const x of v) add(list, x)
   }
   const walk = (o: unknown) => {
@@ -124,7 +229,7 @@ export function wordsFromDraft(draft: Draft): WordPools {
     }
   }
   for (const b of draft.blocks) walk(b.content)
-  const uniq = (l: string[]) => [...new Set(l)]
+  const uniq = (l: string[]) => [...new Set(l)].slice(0, 80)
   return {
     headline: uniq(pools.headline),
     subheadline: [],
@@ -135,22 +240,17 @@ export function wordsFromDraft(draft: Draft): WordPools {
   }
 }
 
-const originOf = (u: string | undefined) => {
-  try {
-    const url = new URL(u ?? '')
-    return url.protocol === 'https:' ? url.origin : null
-  } catch {
-    return null
-  }
-}
-
-const picture = (src: string | undefined, alt: string) =>
-  src && /^(?:https:|data:image\/)/i.test(src)
-    ? { src, width: 0, height: 0, alt }
+const photoOf = (src: string | undefined, alt: string): SwapPicture | null =>
+  src && /^(?:https:|data:image\/)/i.test(src) && src.length <= 2_000
+    ? { src, width: 0, height: 0, alt: alt.slice(0, 300) }
     : null
 
 /** The brand as the swap reads it (sizes are read by the browser job). */
-export function swapBrandOf(brand: BlockBrand): SwapBrand {
+export function swapBrandOf(
+  brand: BlockBrand,
+  lifestyle?: { image: string; alt: string }
+): SwapBrand {
+  const own = lifestyle ? photoOf(lifestyle.image, lifestyle.alt) : null
   return {
     name: brand.name,
     site: brand.site,
@@ -160,9 +260,9 @@ export function swapBrandOf(brand: BlockBrand): SwapBrand {
     dark: brand.dark,
     headingFont: brand.font,
     bodyFont: brand.font,
-    logo: picture(brand.logo, brand.name),
-    logoOnDark: picture(brand.logoOnDark, brand.name),
-    photos: [],
+    logo: photoOf(brand.logo, brand.name),
+    logoOnDark: photoOf(brand.logoOnDark, brand.name),
+    photos: own ? [own] : [],
     icons: [],
     radius: Number(/^(\d+)px$/.exec(brand.radius ?? '')?.[1] ?? 8),
     address: null
@@ -173,15 +273,15 @@ export function swapBrandOf(brand: BlockBrand): SwapBrand {
  * The copy's input from the build's saved steps: the brand, the draft's
  * products in order (a compare-at price only for a confirmed sale), the
  * Copywriter's words, the money rules (the code and its percent, the max,
- * the catalog's prices, the store's approved claims) and everything the
- * brand's content says, for the leak check.
+ * the free-shipping threshold, the store's approved claims) and everything
+ * the brand's content says, for the leak check.
  */
 export function copyInput(input: {
-  store: Pick<Store, 'brand' | 'products' | 'facts'>
+  store: Pick<Store, 'brand' | 'products' | 'facts' | 'confirmed'>
   draft: Draft
   rules: {
     maxDiscountPercent: number
-    codes: { code: string; percent: number }[]
+    codes: readonly { code: string; percent: number }[]
   }
   sourceNames: readonly string[]
   mode: 'preview' | 'klaviyo'
@@ -197,7 +297,7 @@ export function copyInput(input: {
       price: p.price,
       compareAt: p.compareAtIsSale === true ? (p.compareAt ?? null) : null,
       url: p.url,
-      photo: picture(p.image, p.title)
+      photo: photoOf(p.image, p.title)
     }))
   const code = draft.code
   const own = code
@@ -208,8 +308,8 @@ export function copyInput(input: {
       ? [String(store.facts.freeShipping.over)]
       : []
   const words = wordsFromDraft(draft)
-  const brand = swapBrandOf(store.brand)
-  const claims = [...store.facts.approvedClaims]
+  const brand = swapBrandOf(store.brand, store.confirmed?.lifestylePhoto)
+  const claims = store.facts.approvedClaims.slice(0, 40)
   return {
     brand,
     products,
@@ -227,27 +327,35 @@ export function copyInput(input: {
       ...claims,
       ...freeOver,
       ...(own ? [own.code, `${own.percent}%`] : [])
-    ].filter(Boolean),
+    ]
+      .filter(Boolean)
+      .slice(0, 600),
     sourceNames: [...input.sourceNames].slice(0, 6),
-    origins: [
-      ...new Set(
-        [
-          store.brand.logo,
-          store.brand.logoOnDark,
-          ...products.map((p) => p.photo?.src)
-        ]
-          .map(originOf)
-          .filter((o): o is string => !!o)
-      )
-    ].slice(0, 24),
     mode: input.mode
   }
 }
 
 /** How many cut photos the copy may upload (its pictures, at most 24). */
 export const photosFor = (input: CopyInput) =>
-  Math.min(24, input.products.length * 2 + 8)
+  Math.min(
+    maxCopyPhotos,
+    input.products.length * 2 + (input.brand.photos?.length ?? 0) * 2 + 8
+  )
 
-/** The sections' plain words for the email's page (those built from a block or left out). */
-export const sectionReasons = (record: CopyRecord) =>
-  record.sections.flatMap((s) => (s.reason ? [s.reason] : []))
+/**
+ * The email's page: what it says about a copy. Every section copied, or
+ * each section built from a library block (or left out) with its reason.
+ */
+export function copiedLines(library: {
+  sections: readonly CopiedSection[]
+}): string[] {
+  const reasons = library.sections.flatMap((s) =>
+    s.result !== 'copied' && s.reason ? [s.reason] : []
+  )
+  return [
+    reasons.length
+      ? 'The design was copied from the email you chose in Inspiration, with your brand’s colours, fonts, logo, words and photos. Some sections were built differently:'
+      : 'Every section was copied from the email you chose in Inspiration, with your brand’s colours, fonts, logo, words and photos.',
+    ...reasons
+  ]
+}

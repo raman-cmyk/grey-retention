@@ -6,6 +6,7 @@ import { previewHtml } from '@/features/email-generation/html'
 import { plainFooterTags } from '@/features/letter/render'
 import { builtEmail, type BuiltEmail } from './build'
 import { changeWords, type ChangeKey } from './content'
+import { copiedLines } from './library-copy'
 import { allSteps } from './step-names'
 
 /**
@@ -67,6 +68,12 @@ export type EmailView = {
   designs: { name: string; html: string }[]
   /** A text email's own plain-text part. */
   text: string | null
+  /**
+   * DES-ENGINE-002b2: a copy of the inspiration email the owner chose
+   * (Copy): every section copied, or which sections were built from a
+   * library block (or left out) and why, in plain words. Null otherwise.
+   */
+  copied: string[] | null
 }
 
 /** Open in Klaviyo: Klaviyo's campaigns list, where the draft is by its name. */
@@ -292,7 +299,8 @@ function viewOf(
             html: safeHtml(email.designA ?? email.html)
           }
         ],
-    text: email.text ? previewText(email.text) : null
+    text: email.text ? previewText(email.text) : null,
+    copied: email.library ? copiedLines(email.library) : null
   }
 }
 

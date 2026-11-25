@@ -21,6 +21,8 @@ import {
 } from './build'
 import { buildAgentsFor, emailAgentsReady } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
+import { libraryCopyOn } from './library-copy'
+import { libraryPortsFor } from './library-copy-live'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, refusedCode, type BuildFailureCode } from './failure-words'
 import { type SavedOffers, type StoreSource } from './ports'
@@ -108,6 +110,11 @@ export async function runEmailBuilds(
     deadline?: number
     now?: () => number
     /**
+     * DES-ENGINE-002b2: the library copy in a Copy email's design step.
+     * Default: the owner's switch (`DESIGN_LIBRARY_COPY=on`).
+     */
+    library?: boolean
+    /**
      * DST-002b: how a Copy or Remix build's references are read. Default:
      * the Inspiration inbox with this service-role client
      * (`readReferenceRows`, `toReferences`).
@@ -125,6 +132,7 @@ export async function runEmailBuilds(
   const now = deps.now ?? Date.now
   const agents = deps.agents === undefined ? buildAgentsFor(db) : deps.agents
   const studio = deps.studio ?? designStudioOn(process.env)
+  const library = deps.library ?? libraryCopyOn(process.env)
   // The owner's click: every step, every save of the steps with rounds
   // (REL-AI part 2b) and the push. Its deadline, not this count, ends it.
   // DST-006b: a build claimed already is the only build this run runs.
@@ -270,6 +278,16 @@ export async function runEmailBuilds(
             until,
             clock: now,
             ...(reference ? { reference } : {}),
+            // DES-ENGINE-002b2: a Copy email's design copied for the brand.
+            ...(library && job.step === 'design'
+              ? {
+                  library: libraryPortsFor(db, {
+                    tenant: job.tenant_id,
+                    build: job.id,
+                    lease: job.lease_token
+                  })
+                }
+              : {}),
             // The owner's studio is on, but this claim has no agents (the
             // sweep, after the click ran out of time): it says so (D16).
             ...(studio &&

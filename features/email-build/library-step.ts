@@ -3,7 +3,6 @@ import {
   copyInput,
   copyWords,
   photosFor,
-  type CopiedSection,
   type LibraryCopyPort
 } from './library-copy'
 import type { Store } from './ports'
@@ -11,13 +10,14 @@ import type { Draft } from '@/features/assembly/assemble'
 
 /**
  * DES-ENGINE-002b2: the design step of an email the owner asked to copy
- * ("Use this design", Copy) with the library copy on. It reads the chosen
- * email's stored blueprint, asks the browser job for the brand copy and
- * waits for it like the design studio's pictures (DST-006b); a done copy
- * with no leak that passes the email's hard checks is the email, with
- * each section's outcome kept for the email's page. Anything else draws
- * the coded blocks, and the owner's log says why in plain words (D16:
- * never silently, never stuck).
+ * ("Use this design", Copy) with the library copy on
+ * (`DESIGN_LIBRARY_COPY=on`). It reads the chosen email's stored blueprint
+ * (only an email the workspace may see), asks the browser job for the
+ * brand copy and waits for it like the design studio's pictures
+ * (DST-006b); a done copy with no leak that passes the email's hard checks
+ * is the email, with each section's outcome kept for the email's page.
+ * Anything else draws the coded blocks, and the owner's log says why in
+ * plain words (D16: never silently, never stuck).
  */
 
 /** At most this many waits for the blueprint and the copy (each 30 minutes). */
@@ -29,15 +29,23 @@ export type LibraryStepOutcome =
   | { kind: 'email'; email: BuiltEmail }
   | { kind: 'coded'; reasonCode: string; reason: string }
 
+/** The library step's saved waits (`progress.work.design.library.waits`). */
+export const libraryWaitsOf = (saved: unknown) => {
+  const n = Number(
+    (saved as { library?: { waits?: unknown } } | undefined)?.library?.waits
+  )
+  return Number.isInteger(n) && n > 0 ? n : 0
+}
+
 export async function libraryStep(input: {
   port: LibraryCopyPort
-  mode: 'preview' | 'klaviyo'
+  /** The inspiration email the sections step followed (`competitor_emails.id`). */
   emailId: string
-  store: Pick<Store, 'brand' | 'products' | 'facts'>
+  store: Pick<Store, 'brand' | 'products' | 'facts' | 'confirmed'>
   draft: Draft
   rules: {
     maxDiscountPercent: number
-    codes: { code: string; percent: number }[]
+    codes: readonly { code: string; percent: number }[]
   }
   /** The coded email as the design step drew it (subject, products, code…). */
   coded: BuiltEmail
@@ -49,12 +57,8 @@ export async function libraryStep(input: {
     email: BuiltEmail
   ) => { check: string; problem: string }[]
 }): Promise<LibraryStepOutcome> {
-  const waits =
-    Number(
-      (input.saved as { library?: { waits?: unknown } } | undefined)?.library
-        ?.waits
-    ) || 0
-  const wait = (code: keyof typeof copyWords): LibraryStepOutcome =>
+  const waits = libraryWaitsOf(input.saved)
+  const wait = (code: 'waiting' | 'copying'): LibraryStepOutcome =>
     waits < libraryWaits
       ? {
           kind: 'waiting',
@@ -64,7 +68,7 @@ export async function libraryStep(input: {
       : {
           kind: 'coded',
           reasonCode: `library_${code}`,
-          reason: copyWords[code] as string
+          reason: copyWords[code]
         }
   const bp = await input.port.blueprint(input.emailId)
   if (bp.state === 'waiting') return wait('waiting')
@@ -74,12 +78,13 @@ export async function libraryStep(input: {
       reasonCode: 'library_unusable',
       reason: copyWords.failed(bp.reason)
     }
+  // Klaviyo's tags in the footer, as the coded email has them.
   const copyIn = copyInput({
     store: input.store,
     draft: input.draft,
     rules: input.rules,
     sourceNames: bp.sourceNames,
-    mode: input.mode
+    mode: 'klaviyo'
   })
   const got = await input.port.copy(bp.messageId, copyIn, photosFor(copyIn))
   if (got.state === 'queued') return wait('copying')
@@ -102,7 +107,7 @@ export async function libraryStep(input: {
     approach: 'A',
     library: {
       emailId: input.emailId,
-      sections: record.sections.map((s: CopiedSection) => s),
+      sections: record.sections,
       footerAdded: record.footerAdded
     }
   }
