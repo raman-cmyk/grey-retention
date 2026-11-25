@@ -20,19 +20,10 @@ export const maxBytes = 3 * 1024 * 1024
 export const minHeight = 40
 export const maxHeight = 1600
 
-/**
- * The origins a page may load from: https only (loopback http for tests),
- * never an opaque one ("null": file, about, blob).
- */
-export function loadableOrigins(origins) {
-  return new Set(
-    [...origins].filter(
-      (o) =>
-        /^https:\/\/[^/]+$/i.test(o) ||
-        /^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/i.test(o)
-    )
-  )
-}
+import { loadableOrigins } from '../lib/sandbox/browser.mjs'
+
+/** The origins a page may load from (`lib/sandbox/browser.mjs`). */
+export { loadableOrigins }
 
 const reason = (error) =>
   error instanceof Error && /timeout/i.test(error.message)

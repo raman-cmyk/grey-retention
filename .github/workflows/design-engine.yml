@@ -1,0 +1,84 @@
+name: Design engine
+
+# DES-ENGINE-001: the email design engine's golden set. Each of the 40 test
+# emails (features/design-engine/golden) is measured in Chromium with
+# JavaScript off and only inline pictures allowed (Chromium's own OS sandbox
+# where the runner allows one), drawn back from its
+# blueprint, measured again and compared for likeness and unchanged content;
+# at least 36 must pass. The sandbox and limit tests use loopback servers. The
+# engine's other browser tests run too. No app, no database, no secret and
+# no outside request: the emails and their pictures are made in code.
+#
+# The results, a summary and a side-by-side picture of every email (the
+# original, the redraw, the redraw on a phone and both layouts as grey
+# boxes) are uploaded as the `design-golden` artifact on every run, so the
+# owner can look at them.
+on:
+  pull_request:
+    paths:
+      - 'features/design-engine/**'
+      - 'features/blocks/**'
+      - 'features/inbox/sections.ts'
+      - 'lib/sandbox/**'
+      - 'scripts/inbox-screenshots.mjs'
+      - 'scripts/section-render.mjs'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/design-engine.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'features/design-engine/**'
+      - 'features/blocks/**'
+      - 'features/inbox/sections.ts'
+      - 'lib/sandbox/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: design-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium
+      # Best effort, as in browser.yml: ubuntu-latest already has Chromium's
+      # libraries, and the Ubuntu mirror sometimes fails to resolve.
+      - name: Install browser system packages (best effort)
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          for attempt in 1 2; do
+            if sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 update && pnpm exec playwright install-deps chromium; then
+              exit 0
+            fi
+            echo "Attempt $attempt failed; retrying in 20 seconds."
+            sleep 20
+          done
+          echo "::warning::apt unavailable; using the runner's preinstalled libraries"
+      - name: Golden set and browser tests
+        env:
+          DESIGN_ENGINE_BROWSER: 'on'
+          DESIGN_GOLDEN_OUT: design-golden
+        run: pnpm exec vitest run features/design-engine
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: design-golden
+          path: design-golden/
+          retention-days: 30
+          if-no-files-found: warn

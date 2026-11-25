@@ -23,7 +23,10 @@
  * there instead of silently dropping every picture).
  */
 import { pathToFileURL } from 'node:url'
-import { loadableOrigins } from './section-render.mjs'
+import { launch, loadableOrigins, makeInert } from '../lib/sandbox/browser.mjs'
+
+/** How Chromium is launched (`lib/sandbox/browser.mjs`). */
+export { launch }
 
 export const width = 600
 export const maxWidth = 2000
@@ -41,28 +44,11 @@ export const cropBudgetMs = 70_000
 export const uploadBudgetMs = 90_000
 
 /**
- * Tags that reach out on their own, past request interception: <link>
- * (prefetch, preconnect and DNS prefetch skip it; email apps ignore <link>
- * anyway), <meta> (a refresh navigates after the page loads) and <base>
- * (it moves every relative address); and the pages inside a page (<iframe>,
- * <frame>, <object>, <embed>), which email apps drop and which today's
- * Chromium keeps quiet only by its own rules. Each is turned, wherever it
- * is written, into an empty hidden `<wbr>` that keeps the old attributes as
- * plain text: a pattern over a whole tag misses one whose attribute holds a
- * "<" (INB-002b review), and an unknown tag name would wrap everything
- * after it, so `body > table` rules would stop matching (second review).
- */
-const inertTags = /<(link|meta|base|iframe|frame|object|embed)\b/gi
-
-/**
  * Puts each stored image in place of the reference the HTML uses, and
- * makes inert what would reach out on its own (`inertTags`).
+ * makes inert what would reach out on its own (`makeInert`).
  */
 export function prepareHtml(html, images) {
-  let out = html.replace(
-    inertTags,
-    (_, tag) => `<wbr hidden data-gr-${tag.toLowerCase()}`
-  )
+  let out = makeInert(html)
   // Longest first, so a reference that contains another is replaced whole.
   for (const { ref, url } of [...images].sort(
     (a, b) => b.ref.length - a.ref.length
@@ -321,19 +307,6 @@ export async function run({
     `Screenshots taken: ${counts.taken}. Failed: ${counts.failed}. Stored pictures or styles refused or failed: ${counts.unloaded}.`
   )
   return counts
-}
-
-/**
- * Chromium parses strangers' HTML and images: it gets no secret in its
- * environment, and its own sandbox where the machine allows one.
- */
-export async function launch(chromium) {
-  const env = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' }
-  try {
-    return await chromium.launch({ chromiumSandbox: true, env })
-  } catch {
-    return chromium.launch({ env })
-  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
