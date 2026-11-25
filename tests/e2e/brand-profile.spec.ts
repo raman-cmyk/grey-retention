@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { createClient } from '@supabase/supabase-js'
 import { test, expect, type Page } from '@playwright/test'
 import { login } from './accounts'
 import { newOwner } from './new-owner'
@@ -13,19 +14,18 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
   // A fresh workspace: brand changes reset campaigns, so never touch the
   // shared accounts here.
   await newOwner(page, { prefix: 'brand', name: 'Brand profile studio' })
-  // UI-BRAND: Brand is a GROS page under Settings, opened from its card.
-  await page.goto('/settings')
-  await card(page, 'Brand').getByRole('link', { name: 'Open brand' }).click()
-  await expect(page).toHaveURL(/\/settings\/brand$/)
+  // UI-BRAND-2: Brand is a main page, opened from the top bar (owner
+  // decision of 25 Nov); Settings no longer repeats it.
+  const menu = page.getByRole('navigation', { name: 'Main' })
+  await menu.getByRole('link', { name: 'Brand', exact: true }).click()
+  await expect(page).toHaveURL(/\/brand$/)
   await expect(
     page.getByRole('heading', { name: 'Brand', level: 1 })
   ).toBeVisible()
   await expect(page).toHaveTitle(/Brand/)
   await expect(
-    page
-      .getByRole('navigation', { name: 'Main' })
-      .getByRole('link', { name: 'Home', exact: true })
-  ).toBeVisible()
+    menu.getByRole('link', { name: 'Brand', exact: true })
+  ).toHaveAttribute('aria-current', 'page')
   // No Store tab in v2.
   await expect(
     page.getByRole('navigation', { name: 'Brand & Store' })
@@ -57,7 +57,9 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
   const version = card(page, 'Brand version')
   await expect(version.getByText('Needs you')).toBeVisible()
   await version.getByRole('button', { name: 'Approve brand v1' }).click()
-  await expect(version.getByText('Brand version approved.')).toBeVisible()
+  await expect(
+    version.getByText('Brand version approved. Rewriting the Brand book.')
+  ).toBeVisible()
   await page.reload()
   await expect(page.getByText('Approved for AI use · version 1')).toBeVisible()
 
@@ -66,7 +68,7 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
   await card(page, 'Brand book')
     .getByRole('link', { name: 'Review Brand book' })
     .click()
-  await expect(page).toHaveURL(/\/settings\/brand\/book$/)
+  await expect(page).toHaveURL(/\/brand\/book$/)
   await expect(
     page.getByRole('heading', { name: 'Brand book', level: 1 })
   ).toBeVisible()
@@ -77,7 +79,7 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
     page.getByRole('button', { name: /^Approve brand/ })
   ).toHaveCount(0)
   await page.getByRole('link', { name: 'Back to Brand' }).click()
-  await expect(page).toHaveURL(/\/settings\/brand$/)
+  await expect(page).toHaveURL(/\/brand$/)
 
   // Notes the agents do not read keep the approval.
   await identity.getByRole('button', { name: 'Edit Brand identity' }).click()
@@ -131,26 +133,138 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
   ).toBeVisible()
   // From the Brand book, the owner approves on Brand, where he sees what
   // he approves.
-  await page.goto('/settings/brand/book')
+  await page.goto('/brand/book')
   await card(page, 'Your brand')
     .getByRole('link', { name: 'Review and approve' })
     .click()
-  await expect(page).toHaveURL(/\/settings\/brand#version$/)
+  await expect(page).toHaveURL(/\/brand#version$/)
   await expect(
     card(page, 'Brand version').getByRole('button', {
       name: 'Approve brand v2'
     })
   ).toBeVisible()
 
-  // The old addresses open the new page: /brand, the old Copy & Voice
-  // address (the Tone of voice card) and the old Store tab.
-  await page.goto('/brand')
-  await expect(page).toHaveURL(/\/settings\/brand$/)
+  // The old addresses open the new pages: the old Copy & Voice address
+  // (the Tone of voice card), the old Store tab, and the pages' short stay
+  // under Settings.
   await page.goto('/brand/voice')
-  await expect(page).toHaveURL(/\/settings\/brand#tone$/)
+  await expect(page).toHaveURL(/\/brand#tone$/)
   await expect(card(page, 'Tone of voice')).toBeVisible()
-  await page.goto('/store')
-  await expect(page).toHaveURL(/\/settings\/brand$/)
+  for (const [old, moved] of [
+    ['/store', /\/brand$/],
+    ['/settings/brand', /\/brand$/],
+    ['/settings/brand/book', /\/brand\/book$/],
+    ['/settings/assets', /\/brand\/assets$/],
+    ['/assets', /\/brand\/assets$/]
+  ] as const) {
+    await page.goto(old)
+    await expect(page, old).toHaveURL(moved)
+  }
+  await page.goto('/settings')
+  await expect(card(page, 'Brand')).toHaveCount(0)
+  await expect(card(page, 'Brand assets')).toHaveCount(0)
+})
+
+test('UI-BRAND-2 approving rewrites the Brand book, and the owner corrects it', async ({
+  page
+}) => {
+  test.setTimeout(90_000)
+  const db = await newOwner(page, { prefix: 'book', name: 'Brand book studio' })
+  const tenant = await db.from('tenants').select('id').single()
+  expect(tenant.error).toBeNull()
+  await page.goto('/brand')
+  const identity = card(page, 'Brand identity')
+  await identity.getByRole('button', { name: 'Edit Brand identity' }).click()
+  await identity
+    .getByLabel('Brand name', { exact: true })
+    .fill(`Juniper Field ${randomUUID().slice(0, 6)}`)
+  await identity
+    .getByLabel('Positioning', { exact: true })
+    .fill('Quiet layers for long weekends.')
+  await identity.getByRole('button', { name: 'Save brand identity' }).click()
+  await expect(
+    identity.getByText(/^Saved\. Your brand details changed/)
+  ).toBeVisible()
+  // This journey's store has no readers' findings: a sample store, as the
+  // sample setup makes one (test-only, on the disposable local stack), so
+  // the code-written book may be saved.
+  const service = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  )
+  expect(
+    (
+      await service
+        .from('brand_profiles')
+        .update({ synthetic: true })
+        .eq('tenant_id', tenant.data!.id)
+    ).error
+  ).toBeNull()
+
+  // Approving queues the rewrite and runs it right after the click.
+  await card(page, 'Brand version')
+    .getByRole('button', { name: 'Approve brand v1' })
+    .click()
+  await expect(
+    page.getByText('Brand version approved. Rewriting the Brand book.')
+  ).toBeVisible()
+  await page.goto('/brand/book')
+  await expect(card(page, 'Rewriting the Brand book')).toHaveCount(0, {
+    timeout: 20_000
+  })
+  await expect(card(page, 'Your words')).toContainText(
+    'Quiet layers for long weekends.',
+    { timeout: 20_000 }
+  )
+
+  // He adds a line of his own: the book is rewritten with it, marked as his.
+  const seen = card(page, 'What GROS saw')
+  await seen.getByRole('button', { name: 'Add a line: What you sell' }).click()
+  await seen
+    .getByLabel('New line: What you sell', { exact: true })
+    .fill('Linen shirts made in Porto')
+  await seen.getByRole('button', { name: /^Add line/ }).click()
+  await expect(seen.getByText('Saved. Rewriting the Brand book.')).toBeVisible()
+  const sell = card(page, 'What GROS saw').getByRole('list', {
+    name: 'What you sell'
+  })
+  await expect(sell).toContainText('Linen shirts made in Porto', {
+    timeout: 20_000
+  })
+  await expect(sell).toContainText('Your correction')
+
+  // He sets a fact: it is a confirmed fact in his words.
+  const facts = card(page, 'Confirmed facts')
+  await facts.getByRole('button', { name: 'Correct facts' }).click()
+  await facts.getByLabel('Returns', { exact: true }).fill('30')
+  await facts.getByRole('button', { name: 'Save facts' }).click()
+  await expect(
+    card(page, 'Confirmed facts').getByRole('list', { name: 'Confirmed facts' })
+  ).toContainText('Returns within 30 daysYour correction', { timeout: 20_000 })
+  await expect(card(page, 'Your corrections')).toContainText(
+    'What you sellAdded “Linen shirts made in Porto”'
+  )
+
+  // A page opened before a rewrite cannot correct the newer book.
+  const stale = await db.rpc('correct_brand_book_at', {
+    t: tenant.data!.id,
+    expected_version: 1,
+    corrections: [{ section: 'voice', action: 'add', value: 'Calm.' }]
+  })
+  expect(stale.error?.code).toBe('PT409')
+
+  // He takes the line back: it is gone after the rewrite.
+  page.once('dialog', (dialog) => dialog.accept())
+  await card(page, 'Your corrections')
+    .getByRole('button', { name: /^Take back: What you sell/ })
+    .click()
+  await expect(
+    card(page, 'What GROS saw').getByRole('list', { name: 'What you sell' })
+  ).toHaveCount(0, { timeout: 20_000 })
+  await expect(card(page, 'Your corrections')).not.toContainText(
+    'Linen shirts made in Porto'
+  )
 })
 
 test('UIR-005 staff read the Brand profile without edit controls', async ({
@@ -161,14 +275,14 @@ test('UIR-005 staff read the Brand profile without edit controls', async ({
     'Role check; one layout is enough'
   )
   await login(page, 'staff')
-  await page.goto('/settings/brand')
+  await page.goto('/brand')
   await expect(card(page, 'Brand identity')).toBeVisible()
   await expect(page.getByRole('button', { name: /^Edit/ })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /with AI/ })).toHaveCount(0)
   await expect(
     page.getByRole('button', { name: /^Approve brand/ })
   ).toHaveCount(0)
-  await page.goto('/settings/brand/book')
+  await page.goto('/brand/book')
   await expect(
     page.getByRole('heading', { name: 'Brand book', level: 1 })
   ).toBeVisible()
@@ -183,7 +297,7 @@ test('UIR-005 Brand profile fits 375px and edits by keyboard', async ({
   test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
   await page.setViewportSize({ width: 375, height: 812 })
   await login(page, 'owner')
-  await page.goto('/settings/brand')
+  await page.goto('/brand')
   const fits = () =>
     page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
   expect(await fits()).toBe(true)
@@ -198,6 +312,6 @@ test('UIR-005 Brand profile fits 375px and edits by keyboard', async ({
   expect(await fits()).toBe(true)
   await card(page, 'Audience').getByRole('button', { name: 'Cancel' }).click()
   await expect(edit).toBeFocused()
-  await page.goto('/settings/brand/book')
+  await page.goto('/brand/book')
   expect(await fits()).toBe(true)
 })

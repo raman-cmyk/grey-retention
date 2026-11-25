@@ -6,8 +6,8 @@ import { assetFilter, assetsView } from '@/features/assets/view'
 
 export const metadata: Metadata = { title: 'Brand assets' }
 
-/** Brand assets (UI-BRAND): replaces the old /assets page. */
-export default async function SettingsAssetsPage({
+/** Brand assets (UI-BRAND; under Brand at /brand/assets since UI-BRAND-2). */
+export default async function BrandAssetsPage({
   searchParams
 }: {
   searchParams: Promise<{ category?: string | string[] }>

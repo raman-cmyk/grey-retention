@@ -7,16 +7,16 @@ test('V2-D2 Shopify is hidden: no Store tab, and /store opens the Brand page', a
   page
 }) => {
   await login(page)
-  // UI-BRAND: Brand is a GROS page under Settings.
+  // UI-BRAND-2: Brand is a main page.
   await page.goto('/store')
-  await expect(page).toHaveURL(/\/settings\/brand$/)
+  await expect(page).toHaveURL(/\/brand$/)
   await expect(
     page.getByRole('navigation', { name: 'Brand & Store' })
   ).toHaveCount(0)
   for (const path of [
-    '/settings/brand',
-    '/settings/brand/book',
-    '/settings/assets',
+    '/brand',
+    '/brand/book',
+    '/brand/assets',
     '/home',
     '/settings',
     '/gros',

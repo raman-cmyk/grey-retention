@@ -9,7 +9,8 @@ import { Mark } from './mark'
 
 /**
  * Nav (BRAND.md): the top bar is the only navigation. The mark and the page
- * title on the left, a white pill menu of five items in the middle, and on
+ * title on the left, a white pill menu of six items in the middle (Brand
+ * joined the five on 25 Nov, UI-BRAND-2), and on
  * the right the wide Ask GROS button and the round Settings button. No
  * sidebar. On a narrow screen the three parts wrap onto their own lines;
  * nothing hides behind a menu icon.
@@ -22,7 +23,10 @@ export const navItems = [
   { key: 'plan', label: 'Plan', href: '/plan' },
   { key: 'inspiration', label: 'Inspiration', href: '/inspiration' },
   { key: 'audiences', label: 'Audiences', href: '/audiences' },
-  { key: 'results', label: 'Results', href: '/results' }
+  { key: 'results', label: 'Results', href: '/results' },
+  // UI-BRAND-2 (owner decision of 25 Nov): Brand is a main page, with the
+  // Brand book and Brand assets under it.
+  { key: 'brand', label: 'Brand', href: '/brand' }
 ] as const satisfies readonly {
   key: string
   label: string

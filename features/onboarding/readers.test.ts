@@ -107,7 +107,41 @@ describe('runSourceReadings', () => {
     const book = vi.fn(async () => 1)
     await runSourceReadings(db, { read, book, staleBooks: async () => [] })
     expect(book).toHaveBeenCalledOnce()
-    expect(book).toHaveBeenCalledWith(db, 't1')
+    // UI-BRAND-2: through the rewrite queue, named by the read.
+    expect(book).toHaveBeenCalledWith(db, 't1', { cause: 'read', ref: 'j1' })
+  })
+
+  it('first runs the Brand book rewrites the owner’s clicks left waiting, inside the reads’ budget (UI-BRAND-2)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const order: string[] = []
+    const { db, calls } = database(['j1'])
+    const rewrites = vi.fn(async (_db: unknown, deadline: number) => {
+      order.push(`rewrites until ${deadline}`)
+    })
+    await runSourceReadings(db, {
+      ...noBooks,
+      now: () => 1_000,
+      rewrites,
+      staleBooks: async () => {
+        order.push('stale books')
+        return []
+      },
+      read: async () => {
+        order.push('read')
+        return 'read' as const
+      }
+    })
+    expect(order).toEqual([
+      `rewrites until ${1_000 + readersRunMs}`,
+      'stale books',
+      'read'
+    ])
+    expect(rewrites).toHaveBeenCalledWith(db, 1_000 + readersRunMs)
+    // By default the run claims them itself, as the worker.
+    const plain = database([])
+    await runSourceReadings(plain.db, noBooks)
+    expect(plain.calls[0]).toEqual({ name: 'claim_brand_book_write', args: {} })
+    expect(calls.map((c) => c.name)).not.toContain('claim_brand_book_write')
   })
 
   it('asks the Brand strategist once, after the reads, when its call still ends inside the route (ONB-106c)', async () => {

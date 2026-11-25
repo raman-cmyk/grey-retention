@@ -8,6 +8,8 @@ const auth = vi.hoisted(() => ({ requireRequestContext: vi.fn() }))
 const supabase = vi.hoisted(() => ({ createClient: vi.fn() }))
 vi.mock('@/features/auth/application/request-context', () => auth)
 vi.mock('@/lib/supabase/server', () => supabase)
+const writes = vi.hoisted(() => ({ rewriteBrandBookSoon: vi.fn() }))
+vi.mock('@/features/onboarding/brand-book-writes', () => writes)
 
 import { brandAction } from './actions'
 
@@ -24,6 +26,16 @@ const form = (values: Record<string, string>) => {
 }
 
 let rpc: ReturnType<typeof vi.fn>
+/** The brand's approved version as the page's session reads it. */
+const profileRead = (approved: number | null) => () => {
+  const link: Record<string, unknown> = {}
+  for (const step of ['select', 'eq']) link[step] = () => link
+  link.maybeSingle = async () => ({
+    data: { approved_revision: approved },
+    error: null
+  })
+  return link
+}
 beforeEach(() => {
   vi.stubEnv('AUTH_MODE', 'supabase')
   auth.requireRequestContext.mockResolvedValue({
@@ -31,7 +43,7 @@ beforeEach(() => {
     tenantRole: 'owner'
   })
   rpc = vi.fn(async () => ({ data: null, error: null }))
-  supabase.createClient.mockResolvedValue({ rpc })
+  supabase.createClient.mockResolvedValue({ rpc, from: profileRead(3) })
 })
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -39,28 +51,55 @@ afterEach(() => {
 })
 
 describe('brandAction', () => {
-  it('approves exactly the version on the page and refreshes the brand pages', async () => {
+  it('approves exactly the version on the page, rewrites the Brand book at once and refreshes the brand pages', async () => {
     const result = await brandAction(
       {},
       form({ kind: 'approve', revision: '4' })
     )
-    expect(result).toEqual({ message: 'Brand version approved.' })
+    expect(result).toEqual({
+      message: 'Brand version approved. Rewriting the Brand book.'
+    })
     expect(rpc).toHaveBeenCalledWith('approve_brand', {
       t: tenant,
       expected_revision: 4
     })
+    // UI-BRAND-2: the database queued the rewrite with the approval; it
+    // runs right after the reply.
+    expect(writes.rewriteBrandBookSoon).toHaveBeenCalledExactlyOnceWith(tenant)
     const paths = cache.revalidatePath.mock.calls.map((c) => c[0])
-    expect(paths).toEqual(
-      expect.arrayContaining(['/settings/brand', '/settings/brand/book'])
-    )
-    expect(paths).not.toContain('/brand')
+    expect(paths).toEqual(expect.arrayContaining(['/brand', '/brand/book']))
+    expect(paths).not.toContain('/settings/brand')
   })
 
-  it('refuses a version changed in another window', async () => {
+  it('refuses a version changed in another window, and rewrites nothing', async () => {
     rpc.mockResolvedValueOnce({ data: null, error: { code: 'PT409' } })
     expect(
       await brandAction({}, form({ kind: 'approve', revision: '4' }))
     ).toEqual({ error: 'Brand context changed. Refresh before approving.' })
+    expect(writes.rewriteBrandBookSoon).not.toHaveBeenCalled()
+  })
+
+  it('rewrites nothing when the version shown is already approved', async () => {
+    supabase.createClient.mockResolvedValue({ rpc, from: profileRead(4) })
+    expect(
+      await brandAction({}, form({ kind: 'approve', revision: '4' }))
+    ).toEqual({ message: 'Brand version approved.' })
+    expect(writes.rewriteBrandBookSoon).not.toHaveBeenCalled()
+  })
+
+  it('rewrites the Brand book only after an approval', async () => {
+    await brandAction(
+      {},
+      form({
+        kind: 'product',
+        title: 'Field overshirt',
+        url: 'https://cedarlane.example/p/1',
+        price_minor: '2500',
+        stock: '3'
+      })
+    )
+    expect(rpc).toHaveBeenCalledOnce()
+    expect(writes.rewriteBrandBookSoon).not.toHaveBeenCalled()
   })
 
   it('refuses a missing or non-positive version before any write', async () => {
@@ -95,6 +134,7 @@ describe('brandAction', () => {
     }
     expect(supabase.createClient).not.toHaveBeenCalled()
     expect(rpc).not.toHaveBeenCalled()
+    expect(writes.rewriteBrandBookSoon).not.toHaveBeenCalled()
   })
 
   it('adds a product only with an https address', async () => {

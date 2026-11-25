@@ -77,9 +77,9 @@ test('core workspace surfaces render without overflow', async ({
   for (const [path, heading] of [
     ['/home', /^Good (morning|afternoon|evening), /],
     ['/plan', 'Plan'],
-    ['/settings/brand', 'Brand'],
-    ['/settings/brand/book', 'Brand book'],
-    ['/settings/assets', 'Brand assets'],
+    ['/brand', 'Brand'],
+    ['/brand/book', 'Brand book'],
+    ['/brand/assets', 'Brand assets'],
     ['/gros', 'Ask GROS'],
     ['/inspiration', 'Inspiration'],
     ['/results', 'Results'],
@@ -96,7 +96,7 @@ test('core workspace surfaces render without overflow', async ({
       path
     ).toBe(true)
     if (
-      ['/home', '/plan', '/settings/assets', '/gros', '/results'].includes(path)
+      ['/home', '/plan', '/brand/assets', '/gros', '/results'].includes(path)
     ) {
       await page.screenshot({
         path: `.audit/ui-002-${path.slice(1).replaceAll('/', '-')}-${info.project.name}.png`,

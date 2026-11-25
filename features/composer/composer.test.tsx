@@ -51,7 +51,7 @@ describe('Composer', () => {
     renderComposer()
     expect(screen.getByRole('link', { name: 'Northwind' })).toHaveAttribute(
       'href',
-      '/settings/brand'
+      '/brand'
     )
     expect(screen.getByRole('link', { name: '3 saved' })).toBeInTheDocument()
     expect(

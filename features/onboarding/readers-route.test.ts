@@ -43,11 +43,34 @@ describe('GET /api/internal/onboarding/readers', () => {
   })
 
   it('says how many reads are waiting, and nothing else, when asked to peek', async () => {
+    rpc.mockImplementation(async (name: string) => ({
+      data: name === 'source_readings_waiting' ? 2 : 0,
+      error: null
+    }))
     const response = await GET(request(`Bearer ${secret}`, '?peek=1'))
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ waiting: 2 })
     expect(rpc).toHaveBeenCalledWith('source_readings_waiting')
     expect(readers.runSourceReadings).not.toHaveBeenCalled()
+  })
+
+  it('counts the Brand book rewrites waiting too (UI-BRAND-2)', async () => {
+    rpc.mockImplementation(async (name: string) => ({
+      data: name === 'source_readings_waiting' ? 0 : 1,
+      error: null
+    }))
+    const response = await GET(request(`Bearer ${secret}`, '?peek=1'))
+    expect(await response.json()).toEqual({ waiting: 1 })
+    expect(rpc).toHaveBeenCalledWith('brand_book_writes_waiting')
+    // A failed count is none: the reads still decide.
+    rpc.mockImplementation(async (name: string) =>
+      name === 'source_readings_waiting'
+        ? { data: 3, error: null }
+        : { data: null, error: { code: 'PGRST301' } }
+    )
+    expect(
+      await (await GET(request(`Bearer ${secret}`, '?peek=1'))).json()
+    ).toEqual({ waiting: 3 })
   })
 
   it('runs the waiting reads and answers with counts only, never cached', async () => {

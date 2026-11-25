@@ -1,5 +1,5 @@
 /**
- * Brand assets (UI-BRAND, `/settings/assets`): the brand's own image
+ * Brand assets (UI-BRAND, `/brand/assets`): the brand's own image
  * files, kept private (signed preview links of five minutes), the sample
  * sorting and the owner's corrections, the brand kit's colors and fonts,
  * and the sample data tools (test controls for the sample data used

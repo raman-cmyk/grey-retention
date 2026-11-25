@@ -164,14 +164,21 @@ describe('assets view', () => {
 })
 
 describe('AssetsScreen', () => {
-  it('is a GROS page under Settings with the upload and the files', () => {
+  it('is a GROS page under Brand with the upload and the files', () => {
     render(<AssetsScreen view={ready()} />)
     expect(
       screen.getByRole('heading', { name: 'Brand assets', level: 1 })
     ).toBeVisible()
-    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute(
-      'aria-current',
-      'page'
+    // UI-BRAND-2: under Brand, a main page.
+    expect(
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole(
+        'link',
+        { name: 'Brand' }
+      )
+    ).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Back to Brand' })).toHaveAttribute(
+      'href',
+      '/brand'
     )
     const upload = card('Upload files')
     const input = within(upload).getByLabelText('Brand image files or one ZIP')
@@ -190,7 +197,7 @@ describe('AssetsScreen', () => {
     )
     expect(
       within(files).getByRole('link', { name: 'Not sorted' })
-    ).toHaveAttribute('href', '/settings/assets?category=pending')
+    ).toHaveAttribute('href', '/brand/assets?category=pending')
     const logo = within(files)
       .getAllByRole('article')
       .find((a) =>
@@ -348,7 +355,7 @@ describe('AssetsScreen', () => {
     )
     expect(screen.getByRole('link', { name: 'Try again' })).toHaveAttribute(
       'href',
-      '/settings/assets'
+      '/brand/assets'
     )
   })
 })
