@@ -566,6 +566,13 @@ const mobileCss = (theme: Theme) =>
   `body{margin:0;padding:0;background:${theme.page}}img{-ms-interpolation-mode:bicubic}@media only screen and (max-width:620px){.gr-wrap{width:100%!important;max-width:100%!important}.gr-pad{padding-left:20px!important;padding-right:20px!important}.gr-col{display:block!important;width:100%!important;max-width:100%!important;padding-left:0!important;padding-right:0!important;padding-bottom:20px!important}.gr-col img{max-width:100%!important}.gr-h1{font-size:28px!important}.gr-h2{font-size:20px!important}.gr-code{font-size:18px!important;letter-spacing:1px!important}}`
 
 /**
+ * DES-ENGINE-001: the blocks' phone styles, for an email drawn by the
+ * design engine (`features/design-engine/render.ts`) where a section that
+ * cannot be copied is built from the closest block.
+ */
+export const blockMobileCss = (brand: BlockBrand) => mobileCss(themeOf(brand))
+
+/**
  * A whole email: the blocks in order, always ending with exactly one
  * footer (Klaviyo's required links and address, VISION section 10).
  */

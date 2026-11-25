@@ -28,3 +28,6 @@ supabase/.temp/
 # Claude Code personal overrides (shared config in .claude/settings.json and CLAUDE.md is committed)
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Design engine golden set output (DES-ENGINE-001, uploaded by CI)
+design-golden/
