@@ -7,6 +7,11 @@ name: Inbox screenshots
 # allowed, and uploads the picture through its signed upload link. It prints counts
 # only, never a link or the secret.
 #
+# DES-ENGINE-002: then it measures each photographed email's blueprint (its
+# structure for "Use this design", Copy) in the same locked browser with the
+# design engine, pictures and links dropped (scripts/inbox-blueprints.mjs),
+# and reports it to the app the same way.
+#
 # Off until turned on, exactly like the scheduled jobs
 # (docs/SCHEDULED_JOBS_RUNBOOK.md): the same CRON_SECRET repository secret
 # and the same SCHEDULED_JOBS_ENABLED=true repository variable. When nothing
@@ -29,7 +34,7 @@ jobs:
     if: vars.SCHEDULED_JOBS_ENABLED == 'true'
     runs-on: ubuntu-latest
     # The first call may be tried twice, 2 minutes apart (CI-005).
-    timeout-minutes: 18
+    timeout-minutes: 30
     env:
       APP_URL: https://grey-retention-app.vercel.app
     steps:
@@ -71,8 +76,14 @@ jobs:
             return 1
           }
           call '/api/internal/inbox/screenshots?peek=1' peek.json 30 || exit 1
-          waiting=$(jq -r '.waiting // 0' peek.json)
-          echo "Screenshots waiting: $waiting"
+          # The blueprints' peek failing never stops the screenshots.
+          if ! call '/api/internal/inbox/blueprints?peek=1' blueprints.json 30; then
+            echo '{"waiting":0}' > blueprints.json
+          fi
+          shots=$(jq -r '(.waiting | numbers) // 0' peek.json)
+          blueprints=$(jq -r '(.waiting | numbers) // 0' blueprints.json)
+          waiting=$((shots + blueprints))
+          echo "Screenshots waiting: $shots. Blueprints waiting: $blueprints."
           echo "waiting=$waiting" >> "$GITHUB_OUTPUT"
       - if: steps.peek.outputs.waiting != '0'
         uses: actions/checkout@v4
@@ -99,3 +110,12 @@ jobs:
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: node scripts/inbox-screenshots.mjs
+      # The design engine is TypeScript: Node strips the types, and
+      # scripts/ts-register.mjs finds its files as the app does.
+      # Measured even when the screenshots step failed (each email's
+      # blueprint job stands on its own); not when the run is cancelled.
+      - name: Measure the blueprints
+        if: ${{ !cancelled() && steps.peek.outputs.waiting != '0' }}
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: node --import ./scripts/ts-register.mjs scripts/inbox-blueprints.mjs
