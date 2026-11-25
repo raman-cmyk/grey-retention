@@ -69,11 +69,15 @@ function PasteBox({
 
 const statusLinks = (brandName: string | null, productCount: number) =>
   [
-    { label: 'Brand', value: brandName ?? 'Not added yet', href: '/brand' },
+    {
+      label: 'Brand',
+      value: brandName ?? 'Not added yet',
+      href: '/settings/brand'
+    },
     {
       label: 'Products',
       value: productCount ? `${productCount} saved` : 'None saved yet',
-      href: '/brand'
+      href: '/settings/brand'
     },
     { label: 'Footer', value: 'Not set up yet', href: '/settings' }
   ] satisfies { label: string; value: string; href: Route }[]

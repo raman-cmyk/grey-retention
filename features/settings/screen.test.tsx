@@ -362,6 +362,15 @@ describe('Settings screen (UI-SETa)', () => {
         name: 'Open holidays'
       })
     ).toHaveAttribute('href', '/settings/holidays')
+    // Brand and Brand assets are pages under Settings too (UI-BRAND).
+    expect(
+      within(card('Brand')).getByRole('link', { name: 'Open brand' })
+    ).toHaveAttribute('href', '/settings/brand')
+    expect(
+      within(card('Brand assets')).getByRole('link', {
+        name: 'Open brand assets'
+      })
+    ).toHaveAttribute('href', '/settings/assets')
     const account = card('Account')
     expect(account).toHaveTextContent('Sam Cedar')
     expect(account).toHaveTextContent('owner@cedarlane.example')

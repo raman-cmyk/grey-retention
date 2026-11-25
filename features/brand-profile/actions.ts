@@ -56,7 +56,7 @@ function failed(error: { code?: string; message?: string }) {
     if (text.startsWith('Cancel or reconcile active delivery'))
       return 'A campaign is on its way to Klaviyo right now. Wait until it is scheduled, or cancel it, before changing the brand details.'
     if (text.startsWith('Save the Brand Identity first'))
-      return 'Save the Brand Identity first (it needs a brand name).'
+      return 'Save the brand identity first (it needs a brand name).'
     if (text.startsWith('Brand name')) return 'Brand name: 2 to 120 characters.'
     return 'Check the fields and try again.'
   }
@@ -64,7 +64,14 @@ function failed(error: { code?: string; message?: string }) {
 }
 
 function refresh() {
-  for (const path of ['/brand', '/settings', '/home', '/setup', '/plan'])
+  for (const path of [
+    '/settings/brand',
+    '/settings/brand/book',
+    '/settings',
+    '/home',
+    '/setup',
+    '/plan'
+  ])
     revalidatePath(path)
 }
 

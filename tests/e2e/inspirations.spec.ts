@@ -37,9 +37,9 @@ test('UI-INSa owner follows a brand, sees its emails, builds from one and stops'
 }) => {
   test.setTimeout(90_000)
   await newOwner(page, { prefix: 'inspire', name: 'Inspiration studio' })
-  // The old shell's Inspiration link opens the new screen (a page still
-  // on the old shell: Home and Plan have the GROS top bar).
-  await page.goto('/assets')
+  // The top bar's Inspiration link opens the new screen (UI-BRAND: Brand
+  // assets is a GROS page under Settings now).
+  await page.goto('/settings/assets')
   await expect(page.locator('a[href="/inspiration"]').first()).toBeAttached()
   // The old address still opens it.
   await page.goto('/library/inspirations')

@@ -57,7 +57,9 @@ export function SettingsScreen({
         <TeamCard view={view} unread={<Unread view={view} part="team" />} />
         <AccountCard view={view} />
       </CardRow>
-      <CardRow>
+      <CardRow columns={3}>
+        <BrandCard assistant={assistant} />
+        <AssetsCard />
         <HolidaysCard assistant={assistant} />
       </CardRow>
       <SupportCard view={view} unread={<Unread view={view} part="support" />} />
@@ -465,6 +467,42 @@ function TimezoneCard({ view }: { view: SettingsView }) {
             </>
           )}
         </ActionAnswers>
+      </div>
+    </Card>
+  )
+}
+
+/** Brand has its own page under Settings (UI-BRAND). */
+function BrandCard({ assistant }: { assistant: string }) {
+  const title = 'Brand'
+  return (
+    <Card size="small" label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <Title text={title} />
+        <p className="type-body text-[var(--stone)]">
+          Your brand in your words, and what {assistant} knows about it.
+        </p>
+        <ButtonLink href="/settings/brand" label="Open brand" kind="outline" />
+      </div>
+    </Card>
+  )
+}
+
+/** Brand assets have their own page under Settings (UI-BRAND). */
+function AssetsCard() {
+  const title = 'Brand assets'
+  return (
+    <Card size="small" label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <Title text={title} />
+        <p className="type-body text-[var(--stone)]">
+          Your logos, product photos and brand kit.
+        </p>
+        <ButtonLink
+          href="/settings/assets"
+          label="Open brand assets"
+          kind="outline"
+        />
       </div>
     </Card>
   )

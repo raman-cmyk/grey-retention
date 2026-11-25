@@ -5,10 +5,10 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
 }, info) => {
   test.setTimeout(90_000)
   await login(page, info.project.name.startsWith('mobile') ? 'other' : 'owner')
-  // UI-OLDc: the sample-data test controls moved from the retired
-  // Connections page to Assets, in a collapsed section at the end.
-  await page.goto('/assets')
-  await page.getByText('Sample data tools', { exact: true }).click()
+  // UI-OLDc moved the sample-data test controls to Assets; UI-BRAND made
+  // it the GROS page Brand assets under Settings, the tools in their own
+  // cards for the owner (both accounts here are owners).
+  await page.goto('/settings/assets')
   // The product fixture is called "sample catalog" (v2 is Klaviyo only).
   for (const provider of ['klaviyo', 'sample catalog', 'drive']) {
     await page
@@ -26,12 +26,13 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
     if (provider !== 'klaviyo')
       await page
         .getByRole('button', {
-          name: `Queue ${provider} fixture sync`,
+          name: `Queue ${provider} sync`,
           exact: true
         })
         .click()
   }
-  await page.goto('/brand')
+  // The brand kit is on Brand assets too (UI-BRAND).
+  await page.goto('/settings/assets')
   await page
     .getByLabel('Brand kit source text')
     .fill(
@@ -57,16 +58,20 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
     ).toBeVisible()
     await page.reload()
   }
-  await expect(page.getByText('Colors: #123abc', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: /^Approve kit v\d+$/ }).click()
-  await expect(page.getByText('Owner approved this kit version.')).toBeVisible()
+  const kit = page.getByRole('region', { name: 'Brand kit', exact: true })
+  await expect(kit.getByText('#123abc', { exact: true })).toBeVisible()
+  await kit.getByRole('button', { name: /^Approve kit v\d+$/ }).click()
   await expect(
-    page.getByRole('heading', {
-      name: 'Original demo product 1 · Synthetic',
-      exact: true
-    })
+    kit.getByText(/Owner approved this kit version\./).first()
   ).toBeVisible()
-  await page.goto('/assets')
+  // The sample catalog's products are in Brand's catalog.
+  await page.goto('/settings/brand')
+  await expect(
+    page
+      .getByRole('region', { name: 'Catalog', exact: true })
+      .getByText('Original demo product 1 · Synthetic', { exact: true })
+  ).toBeVisible()
+  await page.goto('/settings/assets')
   await expect(
     page.getByRole('heading', {
       name: 'synthetic-logo-graphic-0.png',
@@ -92,18 +97,20 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
     })
   ).toBeVisible()
   await page.reload()
+  const readiness = page.getByRole('region', { name: 'Readiness', exact: true })
   await expect(
-    page.getByText('✓ Classified usable assets', { exact: true })
-  ).toBeVisible()
-  await expect(page.getByText(/LIVE competitor evidence$/)).toBeVisible()
-  await page.goto('/assets')
-  await page.getByText('Sample data tools', { exact: true }).click()
+    readiness
+      .getByRole('listitem')
+      .filter({ hasText: 'Classified usable assets' })
+  ).toContainText('Done')
+  await expect(readiness.getByText('LIVE competitor evidence')).toBeVisible()
+  await page.goto('/settings/assets')
   // Only the two sources whose sample sync jobs ran show a sync time;
   // connecting Klaviyo alone never claims one.
   await expect(page.getByText(/Last sync: 20/)).toHaveCount(2)
-  await page.getByRole('button', { name: 'Queue drive fixture sync' }).click()
+  await page.getByRole('button', { name: 'Queue drive sync' }).click()
   await page.getByRole('button', { name: 'Run queued setup jobs' }).click()
-  await page.goto('/assets')
+  await page.goto('/settings/assets')
   await expect(
     page.getByRole('heading', { name: /^synthetic-logo-graphic-\d+\.png$/ })
   ).toHaveCount(20)

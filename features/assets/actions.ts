@@ -136,8 +136,8 @@ export async function importAssets(
     t: context.tenantId,
     import_id: importId
   })
-  revalidatePath('/assets')
-  revalidatePath('/brand')
+  revalidatePath('/settings/assets')
+  revalidatePath('/settings/brand')
   if (done.error)
     return { error: 'Files were processed, but import completion needs retry.' }
   return {

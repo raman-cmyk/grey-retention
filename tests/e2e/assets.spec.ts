@@ -21,9 +21,20 @@ test('UC-01/02 private ZIP intake, replay, classification and owner correction p
     }
   ])
   await login(page)
+  // UI-BRAND: Brand assets is a GROS page under Settings, opened from its
+  // card; the old address opens it too.
+  await page.goto('/settings')
+  await page
+    .getByRole('region', { name: 'Brand assets', exact: true })
+    .getByRole('link', { name: 'Open brand assets' })
+    .click()
+  await expect(page).toHaveURL(/\/settings\/assets$/)
   await page.goto('/assets')
+  await expect(page).toHaveURL(/\/settings\/assets$/)
   await expect(
-    page.getByRole('link', { name: 'all', exact: true })
+    page
+      .getByRole('navigation', { name: 'Filter files' })
+      .getByRole('link', { name: 'All', exact: true })
   ).toHaveAttribute('aria-current', 'page')
   await page.getByLabel('Brand image files or one ZIP').setInputFiles({
     name: 'original-synthetic-kit.zip',
@@ -62,7 +73,7 @@ test('UC-01/02 private ZIP intake, replay, classification and owner correction p
     .getByRole('article')
     .filter({ has: page.getByRole('heading', { name, exact: true }) })
   await expect(
-    card.getByText('logo · v2 · fixture', { exact: true })
+    card.getByText('Logo · v2 · Sample sort', { exact: true })
   ).toBeVisible()
   await expect(
     card.getByLabel(`Category for ${name}`, { exact: true })
@@ -73,13 +84,19 @@ test('UC-01/02 private ZIP intake, replay, classification and owner correction p
   await card
     .getByLabel(`Category for ${name}`, { exact: true })
     .selectOption('proof')
-  await card.getByRole('button', { name: 'Save owner correction' }).click()
+  await card
+    .getByRole('button', { name: `Save owner correction: ${name}` })
+    .click()
   await expect(
-    card.getByText('proof · v3 · owner', { exact: true })
+    card.getByText('Proof · v3 · Your correction', {
+      exact: true
+    })
   ).toBeVisible()
   await page.reload()
   await expect(
-    card.getByText('proof · v3 · owner', { exact: true })
+    card.getByText('Proof · v3 · Your correction', {
+      exact: true
+    })
   ).toBeVisible()
   const signedSrc = await card
     .getByRole('img', { name, exact: true })
@@ -112,6 +129,6 @@ test('UC-01/02 private ZIP intake, replay, classification and owner correction p
   expect(denied.data).toBeNull()
   await page.context().clearCookies()
   await login(page, 'other')
-  await page.goto('/assets')
+  await page.goto('/settings/assets')
   await expect(page.getByRole('heading', { name, exact: true })).toHaveCount(0)
 })

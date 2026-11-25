@@ -5,10 +5,11 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
   page
 }, info) => {
   await login(page)
-  // Sign-in lands on Home (the GROS top bar); the old shell is on the
-  // screens not rebuilt yet, such as Brand & Store.
-  await page.goto('/brand')
-  await expect(page).toHaveTitle(/Brand Intelligence/)
+  // Sign-in lands on Home (the GROS top bar); the old shell is only on
+  // the screens not rebuilt yet: the Klaviyo detail pages (UI-BRAND moved
+  // Brand and Brand assets to GROS). They belong to Home in the sidebar.
+  await page.goto('/metrics/METord005?from=metrics')
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   const mobile = info.project.name === 'mobile-chromium'
 
   if (!mobile) {
@@ -21,8 +22,12 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
       name: 'Client workspace navigation'
     })
     await expect(
-      nav.getByRole('link', { name: 'Brand & Store', exact: true })
+      nav.getByRole('link', { name: 'Home', exact: true })
     ).toHaveAttribute('aria-current', 'page')
+    // The old sidebar's Brand and Brand assets open the GROS pages.
+    await expect(
+      nav.getByRole('link', { name: 'Brand', exact: true })
+    ).toHaveAttribute('href', '/settings/brand')
     const agents = nav.getByRole('button', { name: 'Agents', exact: true })
     await agents.click()
     await expect(agents).toHaveAttribute('aria-expanded', 'true')
@@ -35,12 +40,12 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
     await page.reload()
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
     const rail = page.getByRole('link', {
-      name: 'Brand & Store',
+      name: 'Home',
       exact: true
     })
     await expect(rail).toHaveAttribute('aria-current', 'page')
     await rail.hover()
-    await expect(page.getByTestId('rail-tooltip')).toHaveText('Brand & Store')
+    await expect(page.getByTestId('rail-tooltip')).toHaveText('Home')
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     // The open Agents group survived the reload.
@@ -151,8 +156,9 @@ test('core workspace surfaces render without overflow', async ({
   for (const [path, heading] of [
     ['/home', /^Good (morning|afternoon|evening), /],
     ['/plan', 'Plan'],
-    ['/brand', 'Brand & Store'],
-    ['/assets', 'Brand assets'],
+    ['/settings/brand', 'Brand'],
+    ['/settings/brand/book', 'Brand book'],
+    ['/settings/assets', 'Brand assets'],
     ['/gros', 'Ask GROS'],
     ['/inspiration', 'Inspiration'],
     ['/results', 'Results'],
@@ -168,9 +174,11 @@ test('core workspace surfaces render without overflow', async ({
       ),
       path
     ).toBe(true)
-    if (['/home', '/plan', '/assets', '/gros', '/results'].includes(path)) {
+    if (
+      ['/home', '/plan', '/settings/assets', '/gros', '/results'].includes(path)
+    ) {
       await page.screenshot({
-        path: `.audit/ui-002-${path.slice(1)}-${info.project.name}.png`,
+        path: `.audit/ui-002-${path.slice(1).replaceAll('/', '-')}-${info.project.name}.png`,
         fullPage: path === '/home' || path === '/gros'
       })
     }

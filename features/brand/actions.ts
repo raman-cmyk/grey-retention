@@ -91,7 +91,8 @@ export async function brandAction(
           : 'Could not save. Check permissions and field values.'
     }
   revalidatePath('/setup')
-  revalidatePath('/brand')
+  revalidatePath('/settings/brand')
+  revalidatePath('/settings/brand/book')
   revalidatePath('/plan')
   return {
     message:
