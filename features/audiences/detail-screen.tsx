@@ -219,8 +219,15 @@ function UsedByCard({ uses, empty }: { uses: AudienceUse[]; empty: string }) {
                 title={use.name}
                 wrap
                 details={use.details}
-                // Nothing to do here: what it does with it is in its words.
-                end={null}
+                // Its own page under Results (UI-KLV).
+                end={
+                  <ButtonLink
+                    href={use.href}
+                    label="Open"
+                    kind="outline"
+                    size="row"
+                  />
+                }
               />
             ))}
           </RowList>

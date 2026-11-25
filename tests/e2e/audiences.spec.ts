@@ -169,3 +169,73 @@ test('UI-AUDb Audiences fits a 375 px phone: not connected, the segments and lis
   ).toBeInViewport()
   await fitsPhone(page)
 })
+
+test('UI-KLV Results and an audience open Klaviyo’s campaigns, flows, flow emails and metrics', async ({
+  page
+}) => {
+  await newOwner(page, {
+    prefix: 'klaviyo-pages',
+    name: 'Klaviyo pages studio'
+  })
+  await connectSample(page)
+  const resultsItem = page
+    .getByRole('navigation', { name: 'Main' })
+    .getByRole('link', { name: 'Results', exact: true })
+
+  // An audience's "Used by" opens the campaign's own page under Results.
+  await page.goto('/audiences/lists/LSTnews01')
+  await page
+    .getByRole('region', { name: 'Used by' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Spring restock' })
+    .getByRole('link', { name: 'Open' })
+    .click()
+  await expect(page).toHaveURL(/\/results\/campaigns\/CMPspr001$/)
+  await expect(
+    page.getByRole('heading', { name: 'Spring restock', level: 1 })
+  ).toBeVisible()
+  await expect(resultsItem).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('region', { name: 'How it did' })).toBeVisible()
+  await expect(page.getByTitle('Preview of Spring restock')).toHaveAttribute(
+    'sandbox',
+    ''
+  )
+  await fitsPhone(page)
+  await page.getByRole('link', { name: 'Back to Results' }).click()
+  await expect(page).toHaveURL(/\/results$/)
+
+  // Results lists Klaviyo's flows; a flow opens its emails and its trigger.
+  await page
+    .getByRole('region', { name: 'Flows' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Post-purchase' })
+    .getByRole('link', { name: 'Open' })
+    .click()
+  await expect(page).toHaveURL(/\/results\/flows\/FLWpst004$/)
+  await expect(page.getByText('1 of 2 emails is not live.')).toBeVisible()
+  await page
+    .getByRole('region', { name: 'Steps' })
+    .getByRole('listitem')
+    .filter({ hasText: 'How was your coffee?' })
+    .getByRole('link', { name: 'Open' })
+    .click()
+  await expect(page).toHaveURL(/\/results\/flow-emails\/FLWpst004M2$/)
+  await expect(
+    page.getByRole('heading', { name: 'How was your coffee?', level: 1 })
+  ).toBeVisible()
+  await expect(resultsItem).toHaveAttribute('aria-current', 'page')
+  await page.getByRole('link', { name: 'Back to the flow' }).click()
+  await expect(page).toHaveURL(/\/results\/flows\/FLWpst004$/)
+  await page.getByRole('link', { name: 'Open metric' }).click()
+  await expect(page).toHaveURL(/\/results\/metrics\/METord005$/)
+  await expect(page.getByText('Someone completed a purchase.')).toBeVisible()
+  await fitsPhone(page)
+
+  // Something Klaviyo does not have: not found, with the way back.
+  await page.goto('/results/flows/FLWnone')
+  await expect(
+    page.getByRole('heading', { name: 'Not found in Klaviyo' })
+  ).toBeVisible()
+  await page.getByRole('link', { name: 'Back to Results' }).click()
+  await expect(page).toHaveURL(/\/results$/)
+})

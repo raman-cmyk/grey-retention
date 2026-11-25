@@ -1,7 +1,11 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
+import type { ClientRequestContext } from '@/features/auth/domain/types'
+import { klaviyoData } from '@/features/klaviyo-data/reader'
+import { validTimezone } from '@/lib/brand-time'
 import { workspaceTimezone } from '@/features/strategy/offers'
+import { klaviyoResults, type KlaviyoResults } from './klaviyo'
 import { resultsReadModel } from './read-model'
 import { resultsScreen, type ResultsScreen } from './results-screen'
 
@@ -40,4 +44,25 @@ export async function loadResultsScreen(
     today = undefined
   }
   return resultsScreen(lines, { currency, timezone, today })
+}
+
+/**
+ * UI-KLV: the Klaviyo account's own campaigns, flows and metrics for the
+ * signed-in member's workspace, in its time zone. Null when Klaviyo cannot
+ * be read: Results still shows the emails GROS made.
+ */
+export async function loadKlaviyoResults(
+  context: ClientRequestContext,
+  now = new Date()
+): Promise<KlaviyoResults | null> {
+  const timezone = validTimezone(context.timezone)
+  try {
+    return klaviyoResults(
+      await klaviyoData(context.tenantId, timezone, now.getTime()),
+      timezone,
+      now
+    )
+  } catch {
+    return null
+  }
 }

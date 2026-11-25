@@ -4,8 +4,8 @@ import { callbackNext, safeNext } from './next'
 describe('the page to go back to after signing in', () => {
   it('keeps a page of the area, with its query', () => {
     expect(safeNext('client', '/plan')).toBe('/plan')
-    expect(safeNext('client', '/campaigns/klaviyo/C1?tab=results')).toBe(
-      '/campaigns/klaviyo/C1?tab=results'
+    expect(safeNext('client', '/results/campaigns/C1?tab=results')).toBe(
+      '/results/campaigns/C1?tab=results'
     )
     expect(safeNext('admin', '/admin/clients')).toBe('/admin/clients')
     expect(safeNext('designer', '/designer/dashboard')).toBe(

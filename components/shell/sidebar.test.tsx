@@ -151,20 +151,17 @@ describe('sidebar (expanded)', () => {
     expect(cookieState().groups.agents).toBe(true)
   })
 
-  it.each([
-    ['/flows/abc', 'Home'],
-    ['/flow-messages/abc', 'Home'],
-    ['/metrics/abc', 'Home'],
-    ['/campaigns/klaviyo/CMPspr001', 'Home'],
-    ['/gros/thread-1', 'Ask GROS']
-  ])('highlights the parent area on %s', (pathname, label) => {
-    location.pathname = pathname
-    shell()
-    const current = within(desktopNav())
-      .getAllByRole('link')
-      .filter((link) => link.getAttribute('aria-current') === 'page')
-    expect(current.map((link) => link.textContent)).toEqual([label])
-  })
+  it.each([['/gros/thread-1', 'Ask GROS']])(
+    'highlights the parent area on %s',
+    (pathname, label) => {
+      location.pathname = pathname
+      shell()
+      const current = within(desktopNav())
+        .getAllByRole('link')
+        .filter((link) => link.getAttribute('aria-current') === 'page')
+      expect(current.map((link) => link.textContent)).toEqual([label])
+    }
+  )
 
   it('keeps Assignments current on an open designer brief', () => {
     location.pathname = '/designer/assignments/abc'

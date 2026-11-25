@@ -68,6 +68,14 @@ const oldClientPages: [source: string, destination: string][] = [
   ['/assets', '/settings/assets']
 ]
 
+/** UI-KLV: the old Klaviyo detail pages and their GROS pages under Results. */
+const klaviyoPages: [source: string, destination: string][] = [
+  ['/campaigns/klaviyo/:campaignId', '/results/campaigns/:campaignId'],
+  ['/flows/:flowId', '/results/flows/:flowId'],
+  ['/flow-messages/:messageId', '/results/flow-emails/:messageId'],
+  ['/metrics/:metricId', '/results/metrics/:metricId']
+]
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
@@ -118,6 +126,14 @@ const nextConfig: NextConfig = {
         destination: '/audiences/lists/:listId',
         permanent: false
       },
+      // UI-KLV: a Klaviyo campaign's, a flow's, a flow email's and a
+      // metric's page are GROS pages under Results; old links (and
+      // bookmarks) open the new page, query strings passed on.
+      ...klaviyoPages.map(([source, destination]) => ({
+        source,
+        destination,
+        permanent: false
+      })),
       // UI-OLDc: the last old client pages, each opening the GROS screen
       // that does its job now (old links, bookmarks and the old shell's
       // menu land there; query strings are passed on).

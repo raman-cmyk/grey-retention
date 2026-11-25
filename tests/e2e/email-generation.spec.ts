@@ -292,6 +292,107 @@ test('owner copies an HTML email exactly, edits it simply, and downloads exact a
   ).toBe(400)
 })
 
+// UI-BRAND: the email's own page is the last page on the old shell, so the
+// old sidebar, its rail, the account menu and the phone drawer are checked
+// here (moved from workspace-ui.spec, whose old-shell pages are all GROS
+// pages now). No item is current on this page.
+test('the old shell sidebar, account menu and mobile drawer work with keyboard and short screens', async ({
+  page
+}, info) => {
+  await newOwner(page, { prefix: 'shell', name: 'Shell studio' })
+  await pasteEmail(page, `Shell ${randomUUID().slice(0, 8)}`, html)
+  await page.getByRole('button', { name: 'Copy this email' }).click()
+  await expect(page).toHaveURL(/\/emails\/[a-f0-9-]+$/, { timeout: 15_000 })
+  const mobile = info.project.name === 'mobile-chromium'
+
+  if (!mobile) {
+    const store = page.getByTestId('shell-workspace')
+    await expect(store).toBeVisible()
+    expect((await store.innerText()).trim().split('\n').length).toBeGreaterThan(
+      1
+    )
+    const nav = page.getByRole('navigation', {
+      name: 'Client workspace navigation'
+    })
+    // The old sidebar's Brand and Brand assets open the GROS pages.
+    await expect(
+      nav.getByRole('link', { name: 'Brand assets', exact: true })
+    ).toHaveAttribute('href', '/settings/assets')
+    await expect(
+      nav.getByRole('link', { name: 'Brand', exact: true })
+    ).toHaveAttribute('href', '/settings/brand')
+    const agents = nav.getByRole('button', { name: 'Agents', exact: true })
+    await agents.click()
+    await expect(agents).toHaveAttribute('aria-expanded', 'true')
+    await expect(nav.getByText('List Health')).toBeVisible()
+    await expect(nav.getByRole('link', { name: 'List Health' })).toHaveCount(0)
+
+    // Collapse to the icon rail; the choice survives a reload.
+    const toggle = page.getByRole('button', { name: 'Toggle sidebar' })
+    await toggle.click()
+    await page.reload()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    const rail = page.getByRole('link', {
+      name: 'Home',
+      exact: true
+    })
+    await rail.hover()
+    await expect(page.getByTestId('rail-tooltip')).toHaveText('Home')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    // The open Agents group survived the reload.
+    await expect(agents).toHaveAttribute('aria-expanded', 'true')
+
+    // Keyboard only: open the menu, Tab into it, Escape returns to the button.
+    const account = page.getByRole('button', { name: /^Open account menu/ })
+    await account.focus()
+    await page.keyboard.press('Enter')
+    const menu = page.locator(
+      `[id="${await account.getAttribute('aria-controls')}"]`
+    )
+    const logOut = menu.getByRole('button', { name: 'Log out', exact: true })
+    await expect(logOut).toBeVisible()
+    // Profile Update (UIR-014), then Log out.
+    await page.keyboard.press('Tab')
+    await expect(
+      menu.getByRole('link', { name: 'Profile Update', exact: true })
+    ).toBeFocused()
+    await page.keyboard.press('Tab')
+    await expect(logOut).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(account).toBeFocused()
+    await expect(logOut).not.toBeVisible()
+  }
+
+  if (mobile) {
+    await page.setViewportSize({ width: 390, height: 568 })
+    const menu = page.getByRole('button', { name: 'Open navigation' })
+    await menu.click()
+    const dialog = page.getByRole('dialog', {
+      name: 'Client workspace navigation menu'
+    })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByTestId('shell-workspace-mobile')).toBeVisible()
+    const dimensions = await dialog.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      viewport: innerHeight
+    }))
+    expect(dimensions.height).toBeLessThanOrEqual(dimensions.viewport)
+    const settings = dialog.getByRole('link', { name: 'Settings', exact: true })
+    if (!(await settings.isVisible()))
+      await dialog
+        .getByRole('button', { name: 'Workspace', exact: true })
+        .click()
+    await settings.scrollIntoViewIfNeeded()
+    await expect(settings).toBeInViewport()
+    await page.keyboard.press('Escape')
+    await expect(menu).toBeFocused()
+    await menu.click()
+    await dialog.getByRole('button', { name: 'Log out', exact: true }).click()
+    await expect(page).toHaveURL(/\/login$/)
+  }
+})
+
 test('plain text stays a text email', async ({ page }) => {
   const db = await newOwner(page, { prefix: 'copy-text' })
   const text = 'Hello friend,\n\nA plain note — café ☕.\n\nSee you'
