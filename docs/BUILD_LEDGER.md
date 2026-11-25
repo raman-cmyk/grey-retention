@@ -4656,7 +4656,7 @@ Append entries using this exact shape:
 ### 2026-11-25 — DES-ENGINE-001 — Email design engine, step 1: blueprint, measuring tool, drawing code, likeness check, golden set
 
 - Status: review
-- Branch/worktree: `claude/des-engine-001`, from main at `09d135e` (UI-BRAND, #658).
+- Branch/worktree: `claude/des-engine-001`, from main at `3989dd3` (the owner decisions of 25 Nov, #659).
 - Commit(s): see the branch `claude/des-engine-001`.
 - Changed contracts: see Global decision DES-ENGINE-001 (the blueprint). New `features/design-engine/` (`blueprint.ts`, `measurement.ts`, `measure.ts`, `roles.ts`, `fonts.ts`, `render.ts`, `likeness.ts`, `fallback.ts`, `copy.ts`, `browser.ts`, `fixtures.ts`, and `golden/` with the 40 emails, their plain-colour pictures and the report writer). `features/blocks/render.ts` exports `blockMobileCss`. New workflow `.github/workflows/design-engine.yml` (pull requests touching the engine, the blocks or the inbox splitter; pushes to main touching the engine; by hand): installs Chromium, runs `vitest run features/design-engine` with `DESIGN_ENGINE_BROWSER=on` and always uploads `design-golden/` (results.json, summary.md, index.html and one side-by-side picture per email: original, redraw, redraw at 375 px, both as grey boxes). `.gitignore` and `.prettierignore` skip `design-golden/`. No new dependency: Playwright (already a dev dependency), parse5 (the inbox splitter) and node:zlib (the test pictures).
 - Migrations: none.
