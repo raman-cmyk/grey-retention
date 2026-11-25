@@ -54,6 +54,21 @@ describe('/api/internal/inbox/blueprints', () => {
     expect(client.rpc).not.toHaveBeenCalled()
   })
 
+  it('hands nothing to a browser on another engine version, claiming nothing', async () => {
+    const client = db()
+    service.createServiceClient.mockReturnValue(client)
+    for (const query of ['', '?engine=older']) {
+      const got = await GET(
+        new NextRequest(`${url}${query}`, {
+          headers: { authorization: `Bearer ${secret}` }
+        })
+      )
+      expect(got.status).toBe(200)
+      expect(await got.json()).toEqual({ jobs: [], skew: true })
+    }
+    expect(client.rpc).not.toHaveBeenCalled()
+  })
+
   it('refuses a body that is too large before reading it', async () => {
     service.createServiceClient.mockReturnValue(db())
     const big = 'x'.repeat(600_001)

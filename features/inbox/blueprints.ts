@@ -76,8 +76,17 @@ export async function blueprintsWaiting(db: Db) {
   return count ?? 0
 }
 
-/** Claims up to `perCall` blueprint jobs and signs what each one needs. */
-export async function blueprintJobs(db: Db): Promise<BlueprintJob[]> {
+/**
+ * Claims up to `perCall` blueprint jobs and signs what each one needs. A
+ * browser running another engine version (`engine`, its
+ * `ENGINE_VERSION`) gets none: nothing is claimed and no try is counted
+ * (`skew`), so a run between a merge and the next deploy wastes nothing.
+ */
+export async function blueprintJobs(
+  db: Db,
+  engine: string | null
+): Promise<{ jobs: BlueprintJob[]; skew: boolean }> {
+  if (engine !== ENGINE_VERSION) return { jobs: [], skew: true }
   const jobs: BlueprintJob[] = []
   for (let i = 0; i < blueprintLimits.perCall; i++) {
     const claimed = await db.rpc('claim_platform_job', {
@@ -134,7 +143,7 @@ export async function blueprintJobs(db: Db): Promise<BlueprintJob[]> {
       })
     })
   }
-  return jobs
+  return { jobs, skew: false }
 }
 
 const failureCodes = Object.keys(blueprintFailures) as [
@@ -180,20 +189,25 @@ export async function finishBlueprint(
     await fail(db, result.job, result.lease, result.retry)
     return { ok: true, state: 'retry' }
   }
+  // A backstop to the claim's own check: handed back without counting a try.
   if (result.engine !== ENGINE_VERSION) {
-    await fail(db, result.job, result.lease, 'version_skew')
+    const released = await db.rpc('release_inbox_blueprint', {
+      job: result.job,
+      lease: result.lease
+    })
+    if (released.error)
+      return { ok: false, code: released.error.code ?? 'error' }
     return { ok: true, state: 'retry' }
   }
   let blueprint: Blueprint | null = null
   let failure: BlueprintFailure | null = null
   if ('failure' in result) failure = result.failure
   else {
+    // Same engine version: a refusal here is not transient, so it is
+    // stored as failed at once (never tried four times a day).
     const checked = checkStored(result.blueprint)
-    if (!checked.ok) {
-      await fail(db, result.job, result.lease, `app_${checked.failure}`)
-      return { ok: true, state: 'retry' }
-    }
-    blueprint = checked.blueprint
+    if (checked.ok) blueprint = checked.blueprint
+    else failure = checked.failure as BlueprintFailure
   }
   const recorded = await db.rpc('record_inbox_blueprint', {
     job: result.job,
@@ -202,6 +216,22 @@ export async function finishBlueprint(
       ? { blueprint: blueprint as unknown as Json }
       : { failure: failure! })
   })
+  if (recorded.error?.code === '23514' && blueprint) {
+    // The table refused it (a picture or link left, or its shape): stored
+    // as failed with that reason, never left to time out.
+    const code: BlueprintFailure = /picture or link/i.test(
+      recorded.error.message ?? ''
+    )
+      ? 'not_bare'
+      : 'not_valid'
+    const again = await db.rpc('record_inbox_blueprint', {
+      job: result.job,
+      lease: result.lease,
+      failure: code
+    })
+    if (again.error) return { ok: false, code: again.error.code ?? 'error' }
+    return { ok: true, state: String(again.data) }
+  }
   if (recorded.error) return { ok: false, code: recorded.error.code ?? 'error' }
   return { ok: true, state: String(recorded.data) }
 }
@@ -219,6 +249,10 @@ export type StoredBlueprint =
   | { state: 'failed'; reason: string }
   | { state: 'waiting' | 'none' }
 
+/** Why an email with no screenshot, and none coming, has no blueprint. */
+export const blueprintUnphotographed =
+  'The email has no screenshot and its screenshot could not be taken, so it cannot be measured.'
+
 /** Why a blueprint is missing after four tries (no row was stored). */
 export const blueprintGaveUp =
   'The email could not be measured after 4 tries; it is tried again tomorrow.'
@@ -233,6 +267,8 @@ export async function inspirationBlueprint(
   if (state.error) throw state.error
   if (state.data === 'waiting' || state.data === 'none')
     return { state: state.data }
+  if (state.data === 'unphotographed')
+    return { state: 'failed', reason: blueprintUnphotographed }
   const email = await db
     .from('competitor_emails')
     .select('inbox_message_id')

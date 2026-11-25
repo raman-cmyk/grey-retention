@@ -20,12 +20,27 @@ import { blueprintFrom } from './measure'
  * measured with another version by trying it again later (a browser job
  * and the app may briefly run different code after a merge).
  */
-export const ENGINE_VERSION = '2026-11-25.2'
+export const ENGINE_VERSION = '2026-11-25.3'
 
 /** A web address written in words, blanked letter for letter (its length stays). */
-const address = /(?:https?:)?\/\/\S*|\burl\s*\(/gi
+/**
+ * A web address or a CSS `url(` written in words. The same rule as the
+ * table's check (`private.blueprint_is_bare`: `(https?:)?//` anywhere,
+ * `url(` only at the start of a word), so "Curl (8 oz)" stays.
+ */
+export const webAddress = /(?:https?:)?\/\/\S*|\burl\s*\(/gi
+/**
+ * Blanked letter for letter, capitals kept as capitals (so an all-capitals
+ * line is still read as one), other signs as `_`.
+ */
 const blank = (words: string) =>
-  words.replace(address, (m) => 'x'.repeat(m.length))
+  words.replace(webAddress, (m) =>
+    [...m]
+      .map((c) =>
+        c !== c.toLowerCase() ? 'X' : c !== c.toUpperCase() ? 'x' : '_'
+      )
+      .join('')
+  )
 
 const bare = (items: readonly Item[]): Item[] =>
   items.map((item) => {
@@ -79,7 +94,9 @@ export const blueprintFailures = {
   navigated: 'The email tried to open another page.',
   no_sections: 'The email has no sections the engine can read.',
   not_valid: 'The email could not be turned into a blueprint.',
-  stored_too_large: 'The email’s blueprint is too large to keep.'
+  stored_too_large: 'The email’s blueprint is too large to keep.',
+  not_bare:
+    'The email’s blueprint still held a picture or a link, so it was not kept.'
 } as const
 export type BlueprintFailure = keyof typeof blueprintFailures
 

@@ -373,11 +373,11 @@ export function withSourceLabels(
 
 /**
  * The writers' words made about `share` as long without changing what
- * any of them promises: whole sentences are dropped from the end (at
- * least one stays); a last sentence with no number, money, code or
- * condition (`holdsFacts`) may instead be cut at a word. A single
- * sentence that holds a fact is never cut (the section is then built
- * from a library block, with the reason).
+ * any of them promises: sentences with no number, money, code or
+ * condition (`holdsFacts`) are dropped from the end, or the last one is
+ * cut at a word (at least one sentence stays). When a sentence that would
+ * go holds a fact or a condition, nothing is shortened: the section is
+ * then built from a library block, with the reason.
  */
 export function shorten(text: string, share: number): string {
   const want = Math.max(1, Math.floor(text.length * share))
@@ -385,14 +385,15 @@ export function shorten(text: string, share: number): string {
   while (sentences.join(' ').length > want) {
     const last = sentences.at(-1)!
     const rest = sentences.slice(0, -1).join(' ')
-    if (!holdsFacts(last)) {
-      const room = want - (rest ? rest.length + 1 : 0)
-      if (room >= Math.min(12, last.length)) {
-        const cut = trimTo(last, room / last.length)
-        if (cut !== last) {
-          sentences[sentences.length - 1] = cut
-          break
-        }
+    // A sentence with a fact or a condition is never cut or dropped: it
+    // may limit a promise the others make ("Only on orders over $40").
+    if (holdsFacts(last)) return text
+    const room = want - (rest ? rest.length + 1 : 0)
+    if (room >= Math.min(12, last.length)) {
+      const cut = trimTo(last, room / last.length)
+      if (cut !== last) {
+        sentences[sentences.length - 1] = cut
+        break
       }
     }
     if (sentences.length === 1) break

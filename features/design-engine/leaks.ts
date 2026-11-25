@@ -69,10 +69,20 @@ export const wordsIn = (text: string) =>
   )
 
 /** Numbers as shown: "$48.00", "40%", "1234" (spaces aside). */
+/**
+ * Numbers by value: currency signs, percent signs, thousands separators
+ * and a zero fraction set aside ("$1,299.00", "1299" and "1.299,00" are
+ * one number).
+ */
 export const numbersIn = (text: string) =>
-  (text.match(/[$€£¥₹]?\s?\d[\d.,]*\s?%?/g) ?? []).map((n) =>
-    n.replace(/\s/g, '').replace(/[.,]$/, '')
-  )
+  (text.match(/\d[\d.,]*/g) ?? []).flatMap((raw) => {
+    const n = raw.replace(/[.,]$/, '')
+    const normal = /^\d{1,3}(\.\d{3})+(,\d+)?$|^\d+,\d{1,2}$/.test(n)
+      ? n.replace(/\./g, '').replace(',', '.')
+      : n.replace(/,/g, '')
+    const v = Number(normal)
+    return Number.isFinite(v) ? [String(v)] : []
+  })
 
 const addressAttrs = new Set([
   'src',
@@ -240,6 +250,24 @@ export function leaksOf(input: {
     (a) => /^(?:https?:|data:image|mailto:|\/\/)/i.test(a)
   )
   const keys = new Set(sourceAddresses.map(addressKey))
+  // The source brand's own domains (from its names): any address there is
+  // its, whatever the path. Other hosts it linked to (a social network)
+  // are fine for the brand's own pages there.
+  const domains = input.sourceNames
+    .map((n) => n.trim().toLowerCase())
+    .filter((n) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(n))
+  const onTheirDomain = (a: string) => {
+    if (/^data:/i.test(a)) return false
+    try {
+      const host = new URL(
+        a,
+        'https://relative.invalid/'
+      ).hostname.toLowerCase()
+      return domains.some((d) => host === d || host.endsWith(`.${d}`))
+    } catch {
+      return false
+    }
+  }
   const files = new Set(sourceAddresses.flatMap((a) => fileName(a) ?? []))
   const ours = readEmail(input.html)
   for (const a of ours.addresses) {
@@ -248,7 +276,8 @@ export function leaksOf(input: {
     )
       ? 'picture'
       : 'link'
-    if (keys.has(addressKey(a))) add({ kind, value: a.slice(0, 80) })
+    if (keys.has(addressKey(a)) || onTheirDomain(a))
+      add({ kind, value: a.slice(0, 80) })
     else if (fileName(a) && files.has(fileName(a)!))
       add({ kind: 'picture', value: a.slice(0, 80) })
   }

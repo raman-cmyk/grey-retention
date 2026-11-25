@@ -24,4 +24,10 @@ export function run(options: {
   /** The engine version reported (tests; else `ENGINE_VERSION`). */
   engine?: string
   now?: () => number
-}): Promise<{ measured: number; failed: number; retry: number }>
+}): Promise<{
+  measured: number
+  failed: number
+  retry: number
+  /** The app runs another engine version: nothing was handed out. */
+  skew: boolean
+}>

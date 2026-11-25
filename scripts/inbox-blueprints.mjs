@@ -34,17 +34,20 @@ export function pictureOrigins(job) {
   return [...loadableOrigins(job.images.map((i) => new URL(i.url).origin))]
 }
 
-async function call(base, secret, init = {}) {
-  const response = await fetch(`${base}/api/internal/inbox/blueprints`, {
-    ...init,
-    redirect: 'error',
-    signal: AbortSignal.timeout(30_000),
-    headers: {
-      authorization: `Bearer ${secret}`,
-      'content-type': 'application/json',
-      ...init.headers
+async function call(base, secret, init = {}, query = '') {
+  const response = await fetch(
+    `${base}/api/internal/inbox/blueprints${query}`,
+    {
+      ...init,
+      redirect: 'error',
+      signal: AbortSignal.timeout(30_000),
+      headers: {
+        authorization: `Bearer ${secret}`,
+        'content-type': 'application/json',
+        ...init.headers
+      }
     }
-  })
+  )
   if (!response.ok) throw new Error(`The app answered ${response.status}.`)
   return response.json()
 }
@@ -66,10 +69,16 @@ export async function run({
   const measureFor = measure ?? stored.measureForStorage
   // The app tries a job again when it runs another engine version.
   const version = engine ?? stored.ENGINE_VERSION
-  const counts = { measured: 0, failed: 0, retry: 0 }
+  const counts = { measured: 0, failed: 0, retry: 0, skew: false }
   const until = now() + runBudgetMs
   for (let n = 0; n < perRun && now() < until; n++) {
-    const { jobs } = await call(base, secret)
+    const { jobs, skew } = await call(
+      base,
+      secret,
+      {},
+      `?engine=${encodeURIComponent(version)}`
+    )
+    if (skew) counts.skew = true
     if (!jobs.length) break
     for (const job of jobs) {
       const report = (body) =>
@@ -105,7 +114,7 @@ export async function run({
     }
   }
   log(
-    `Blueprints measured: ${counts.measured}. Cannot be measured: ${counts.failed}. To try again: ${counts.retry}.`
+    `Blueprints measured: ${counts.measured}. Cannot be measured: ${counts.failed}. To try again: ${counts.retry}.${counts.skew ? ' The app runs another engine version: nothing was measured; the next run tries again.' : ''}`
   )
   return counts
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { cutTo, holdsFacts, wordPicker, wordsAllowed } from './words'
-import { trimTo } from './copy'
+import { shorten, trimTo } from './copy'
 
 const rules = { offer: { code: 'FERN15', percent: 15 }, maxDiscountPercent: 20 }
 
@@ -82,9 +82,7 @@ describe('brand words', () => {
     for (const words of [
       'Use code FERN15',
       'use code fern15',
-      'Use code at checkout',
-      'Free shipping on orders over $50',
-      'From $14.00'
+      'Use code at checkout'
     ])
       expect(wordsAllowed(words, rules), words).toBe(true)
     // The offer above the max is not the email's to give.
@@ -93,15 +91,80 @@ describe('brand words', () => {
     ).toBe(false)
   })
 
+  it('money only from the store’s facts, with no offer', () => {
+    const none = {
+      offer: null,
+      maxDiscountPercent: 20,
+      amounts: ['$14.00', '$12.00'],
+      claims: []
+    }
+    for (const words of [
+      'Was $20, now $14',
+      'Now only $12',
+      'Prices from $9',
+      '2 for $30',
+      'Gift card worth $25',
+      'Buy 3, get 1 free',
+      'Spend 50 get 10 off',
+      'Ten dollars off',
+      'Twenty percent off',
+      'Free gift with every order',
+      'Free shipping on orders over $50',
+      'Enter WELCOME at checkout',
+      'Apply spring10 in checkout',
+      'A tin for $99',
+      '15% off loose leaf'
+    ])
+      expect(wordsAllowed(words, none), words).toBe(false)
+    for (const words of [
+      'Hill green, $14.00',
+      'A tin for $14',
+      '100% organic',
+      '100 percent natural',
+      'Promo video inside',
+      'B12-rich leaves',
+      'SPF50 for sunny days',
+      'Free from additives',
+      'Steep for three minutes'
+    ])
+      expect(wordsAllowed(words, none), words).toBe(true)
+    // An approved claim says a fact, word for word.
+    const claimed = {
+      ...none,
+      claims: ['Free shipping on orders over $50', 'Free gift with every order']
+    }
+    expect(wordsAllowed('Free shipping on orders over $50.', claimed)).toBe(
+      true
+    )
+    expect(wordsAllowed('Free gift with every order', claimed)).toBe(true)
+    expect(wordsAllowed('Free shipping on every order', claimed)).toBe(false)
+    // A percent next to a discount word is the offer's, else nothing.
+    expect(wordsAllowed('15% off, 100% organic', rules)).toBe(true)
+    expect(wordsAllowed('Fifteen percent off', rules)).toBe(true)
+    expect(wordsAllowed('Twenty percent off', rules)).toBe(false)
+    expect(wordsAllowed('Enter FERN15 at checkout', rules)).toBe(true)
+  })
+
   it('never cuts words that carry a number, money, a code or a condition', () => {
     for (const words of [
       'Free shipping on orders over $50',
       '15% off loose leaf until Sunday only',
       'Ends at midnight',
-      'Minimum two tins'
+      'Minimum two tins',
+      'For new customers',
+      'Selected tins only',
+      'While stocks last',
+      'Excludes gift sets and samplers',
+      'Only on orders over forty dollars'
     ])
       expect(holdsFacts(words), words).toBe(true)
-    expect(holdsFacts('Brew a better cup')).toBe(false)
+    for (const words of [
+      'Brew a better cup',
+      'Free from additives',
+      'Only the best leaves',
+      'Off to a great start'
+    ])
+      expect(holdsFacts(words), words).toBe(false)
     const pick = wordPicker(
       {
         headline: ['Free shipping on orders over $50', 'Steep, sip, repeat'],
@@ -124,5 +187,17 @@ describe('brand words', () => {
       rules
     )
     expect(tight.pick('headline', 10)).toBe(null)
+  })
+
+  it('never drops a sentence that limits a promise', () => {
+    expect(
+      shorten('Free delivery this week. Only on orders over $40.', 0.5)
+    ).toBe('Free delivery this week. Only on orders over $40.')
+    expect(
+      shorten('Take 15% off every tin. Excludes gift sets and samplers.', 0.5)
+    ).toBe('Take 15% off every tin. Excludes gift sets and samplers.')
+    expect(
+      shorten('Our tins are refillable. We pick by hand at dawn.', 0.5)
+    ).toBe('Our tins are refillable.')
   })
 })

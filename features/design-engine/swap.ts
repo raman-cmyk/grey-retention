@@ -141,6 +141,18 @@ const safeFamily = (name: string, fallback: string) => {
   return clean || fallback
 }
 
+/**
+ * The old price a product may show: a confirmed sale's, only when its
+ * discount is within the max (as `toProduct`, VISION rule 6).
+ */
+function saleWithin(product: SwapProduct, max: number): string | null {
+  if (!product.compareAt) return null
+  const now = amount(product.price)
+  const was = amount(product.compareAt)
+  const implied = now && was && was > now ? ((was - now) / was) * 100 : null
+  return implied !== null && implied <= max ? product.compareAt : null
+}
+
 const shape = (w: number, h: number) => (h > 0 ? w / h : 0)
 const fits = (pic: SwapPicture, w: number, h: number) =>
   h > 0 &&
@@ -203,7 +215,18 @@ type Ctx = {
 export function swapBrand(input: SwapInput): SwapResult {
   const { source, brand, products, rules } = input
   const pal: PaletteMapper = paletteMapper(brand)
-  const picker = wordPicker(input.words, rules)
+  // The writers' words may state the email's own products' prices (and
+  // their sale prices within the max), besides the facts given.
+  const picker = wordPicker(input.words, {
+    ...rules,
+    amounts: [
+      ...(rules.amounts ?? []),
+      ...products.flatMap((p) => [
+        p.price,
+        ...(saleWithin(p, rules.maxDiscountPercent) ?? [])
+      ])
+    ]
+  })
   const blocked = new Map<number, string>()
   const block = (s: Section, why: string) => {
     if (!blocked.has(s.ordinal)) blocked.set(s.ordinal, why)
@@ -280,15 +303,8 @@ export function swapBrand(input: SwapInput): SwapResult {
    * The old price a product may show: a confirmed sale's, only when its
    * discount is within the max (as `toProduct`, VISION rule 6).
    */
-  const salePrice = (product: SwapProduct) => {
-    if (!product.compareAt) return null
-    const now = amount(product.price)
-    const was = amount(product.compareAt)
-    const implied = now && was && was > now ? ((was - now) / was) * 100 : null
-    return implied !== null && implied <= rules.maxDiscountPercent
-      ? product.compareAt
-      : null
-  }
+  const salePrice = (product: SwapProduct) =>
+    saleWithin(product, rules.maxDiscountPercent)
 
   const textPart = (p: TextPart, ctx: Ctx): TextPart => {
     const color = pal.text(p.color, ctx.behind, p.font.size)

@@ -8478,6 +8478,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      release_inbox_blueprint: {
+        Args: { job: string; lease: string }
+        Returns: undefined
+      }
       reply_support: {
         Args: {
           body: string

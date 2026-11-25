@@ -11,9 +11,12 @@
 -- * A stored blueprint never keeps the inbox's pictures or links (rule 8: a
 --   copy never reuses a competitor picture): the job and the app drop them,
 --   and the table refuses one (`private.blueprint_is_bare`): no src, href,
---   srcset, url or poster value, a background only as a colour, no `url(`
---   and no web address anywhere. Sizes, places, fills, fonts, parts and
---   words stay, as email_sections already keeps the words.
+--   srcset, url or poster value of any type, a background only as a hex
+--   colour, no `url(` at the start of a word ("Curl (8 oz)" is fine), and no
+--   `//` with or without http(s): in front of it anywhere in the blueprint's
+--   text (the app blanks web addresses written in words with the same rule).
+--   Sizes, places, fills, fonts, parts and words stay, as email_sections
+--   already keeps the words.
 -- * Visibility matches email_sections: platform admins read it; a
 --   workspace never reads it directly. The build worker reads it (service
 --   role) only for an email the workspace follows (create_email_build
@@ -38,7 +41,7 @@ returns boolean language sql immutable set search_path = '' as $$
      and not jsonb_path_exists(b, 'lax $.**.url ? (@ != null)')
      and not jsonb_path_exists(b, 'lax $.**.poster ? (@ != null)')
      and not jsonb_path_exists(b, 'lax $.**.background ? (@ != null && !(@.type() == "string" && @ like_regex "^#[0-9a-f]{6}$"))')
-     and b::text !~* 'url\s*\('
+     and b::text !~* '\murl\s*\('
      and b::text !~* '(https?:)?//'
 $$;
 revoke all on function private.blueprint_is_bare(jsonb) from public, anon, authenticated;
@@ -127,8 +130,10 @@ create trigger queue_inbox_blueprint after insert on public.competitor_emails
 -- First use: a Copy build whose inspiration email has no blueprint yet
 -- asks for it (the worker, service role). Returns the blueprint's state as
 -- the build reads it: ready, failed (a row with its reason, or a job that
--- failed four times in the last day), waiting (queued, or its screenshot
--- is still to come), or none (no marked copy: nothing to measure).
+-- failed four times in the last day), unphotographed (no screenshot, and
+-- no screenshot job will take one: it can never be measured as it is),
+-- waiting (queued, or its screenshot job is still to run), or none (no
+-- marked copy: nothing to measure).
 create or replace function public.request_inbox_blueprint(email uuid)
 returns text language plpgsql security definer set search_path = '' as $$
 declare message uuid; b public.inbox_blueprints; m public.inbox_messages;
@@ -150,8 +155,14 @@ begin
     where kind = 'inbox.blueprint' and subject_key = message::text and status = 'failed'
       and idempotency_key = 'inbox.blueprint:' || message || ':v1';
   if private.queue_inbox_blueprint(message) then return 'waiting'; end if;
-  -- Not photographed yet: the screenshot queues it.
-  return case when m.screenshot_at is null then 'waiting' else 'none' end;
+  if m.screenshot_at is not null then return 'none'; end if;
+  -- Not photographed yet: the screenshot queues it, if a screenshot job is
+  -- still to run; one that failed for good never will.
+  if exists (select 1 from public.platform_jobs p where p.kind = 'inbox.screenshot'
+             and p.subject_key = message::text and p.status in ('queued', 'leased', 'retry_wait')) then
+    return 'waiting';
+  end if;
+  return 'unphotographed';
 end $$;
 revoke all on function public.request_inbox_blueprint(uuid) from public, anon, authenticated;
 grant execute on function public.request_inbox_blueprint(uuid) to service_role;
@@ -204,6 +215,24 @@ begin
 end $$;
 revoke all on function public.record_inbox_blueprint(uuid, uuid, jsonb, text) from public, anon, authenticated;
 grant execute on function public.record_inbox_blueprint(uuid, uuid, jsonb, text) to service_role;
+
+-- A job handed back without counting a try: the browser measured it with
+-- another engine version than the app runs (both catch up within minutes
+-- of a merge). It waits 10 minutes; nothing is recorded.
+create or replace function public.release_inbox_blueprint(job uuid, lease uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+declare j public.platform_jobs;
+begin
+  j := private.platform_lease(job, lease);
+  if j.kind <> 'inbox.blueprint' then raise exception 'Not a blueprint job' using errcode = '23514'; end if;
+  update public.platform_jobs
+    set status = 'retry_wait', lease_token = null, lease_expires_at = null,
+        attempt = greatest(0, j.attempt - 1), last_error_code = 'version_skew',
+        available_at = now() + interval '10 minutes', updated_at = now()
+    where id = j.id;
+end $$;
+revoke all on function public.release_inbox_blueprint(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.release_inbox_blueprint(uuid, uuid) to service_role;
 
 -- Emails already photographed: their blueprints are measured over the next
 -- runs (20 every half hour), newest first.

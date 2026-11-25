@@ -6,7 +6,9 @@ vi.mock('server-only', () => ({}))
 
 const {
   blueprintGaveUp,
+  blueprintJobs,
   blueprintResult,
+  blueprintUnphotographed,
   finishBlueprint,
   inspirationBlueprint
 } = await import('./blueprints')
@@ -80,18 +82,54 @@ describe('blueprint results', () => {
     expect(calls[0]!.args).toEqual({ job, lease, failure: 'too_tall' })
   })
 
-  it('a blueprint this app refuses is tried again, never stored as failed', async () => {
-    const { db, calls } = fakeDb({})
+  it('a blueprint this app refuses (same engine version) is stored as failed at once', async () => {
+    const { db, calls } = fakeDb({ rpc: { record_inbox_blueprint: 'failed' } })
     expect(
       await finishBlueprint(
         db,
         blueprintResult.parse({ job, lease, engine, blueprint: { version: 9 } })
       )
-    ).toEqual({ ok: true, state: 'retry' })
-    expect(calls).toEqual([retried('app_not_valid')])
+    ).toEqual({ ok: true, state: 'failed' })
+    expect(calls).toEqual([
+      {
+        fn: 'record_inbox_blueprint',
+        args: { job, lease, failure: 'not_valid' }
+      }
+    ])
   })
 
-  it('a job measured with another engine version is tried again', async () => {
+  it('a blueprint the table refuses is stored as failed with why, never left to time out', async () => {
+    const calls: { fn: string; args: Record<string, unknown> }[] = []
+    let first = true
+    const db = {
+      rpc: async (fn: string, args: Record<string, unknown>) => {
+        calls.push({ fn, args })
+        if (first) {
+          first = false
+          return {
+            data: null,
+            error: {
+              code: '23514',
+              message: 'A stored blueprint keeps no picture or link'
+            }
+          }
+        }
+        return { data: 'failed', error: null }
+      }
+    } as never
+    expect(
+      await finishBlueprint(
+        db,
+        blueprintResult.parse({ job, lease, engine, blueprint: blueprint() })
+      )
+    ).toEqual({ ok: true, state: 'failed' })
+    expect(calls[1]).toEqual({
+      fn: 'record_inbox_blueprint',
+      args: { job, lease, failure: 'not_bare' }
+    })
+  })
+
+  it('a job measured with another engine version is handed back without counting a try', async () => {
     const { db, calls } = fakeDb({})
     await finishBlueprint(
       db,
@@ -111,7 +149,21 @@ describe('blueprint results', () => {
         failure: 'too_tall'
       })
     )
-    expect(calls).toEqual([retried('version_skew'), retried('version_skew')])
+    const released = { fn: 'release_inbox_blueprint', args: { job, lease } }
+    expect(calls).toEqual([released, released])
+  })
+
+  it('a browser on another engine version is handed nothing, and nothing is claimed', async () => {
+    const { db, calls } = fakeDb({})
+    expect(await blueprintJobs(db, 'older')).toEqual({ jobs: [], skew: true })
+    expect(await blueprintJobs(db, null)).toEqual({ jobs: [], skew: true })
+    expect(calls).toEqual([])
+    const claim = fakeDb({ rpc: { claim_platform_job: [] } })
+    expect(await blueprintJobs(claim.db, engine)).toEqual({
+      jobs: [],
+      skew: false
+    })
+    expect(claim.calls.map((c) => c.fn)).toEqual(['claim_platform_job'])
   })
 
   it('a slow browser is tried again; an unknown reason or no version is refused', async () => {
@@ -179,6 +231,15 @@ describe('an inspiration email’s blueprint for the build', () => {
     expect(await inspirationBlueprint(db, email)).toEqual({
       state: 'failed',
       reason: blueprintGaveUp
+    })
+  })
+  it('an email whose screenshot will never come reads as failed, never waiting forever', async () => {
+    const { db } = fakeDb({
+      rpc: { request_inbox_blueprint: 'unphotographed' }
+    })
+    expect(await inspirationBlueprint(db, email)).toEqual({
+      state: 'failed',
+      reason: blueprintUnphotographed
     })
   })
 })

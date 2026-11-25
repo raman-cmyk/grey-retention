@@ -18,8 +18,9 @@ const refuse = (error: string, status: number) =>
 
 /**
  * DES-ENGINE-002: the blueprint browser calls this with `Authorization:
- * Bearer <CRON_SECRET>`: GET hands out one Inspiration email to measure
- * (short-lived signed links only), GET `?peek=1` only says how many are
+ * Bearer <CRON_SECRET>`: GET `?engine=<version>` hands out one Inspiration
+ * email to measure (short-lived signed links only; none, and nothing
+ * claimed, to a browser on another engine version), GET `?peek=1` only says how many are
  * waiting, and POST records one result. The browser runs outside the app
  * (a scheduled GitHub Actions job), because a server function cannot run
  * Chromium.
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
         { headers: noStore }
       )
     return NextResponse.json(
-      { jobs: await blueprintJobs(db) },
+      await blueprintJobs(db, request.nextUrl.searchParams.get('engine')),
       { headers: noStore }
     )
   } catch (error) {

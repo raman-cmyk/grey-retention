@@ -29,12 +29,14 @@ describe('the blueprint browser', () => {
   it('measures each email and reports a bare blueprint, a final failure or a retry, printing counts only', async () => {
     const queue = [[job(1)], [job(2)], [job(3)], [job(4)], []]
     const posts: unknown[] = []
+    const claims: string[] = []
     const htmls: string[] = []
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url.startsWith('https://app.test/')) {
           expect(init?.redirect).toBe('error')
+          if (init?.method !== 'POST') claims.push(url)
           if (init?.method === 'POST') {
             posts.push(JSON.parse(String(init.body)))
             return new Response('{"ok":true}')
@@ -71,7 +73,8 @@ describe('the blueprint browser', () => {
         return answers.shift()!
       }
     })
-    expect(counts).toEqual({ measured: 1, failed: 1, retry: 2 })
+    expect(counts).toEqual({ measured: 1, failed: 1, retry: 2, skew: false })
+    expect(claims.every((u) => u.endsWith('?engine=v-test'))).toBe(true)
     expect(htmls[0]).toContain('https://db.test/sign/a?token=1')
     expect(posts).toEqual([
       { job: 'j1', lease: 'l1', engine: 'v-test', blueprint: bare },
@@ -92,5 +95,25 @@ describe('the blueprint browser', () => {
     expect(findFile(`${process.cwd()}/features/design-engine/nothing`)).toBe(
       null
     )
+  })
+
+  it('measures nothing when the app runs another engine version, and says so', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ jobs: [], skew: true })))
+    )
+    const lines: string[] = []
+    const measure = vi.fn()
+    const counts = await run({
+      base: 'https://app.test',
+      secret: 'x'.repeat(40),
+      browser: {} as Browser,
+      log: (l) => lines.push(l),
+      engine: 'v-old',
+      measure
+    })
+    expect(counts).toEqual({ measured: 0, failed: 0, retry: 0, skew: true })
+    expect(measure).not.toHaveBeenCalled()
+    expect(lines[0]).toContain('another engine version')
   })
 })

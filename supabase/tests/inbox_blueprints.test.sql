@@ -1,5 +1,5 @@
 begin;
-select plan(43);
+select plan(50);
 
 -- DES-ENGINE-002: an Inspiration email's blueprint, measured once by the
 -- browser job and kept without pictures or links.
@@ -62,8 +62,11 @@ select ok(not bool_or(private.blueprint_is_bare(pg_temp.with_part(p))), 'a pictu
     '{"type":"image","srcset":"a.png 2x"}', '{"type":"image","poster":"p.png"}', '{"type":"image","url":"x"}',
     '{"type":"text","runs":[{"text":"x","href":"mailto:a@b.example"}]}', '{"type":"text","background":"url(a.png)"}',
     '{"type":"text","background":"https://x.example/a.png"}', '{"type":"text","runs":[{"text":"see //cdn.example/a"}]}',
-    '{"type":"text","runs":[{"text":"x"}],"style":"background:url (a.png)"}']) p;
-reset role;
+    '{"type":"text","runs":[{"text":"x"}],"style":"background:url (a.png)"}', '{"type":"text","runs":[{"text":"url(a.png)"}]}']) p;
+select ok(bool_and(private.blueprint_is_bare(pg_temp.with_part(p))), 'words that only look like an address are kept')
+  from unnest(array[
+    '{"type":"text","runs":[{"text":"Curl (8 oz)"}]}'::jsonb, '{"type":"text","runs":[{"text":"Hurl (x) and/or 1/2"}]}',
+    '{"type":"text","background":"#f6f6f6"}', '{"type":"image","src":null,"href":null}']) p;
 select public.enqueue_inbox_poll('fake');
 select pg_temp.message(99);
 select throws_ok($$insert into public.inbox_blueprints(inbox_message_id, version, state, blueprint, sections, unsupported)
@@ -104,6 +107,18 @@ set local role service_role;
 select is(public.request_inbox_blueprint(current_setting('test.email')::uuid), 'waiting', 'first use: it is waiting');
 select is(public.request_inbox_blueprint(gen_random_uuid()), 'none', 'an unknown email has none');
 select is(public.request_inbox_blueprint((select id from public.competitor_emails where external_id = 'msg:bp3')), 'none', 'an email without a marked copy has none');
+-- Marked but not photographed: waiting while a screenshot job is to run,
+-- unphotographed once it failed for good (never waiting forever).
+reset role;
+select set_config('test.unshot', pg_temp.message(9)::text, true);
+select set_config('test.unshotemail', pg_temp.assign(current_setting('test.unshot')::uuid, 9)::text, true);
+insert into public.platform_jobs(kind, subject_key, idempotency_key) values ('inbox.screenshot', current_setting('test.unshot'), 'test.shot:9');
+set local role service_role;
+select is(public.request_inbox_blueprint(current_setting('test.unshotemail')::uuid), 'waiting', 'waiting while its screenshot job is to run');
+reset role;
+update public.platform_jobs set status = 'failed', finished_at = now() where idempotency_key = 'test.shot:9';
+set local role service_role;
+select is(public.request_inbox_blueprint(current_setting('test.unshotemail')::uuid), 'unphotographed', 'unphotographed once that job failed for good');
 select pg_temp.claim(current_setting('test.message'));
 select is((select status from public.platform_jobs where id = current_setting('test.job')::uuid), 'leased', 'the browser claims it');
 select throws_ok($$select public.record_inbox_blueprint(current_setting('test.job')::uuid, current_setting('test.lease')::uuid)$$,
@@ -145,6 +160,20 @@ select set_config('test.poll', public.enqueue_inbox_poll('fake')::text, true);
 select set_config('test.polllease', (select lease_token::text from public.claim_platform_job(array['inbox.poll'], 'fake')), true);
 select throws_ok($$select public.record_inbox_blueprint(current_setting('test.poll')::uuid, current_setting('test.polllease')::uuid, pg_temp.bp())$$,
   '23514', 'Not a blueprint job', 'a poll job cannot record a blueprint');
+select throws_ok($$select public.release_inbox_blueprint(current_setting('test.poll')::uuid, current_setting('test.polllease')::uuid)$$,
+  '23514', 'Not a blueprint job', 'nor be released as one');
+-- Another engine version: handed back without counting a try.
+select pg_temp.claim(current_setting('test.lonely'));
+select lives_ok($$select public.release_inbox_blueprint(current_setting('test.job')::uuid, current_setting('test.lease')::uuid)$$,
+  'a job measured with another engine version is handed back');
+select is((select status || '/' || attempt || '/' || last_error_code || '/' || (available_at > now() + interval '9 minutes')
+  from public.platform_jobs where id = current_setting('test.job')::uuid), 'retry_wait/0/version_skew/true',
+  'without counting a try, for 10 minutes');
+select ok(not has_function_privilege('authenticated', 'public.release_inbox_blueprint(uuid,uuid)', 'execute')
+  and has_function_privilege('service_role', 'public.release_inbox_blueprint(uuid,uuid)', 'execute'), 'only the worker releases');
+reset role;
+update public.platform_jobs set available_at = now() where id = current_setting('test.job')::uuid;
+set local role service_role;
 select pg_temp.claim(current_setting('test.lonely'));
 reset role;
 update public.platform_jobs set lease_expires_at = now() - interval '1 second' where id = current_setting('test.job')::uuid;
