@@ -45,7 +45,9 @@ export const copyRecord = z.object({
   html: z.string().min(1).max(300_000),
   sections: z.array(copiedSection).max(41),
   pass: z.boolean(),
-  leaks: z.array(z.object({ kind: z.string(), value: z.string().max(200) })).max(200),
+  leaks: z
+    .array(z.object({ kind: z.string(), value: z.string().max(200) }))
+    .max(200),
   footerAdded: z.boolean(),
   /** The cut photos uploaded, by index (`copy/<build>/<i>.jpg`). */
   photos: z.array(z.int().min(0).max(23)).max(24)
@@ -93,7 +95,8 @@ export const copyWords = {
 } as const
 
 const headlineKeys = /^(?:heading|headline|title|name)$/i
-const bodyKeys = /^(?:sub|subheading|detail|paras?|body|text|note|quote|answer|question|description|story)$/i
+const bodyKeys =
+  /^(?:sub|subheading|detail|paras?|body|text|note|quote|answer|question|description|story)$/i
 const buttonKeys = /^(?:cta|label|button)$/i
 const captionKeys = /^(?:eyebrow|kicker|caption|tagline)$/i
 
@@ -176,7 +179,10 @@ export function swapBrandOf(brand: BlockBrand): SwapBrand {
 export function copyInput(input: {
   store: Pick<Store, 'brand' | 'products' | 'facts'>
   draft: Draft
-  rules: { maxDiscountPercent: number; codes: { code: string; percent: number }[] }
+  rules: {
+    maxDiscountPercent: number
+    codes: { code: string; percent: number }[]
+  }
   sourceNames: readonly string[]
   mode: 'preview' | 'klaviyo'
 }): CopyInput {
@@ -225,7 +231,11 @@ export function copyInput(input: {
     sourceNames: [...input.sourceNames].slice(0, 6),
     origins: [
       ...new Set(
-        [store.brand.logo, store.brand.logoOnDark, ...products.map((p) => p.photo?.src)]
+        [
+          store.brand.logo,
+          store.brand.logoOnDark,
+          ...products.map((p) => p.photo?.src)
+        ]
           .map(originOf)
           .filter((o): o is string => !!o)
       )

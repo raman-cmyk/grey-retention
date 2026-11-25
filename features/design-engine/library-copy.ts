@@ -158,7 +158,9 @@ export async function libraryCopy(
         : swapBrand({ ...swapIn, cropper: crop })
     if (!swapped.ok) return swapped
     let source = input.source
-    let target = input.host ? hosted(swapped.target, input.host) : swapped.target
+    let target = input.host
+      ? hosted(swapped.target, input.host)
+      : swapped.target
     const blocked = new Map(swapped.blocked)
     const footerAdded =
       !swapped.footer &&

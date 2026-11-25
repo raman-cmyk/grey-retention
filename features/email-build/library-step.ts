@@ -44,10 +44,16 @@ export async function libraryStep(input: {
   /** The design step's saved work (`progress.work.design`). */
   saved: unknown
   /** The email's hard checks (`checksFor`), on the copy's HTML. */
-  checks: (html: string, email: BuiltEmail) => { check: string; problem: string }[]
+  checks: (
+    html: string,
+    email: BuiltEmail
+  ) => { check: string; problem: string }[]
 }): Promise<LibraryStepOutcome> {
   const waits =
-    Number((input.saved as { library?: { waits?: unknown } } | undefined)?.library?.waits) || 0
+    Number(
+      (input.saved as { library?: { waits?: unknown } } | undefined)?.library
+        ?.waits
+    ) || 0
   const wait = (code: keyof typeof copyWords): LibraryStepOutcome =>
     waits < libraryWaits
       ? {
@@ -85,7 +91,11 @@ export async function libraryStep(input: {
     }
   const record = got.record
   if (record.leaks.length)
-    return { kind: 'coded', reasonCode: 'library_leaks', reason: copyWords.leaks }
+    return {
+      kind: 'coded',
+      reasonCode: 'library_leaks',
+      reason: copyWords.leaks
+    }
   const email: BuiltEmail = {
     ...input.coded,
     html: record.html,
