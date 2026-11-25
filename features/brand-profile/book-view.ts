@@ -13,7 +13,15 @@
  *
  * The stored JSON is read defensively: an older or partial book shows what
  * it has, and nothing is invented for what it lacks.
+ *
+ * UI-BRAND-2: the owner's corrections (ONB-058) are his own word. A line or
+ * fact the book holds in his words is marked `own`; his live corrections
+ * are listed in words (`corrections`), with the ones this version does not
+ * hold yet (`pending`: made after it was written).
  */
+import type { Correction } from '@/features/onboarding/brand-book-corrections'
+import { factValue } from '@/features/onboarding/brand-book-corrections'
+import { factKeys, factLabels, factText, type FactKey } from './book-facts'
 
 export type BookRow = {
   version: number
@@ -23,6 +31,35 @@ export type BookRow = {
 }
 
 export type BookLines = { label: string; lines: string[] }
+
+/** The parts of what the readers saw that the owner can correct. */
+export const lineSections = [
+  'offering',
+  'customers.who',
+  'customers.love',
+  'customers.worries',
+  'voice',
+  'marketing'
+] as const
+export type LineSection = (typeof lineSections)[number]
+
+/** A line of the book; `own` when it is in the owner's own words. */
+export type OwnLine = { text: string; own: boolean }
+export type SeenGroup = {
+  label: string
+  section: LineSection
+  lines: OwnLine[]
+}
+
+/** One of the owner's live corrections, in words. */
+export type CorrectionLine = {
+  id: string
+  /** The part of the book: Returns, What customers love. */
+  label: string
+  text: string
+  /** Made after this version was written: not in it yet. */
+  pending: boolean
+}
 
 export type BrandBookView = {
   version: number
@@ -34,13 +71,19 @@ export type BrandBookView = {
   brandName: string | null
   site: string | null
   /** Confirmed facts, in words; empty when none is confirmed. */
-  facts: string[]
+  facts: OwnLine[]
+  /** Each correctable fact as the words the owner edits ('' unknown). */
+  factTexts: Record<FactKey, string>
   /** The owner's approved words; null when he has not approved them. */
   owner: { label: string; text: string }[] | null
   /** Topics the sources disagree on: no claim is made about them. */
   unclear: string[]
-  /** What the readers saw, by topic (only topics with lines). */
-  seen: BookLines[]
+  /**
+   * What the readers saw, by part of the book: every part for the owner
+   * (`allParts`, so he can add a line to an empty one), otherwise only
+   * the parts with lines.
+   */
+  seen: SeenGroup[]
   /** How the brand sends today, from a full Klaviyo read. */
   sending: string | null
   products: {
@@ -54,6 +97,8 @@ export type BrandBookView = {
   sources: string[]
   /** The sections the owner corrected, in words. */
   corrected: string[]
+  /** The owner's live corrections, oldest first. */
+  corrections: CorrectionLine[]
   /** The strategist's reading; null until it has read this version. */
   reading: {
     positioning: string | null
@@ -105,6 +150,11 @@ const sectionWords: Record<string, string> = {
   'customers.worries': 'What customers worry about',
   voice: 'How you sound',
   marketing: 'What works in your marketing',
+  // The database's section names (ONB-058), and the older topic names.
+  'facts.freeShipping': 'Free shipping',
+  'facts.returnDays': 'Returns',
+  'facts.guaranteeDays': 'Money-back guarantee',
+  'facts.deliveryDays': 'Delivery time',
   'facts.free_shipping': 'Free shipping',
   'facts.returns': 'Returns',
   'facts.guarantee': 'Money-back guarantee',
@@ -151,13 +201,65 @@ export function factWords(
   return lines
 }
 
+/** The facts in the order the page lists them (as `factWords` does). */
+const factOrder: readonly FactKey[] = [
+  'freeShipping',
+  'deliveryDays',
+  'returnDays',
+  'guaranteeDays'
+]
+
+/** The same line whatever its case and spacing (as the database keys it). */
+const key = (line: string) => line.trim().replace(/\s+/g, ' ').toLowerCase()
+const quote = (line: string | null) => `“${line ?? ''}”`
+
+function correctionLine(
+  c: Correction,
+  currency: string | null,
+  writtenAt: string
+): CorrectionLine {
+  const pending = Date.parse(c.createdAt) > Date.parse(writtenAt)
+  if (c.section.startsWith('facts.')) {
+    const fact = c.section.slice('facts.'.length) as FactKey
+    const value =
+      c.action === 'remove' ? null : factValue(fact, c.value ?? null)
+    const words = value ? factWords({ [fact]: value }, currency)[0] : null
+    return {
+      id: c.id,
+      label: factLabels[fact],
+      text: words ?? 'Not known, so no email claims it',
+      pending
+    }
+  }
+  return {
+    id: c.id,
+    label: sectionWords[c.section] ?? c.section,
+    text:
+      c.action === 'add'
+        ? `Added ${quote(c.value)}`
+        : c.action === 'remove'
+          ? `Removed ${quote(c.original)}`
+          : `Changed ${quote(c.original)} to ${quote(c.value)}`,
+    pending
+  }
+}
+
 const lines = (label: string, value: unknown): BookLines[] => {
   const list = strings(value)
   return list.length ? [{ label, lines: list }] : []
 }
 
-/** The latest Brand book in the owner's words; null when there is none. */
-export function brandBookView(row: BookRow | null): BrandBookView | null {
+/**
+ * The latest Brand book in the owner's words; null when there is none.
+ * `corrections` are the owner's live ones (oldest first); `allParts` shows
+ * every correctable part of what was seen, empty ones too (the owner's
+ * page).
+ */
+export function brandBookView(
+  row: BookRow | null,
+  corrections: readonly Correction[] = [],
+  { allParts = false }: { allParts?: boolean } = {}
+): BrandBookView | null {
   if (!row) return null
   const book = record(row.content)
   const brand = record(book.brand)
@@ -172,6 +274,39 @@ export function brandBookView(row: BookRow | null): BrandBookView | null {
   const voice = strategy?.voice ? record(strategy.voice) : null
   const currency = text(brand.currency)
   const perWeek = count(sending?.sendsPerWeek)
+  const facts = record(book.facts)
+  // A line is the owner's when a live correction of its part says it.
+  const ownWords = new Map<string, Set<string>>()
+  for (const c of corrections)
+    if (c.action !== 'remove' && c.value) {
+      const words = ownWords.get(c.section) ?? new Set<string>()
+      words.add(c.section.startsWith('facts.') ? c.value : key(c.value))
+      ownWords.set(c.section, words)
+    }
+  const ownFact = (fact: FactKey) =>
+    [...(ownWords.get(`facts.${fact}`) ?? [])].some(
+      (value) =>
+        JSON.stringify(factValue(fact, value)) === JSON.stringify(facts[fact])
+    )
+  const seenGroup = (
+    label: string,
+    section: LineSection,
+    value: unknown
+  ): SeenGroup[] => {
+    const list = strings(value)
+    if (!list.length && !allParts) return []
+    const own = ownWords.get(section)
+    return [
+      {
+        label,
+        section,
+        lines: list.map((line) => ({
+          text: line,
+          own: own?.has(key(line)) ?? false
+        }))
+      }
+    ]
+  }
   const ownerLines = owner
     ? [
         { label: 'Positioning', text: text(owner.positioning) },
@@ -186,7 +321,20 @@ export function brandBookView(row: BookRow | null): BrandBookView | null {
     sample: book.sample === true,
     brandName: text(brand.name),
     site: text(brand.site),
-    facts: factWords(record(book.facts), currency),
+    facts: [
+      ...factOrder.flatMap((fact) =>
+        factWords({ [fact]: facts[fact] }, currency).map((line) => ({
+          text: line,
+          own: ownFact(fact)
+        }))
+      ),
+      ...(facts.reviewsVerified === true
+        ? [{ text: 'Reviews come from a checked review source', own: false }]
+        : [])
+    ],
+    factTexts: Object.fromEntries(
+      factKeys.map((fact) => [fact, factText(fact, facts[fact])])
+    ) as Record<FactKey, string>,
     owner: owner ? ownerLines : null,
     unclear: Array.isArray(book.unclear)
       ? book.unclear.flatMap((item) => {
@@ -195,12 +343,20 @@ export function brandBookView(row: BookRow | null): BrandBookView | null {
         })
       : [],
     seen: [
-      ...lines('What you sell', observed.offering),
-      ...lines('Who your customers are', customers.who),
-      ...lines('What customers love', customers.love),
-      ...lines('What customers worry about', customers.worries),
-      ...lines('How you sound', observed.voice),
-      ...lines('What works in your marketing', observed.marketing)
+      ...seenGroup('What you sell', 'offering', observed.offering),
+      ...seenGroup('Who your customers are', 'customers.who', customers.who),
+      ...seenGroup('What customers love', 'customers.love', customers.love),
+      ...seenGroup(
+        'What customers worry about',
+        'customers.worries',
+        customers.worries
+      ),
+      ...seenGroup('How you sound', 'voice', observed.voice),
+      ...seenGroup(
+        'What works in your marketing',
+        'marketing',
+        observed.marketing
+      )
     ],
     sending:
       perWeek === null
@@ -224,6 +380,9 @@ export function brandBookView(row: BookRow | null): BrandBookView | null {
     avoid: strings(book.avoid),
     sources: strings(book.sources).map((s) => sourceWords[s] ?? s),
     corrected: strings(book.corrected).map((s) => sectionWords[s] ?? s),
+    corrections: corrections.map((c) =>
+      correctionLine(c, currency, row.created_at)
+    ),
     reading: strategy
       ? {
           positioning: text(strategy.positioning),

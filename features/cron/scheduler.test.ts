@@ -91,13 +91,13 @@ describe('tenantsWithDueJobs', () => {
         [
           'kind',
           'in',
-          '("email.rewrite","email.import","brand.read_site","brand.read_catalog","brand.read_history","brand.read_ads","brand.read_reviews")'
+          '("email.rewrite","email.import","brand.read_site","brand.read_catalog","brand.read_history","brand.read_ads","brand.read_reviews","brand.write_book")'
         ]
       ])
     }
   })
 
-  it('never selects paid AI rewrites, file imports or source reads', () => {
+  it('never selects paid AI rewrites, file imports, source reads or Brand book rewrites', () => {
     expect(separatelyDispatchedKinds).toEqual([
       'email.rewrite',
       'email.import',
@@ -105,7 +105,8 @@ describe('tenantsWithDueJobs', () => {
       'brand.read_catalog',
       'brand.read_history',
       'brand.read_ads',
-      'brand.read_reviews'
+      'brand.read_reviews',
+      'brand.write_book'
     ])
   })
 

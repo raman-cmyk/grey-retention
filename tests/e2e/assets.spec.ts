@@ -21,16 +21,16 @@ test('UC-01/02 private ZIP intake, replay, classification and owner correction p
     }
   ])
   await login(page)
-  // UI-BRAND: Brand assets is a GROS page under Settings, opened from its
-  // card; the old address opens it too.
-  await page.goto('/settings')
+  // UI-BRAND-2: Brand assets is a page under Brand (a main page), opened
+  // from its card; the old addresses open it too.
+  await page.goto('/brand')
   await page
     .getByRole('region', { name: 'Brand assets', exact: true })
     .getByRole('link', { name: 'Open brand assets' })
     .click()
-  await expect(page).toHaveURL(/\/settings\/assets$/)
+  await expect(page).toHaveURL(/\/brand\/assets$/)
   await page.goto('/assets')
-  await expect(page).toHaveURL(/\/settings\/assets$/)
+  await expect(page).toHaveURL(/\/brand\/assets$/)
   await expect(
     page
       .getByRole('navigation', { name: 'Filter files' })
@@ -129,6 +129,6 @@ test('UC-01/02 private ZIP intake, replay, classification and owner correction p
   expect(denied.data).toBeNull()
   await page.context().clearCookies()
   await login(page, 'other')
-  await page.goto('/settings/assets')
+  await page.goto('/brand/assets')
   await expect(page.getByRole('heading', { name, exact: true })).toHaveCount(0)
 })

@@ -319,10 +319,10 @@ test('the old shell sidebar, account menu and mobile drawer work with keyboard a
     await nav.getByRole('button', { name: 'More tools', exact: true }).click()
     await expect(
       nav.getByRole('link', { name: 'Brand assets', exact: true })
-    ).toHaveAttribute('href', '/settings/assets')
+    ).toHaveAttribute('href', '/brand/assets')
     await expect(
       nav.getByRole('link', { name: 'Brand', exact: true })
-    ).toHaveAttribute('href', '/settings/brand')
+    ).toHaveAttribute('href', '/brand')
     const agents = nav.getByRole('button', { name: 'Agents', exact: true })
     await agents.click()
     await expect(agents).toHaveAttribute('aria-expanded', 'true')

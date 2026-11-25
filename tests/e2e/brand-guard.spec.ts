@@ -23,8 +23,8 @@ test('UIR-021 the brand check warns before AI steps when Klaviyo is another bran
 }) => {
   await newOwner(page, { prefix: 'guard', name: 'Guard studio' })
   const brandName = `Juniper Field ${randomUUID().slice(0, 6)}`
-  // UI-BRAND: Brand is a GROS page under Settings.
-  await page.goto('/settings/brand')
+  // UI-BRAND-2: Brand is a main page.
+  await page.goto('/brand')
   const identity = page.getByRole('region', {
     name: 'Brand identity',
     exact: true
@@ -39,7 +39,7 @@ test('UIR-021 the brand check warns before AI steps when Klaviyo is another bran
 
   // The matching sample account: no warning anywhere.
   await connectKlaviyo(page, key('a1b2'))
-  await page.goto('/settings/brand')
+  await page.goto('/brand')
   await expect(
     page.getByRole('region', { name: 'Check your brand', exact: true })
   ).toHaveCount(0)
@@ -48,7 +48,7 @@ test('UIR-021 the brand check warns before AI steps when Klaviyo is another bran
 
   // Another brand's sample account: the Brand page and GROS both warn.
   await connectKlaviyo(page, key('0000'))
-  await page.goto('/settings/brand')
+  await page.goto('/brand')
   const banner = page.getByRole('region', {
     name: 'Check your brand',
     exact: true
@@ -63,7 +63,7 @@ test('UIR-021 the brand check warns before AI steps when Klaviyo is another bran
   await expect(check).toContainText('Check it before GROS answers.')
   await expect(check).toContainText(brandName)
   await check.getByRole('link', { name: 'Open the Brand profile' }).click()
-  await expect(page).toHaveURL(/\/settings\/brand$/)
+  await expect(page).toHaveURL(/\/brand$/)
 
   // Trying the other brand's sample does not move the brand timezone.
   await page.goto('/settings')

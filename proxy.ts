@@ -74,6 +74,8 @@ export const config = {
     '/onboarding/:path*',
     '/profile/:path*',
     '/settings/:path*',
+    // UI-BRAND-2: Brand, the Brand book and Brand assets.
+    '/brand/:path*',
     '/setup/:path*',
     '/admin/:path*',
     '/designer/:path*'

@@ -362,15 +362,17 @@ describe('Settings screen (UI-SETa)', () => {
         name: 'Open holidays'
       })
     ).toHaveAttribute('href', '/settings/holidays')
-    // Brand and Brand assets are pages under Settings too (UI-BRAND).
+    // UI-BRAND-2: Brand (and Brand assets under it) is a main page in the
+    // top bar; Settings does not repeat it.
+    expect(screen.queryByRole('region', { name: 'Brand' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Brand assets' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Open brand' })).toBeNull()
     expect(
-      within(card('Brand')).getByRole('link', { name: 'Open brand' })
-    ).toHaveAttribute('href', '/settings/brand')
-    expect(
-      within(card('Brand assets')).getByRole('link', {
-        name: 'Open brand assets'
-      })
-    ).toHaveAttribute('href', '/settings/assets')
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole(
+        'link',
+        { name: 'Brand' }
+      )
+    ).toHaveAttribute('href', '/brand')
     const account = card('Account')
     expect(account).toHaveTextContent('Sam Cedar')
     expect(account).toHaveTextContent('owner@cedarlane.example')

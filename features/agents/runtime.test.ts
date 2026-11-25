@@ -313,7 +313,9 @@ describe('runAgent', () => {
     const system: string = (ai as ReturnType<typeof vi.fn>).mock.calls[0][0]
       .request.system
     expect(system).toContain('…(truncated)')
-    expect(system.length).toBeLessThan(maxBrandBookChars + 500)
+    // The cut book plus its header (UI-BRAND-2 added one sentence about
+    // the owner's corrections) and the agent's own prompt.
+    expect(system.length).toBeLessThan(maxBrandBookChars + 600)
   })
 
   it('rejects an answer that does not match the shape, and logs why without the answer', async () => {

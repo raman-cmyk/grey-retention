@@ -1,6 +1,6 @@
 begin;
 select no_plan();
--- ONB-058. Tenant 101: owner ...001, admin ...006, staff ...005. Tenant 102 owner ...004. Operator ...002. Synthetic seed only.
+-- ONB-058 (owner only since UI-BRAND-2). Tenant 101: owner ...001, admin ...006, staff ...005. Tenant 102 owner ...004. Operator ...002. Synthetic seed only.
 
 -- Grants: members read, nobody writes directly, the worker reads.
 select ok(not has_table_privilege('authenticated','public.brand_book_corrections','insert,update,delete,truncate,references,trigger,maintain'),'members cannot write corrections directly');
@@ -90,15 +90,18 @@ select ok((select bool_and(e.actor_id = '00000000-0000-4000-8000-000000000001' a
 select is((select detail from public.workspace_events where kind = 'brand_book_corrected' and detail->>'section' = 'facts.returnDays'),'{"action": "replace", "section": "facts.returnDays", "value": "30"}'::jsonb,'a fact says its checked value');
 select is((select detail from public.workspace_events where kind = 'brand_book_corrected' order by created_at limit 1),'{"action": "replace", "section": "voice"}'::jsonb,'only the section and action, never the words');
 
--- The admin may correct; staff, another workspace and the operator may not.
+-- UI-BRAND-2: the owner only. An admin, staff, another workspace and the
+-- operator may not (a correction reaches the agents as the owner's words).
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000006","role":"authenticated"}',true);
 set local role authenticated;
-select isnt(public.correct_brand_book('00000000-0000-4000-8000-000000000101','customers.who',null,'add','Women who travel.'),null,'an admin corrects too');
+select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','customers.who',null,'add','Women who travel.')$$,'42501',null,'an admin cannot correct');
+select throws_ok($$select public.withdraw_brand_book_correction('00000000-0000-4000-8000-000000000101',
+  (select id from public.brand_book_corrections where withdrawn_at is null limit 1))$$,'42501',null,'nor take one back');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000005","role":"authenticated"}',true);
 select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice',null,'add','Fun.')$$,'42501',null,'staff cannot correct');
 select throws_ok($$select public.withdraw_brand_book_correction('00000000-0000-4000-8000-000000000101',
   (select id from public.brand_book_corrections where withdrawn_at is null limit 1))$$,'42501',null,'nor take one back');
-select is((select count(*)::integer from public.brand_book_corrections),32,'staff read the corrections');
+select is((select count(*)::integer from public.brand_book_corrections),31,'staff read the corrections');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice',null,'add','Fun.')$$,'42501',null,'another workspace cannot correct');
 select is((select count(*)::integer from public.brand_book_corrections),0,'nor read them');
@@ -117,7 +120,7 @@ select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-00000000
 select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice',null,'add','Fun.')$$,'42501',null,'the operator cannot correct');
 select throws_ok($$select public.withdraw_brand_book_correction('00000000-0000-4000-8000-000000000101',
   (select id from public.brand_book_corrections where tenant_id = '00000000-0000-4000-8000-000000000101' and withdrawn_at is null limit 1))$$,'42501',null,'nor take one back');
-select is((select count(*)::integer from public.brand_book_corrections),33,'but reads them, every workspace''s');
+select is((select count(*)::integer from public.brand_book_corrections),32,'but reads them, every workspace''s');
 
 select * from finish();
 rollback;

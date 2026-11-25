@@ -2,13 +2,19 @@ import 'server-only'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { campaignWorkspace } from '@/features/campaigns/data'
 import { createClient } from '@/lib/supabase/server'
+import { listCorrections } from '@/features/onboarding/brand-book-corrections'
 import { brandBookView, type BookRow, type BrandBookView } from './book-view'
+import {
+  rewriteState,
+  type RewriteRow,
+  type RewriteState
+} from './rewrite-view'
 import { brandProfileData } from './data'
 import type { Mismatch } from './mismatch'
 import { lastUpdated, profileViews, type SectionView } from './view'
 
 /**
- * What the Brand page (UI-BRAND, `/settings/brand`) shows: the brand
+ * What the Brand page (UI-BRAND, `/brand` since UI-BRAND-2) shows: the brand
  * version and its approval, the profile's six sections, the catalog and
  * the permitted offers, the brand's history and the latest Brand book's
  * version. Every read is the member's own session (row level security);
@@ -67,6 +73,8 @@ export type BrandPageView =
        * none is written yet, `unreadable` when it could not be read.
        */
       book: { version: number; writtenAt: string } | 'unreadable' | null
+      /** UI-BRAND-2: the Brand book's rewrite while it is not done. */
+      rewrite: RewriteState | null
     }
 
 type Db = NonNullable<Awaited<ReturnType<typeof createClient>>>
@@ -81,6 +89,22 @@ async function latestBook(db: Db, tenantId: string) {
     .limit(1)
   if (error) return { error: true, row: null } as const
   return { error: false, row: (data?.[0] as BookRow | undefined) ?? null }
+}
+
+/**
+ * Where the newest Brand book rewrite stands (UI-BRAND-2); null when it is
+ * done, or when its job cannot be read (the page still shows the book).
+ */
+async function latestRewrite(db: Db, tenantId: string) {
+  const { data, error } = await db
+    .from('job_runs')
+    .select('status,updated_at,lease_until')
+    .eq('tenant_id', tenantId)
+    .eq('kind', 'brand.write_book')
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (error) return null
+  return rewriteState((data?.[0] as RewriteRow | undefined) ?? null)
 }
 
 const unavailable = (owner: boolean) =>
@@ -98,7 +122,7 @@ export async function brandPage(): Promise<BrandPageView> {
   const db = await createClient()
   if (!data || !db) return unavailable(owner)
   const t = context.tenantId
-  const [profile, events, book] = await Promise.all([
+  const [profile, events, book, rewrite] = await Promise.all([
     brandProfileData(t, data.brand),
     db
       .from('brand_events')
@@ -106,7 +130,8 @@ export async function brandPage(): Promise<BrandPageView> {
       .eq('tenant_id', t)
       .order('created_at', { ascending: false })
       .limit(20),
-    latestBook(db, t)
+    latestBook(db, t),
+    latestRewrite(db, t)
   ])
   const rows = profile?.sections ?? []
   return {
@@ -151,7 +176,8 @@ export async function brandPage(): Promise<BrandPageView> {
       ? 'unreadable'
       : book.row
         ? { version: book.row.version, writtenAt: book.row.created_at }
-        : null
+        : null,
+    rewrite
   }
 }
 
@@ -164,6 +190,8 @@ export type BrandBookPageView =
       brand: BrandVersion | null
       /** null: no Brand book yet. */
       book: BrandBookView | null
+      /** UI-BRAND-2: the Brand book's rewrite while it is not done. */
+      rewrite: RewriteState | null
     }
 
 /** The Brand book review page's data for the signed-in member. */
@@ -173,15 +201,19 @@ export async function brandBookPage(
   const owner = context.tenantRole === 'owner'
   const db = await createClient()
   if (!db || process.env.AUTH_MODE === 'demo') return unavailable(owner)
-  const [brand, book] = await Promise.all([
+  const [brand, book, corrections, rewrite] = await Promise.all([
     db
       .from('brand_profiles')
       .select('revision,approved_revision')
       .eq('tenant_id', context.tenantId)
       .maybeSingle(),
-    latestBook(db, context.tenantId)
+    latestBook(db, context.tenantId),
+    // The owner's live corrections (UI-BRAND-2), read by the member's own
+    // session (members read them; RLS keeps them to the workspace).
+    listCorrections(db, context.tenantId).catch(() => null),
+    latestRewrite(db, context.tenantId)
   ])
-  if (brand.error || book.error)
+  if (brand.error || book.error || corrections === null)
     return {
       state: 'error',
       owner,
@@ -198,6 +230,7 @@ export async function brandBookPage(
           approvedRevision: brand.data.approved_revision
         }
       : null,
-    book: brandBookView(book.row)
+    book: brandBookView(book.row, corrections, { allParts: owner }),
+    rewrite
   }
 }

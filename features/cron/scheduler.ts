@@ -35,7 +35,9 @@ export const separatelyDispatchedKinds = [
   'brand.read_catalog',
   'brand.read_history',
   'brand.read_ads',
-  'brand.read_reviews'
+  'brand.read_reviews',
+  // UI-BRAND-2: the Brand book rewrite has its own claim and runs.
+  'brand.write_book'
 ]
 
 export type ScheduledRun = {

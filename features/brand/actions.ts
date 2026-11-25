@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
 import type { FormResult } from '@/components/ui/action-form'
+import { rewriteBrandBookSoon } from '@/features/onboarding/brand-book-writes'
 const schema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('save'),
@@ -50,6 +51,10 @@ export async function brandAction(
     return { error: 'Sign in through local Supabase to persist brand inputs.' }
   const v = parsed.data
   let error: { code?: string } | null = null
+  // UI-BRAND-2: approving a version that is not approved yet rewrites the
+  // Brand book (the database queues it with the approval); approving it
+  // again changes nothing.
+  let rewrites = false
   if (v.kind === 'save')
     ({ error } = await db.rpc('save_brand', {
       t: context.tenantId,
@@ -60,11 +65,18 @@ export async function brandAction(
       voice: v.voice,
       prohibitions: v.prohibitions
     }))
-  if (v.kind === 'approve')
-    ({ error } = await db.rpc('approve_brand', {
+  if (v.kind === 'approve') {
+    const before = await db
+      .from('brand_profiles')
+      .select('approved_revision')
+      .eq('tenant_id', context.tenantId)
+      .maybeSingle()
+    rewrites = before.data?.approved_revision !== v.revision
+    ;({ error } = await db.rpc('approve_brand', {
       t: context.tenantId,
       expected_revision: v.revision
     }))
+  }
   if (v.kind === 'product')
     ({ error } = await db.rpc('create_product', {
       t: context.tenantId,
@@ -90,14 +102,19 @@ export async function brandAction(
           ? 'Brand context changed. Refresh before approving.'
           : 'Could not save. Check permissions and field values.'
     }
+  // UI-BRAND-2: approving queued the Brand book's rewrite (in the same
+  // transaction); it runs right after this reply.
+  if (rewrites) rewriteBrandBookSoon(context.tenantId)
   revalidatePath('/setup')
-  revalidatePath('/settings/brand')
-  revalidatePath('/settings/brand/book')
+  revalidatePath('/brand')
+  revalidatePath('/brand/book')
   revalidatePath('/plan')
   return {
     message:
       v.kind === 'approve'
-        ? 'Brand version approved.'
+        ? rewrites
+          ? 'Brand version approved. Rewriting the Brand book.'
+          : 'Brand version approved.'
         : 'Saved. Refresh retains your changes.'
   }
 }

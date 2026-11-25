@@ -4,7 +4,7 @@ import { LoadingPage } from '@/components/gros/nav'
 export default function BrandBookLoading() {
   return (
     <LoadingPage
-      current="settings"
+      current="brand"
       title="Brand book"
       words="Opening your Brand book"
     />

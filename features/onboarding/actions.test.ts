@@ -93,10 +93,10 @@ describe('onboardingAction on Brand and Brand assets (UI-BRAND)', () => {
       expected_revision: 3
     })
     const paths = cache.revalidatePath.mock.calls.map((c) => c[0])
-    expect(paths).toEqual(
-      expect.arrayContaining(['/settings/brand', '/settings/assets'])
-    )
-    expect(paths).not.toContain('/brand')
+    // UI-BRAND-2: Brand is a main page, Brand assets under it.
+    expect(paths).toEqual(expect.arrayContaining(['/brand', '/brand/assets']))
+    expect(paths).not.toContain('/settings/brand')
+    expect(paths).not.toContain('/settings/assets')
     expect(paths).not.toContain('/assets')
   })
 })

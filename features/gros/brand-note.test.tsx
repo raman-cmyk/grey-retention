@@ -35,6 +35,6 @@ describe('BrandNote (UI-ASK)', () => {
     expect(note).toHaveTextContent('1 more difference on the Brand page.')
     expect(
       screen.getByRole('link', { name: 'Open the Brand profile' })
-    ).toHaveAttribute('href', '/settings/brand')
+    ).toHaveAttribute('href', '/brand')
   })
 })

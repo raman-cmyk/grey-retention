@@ -110,6 +110,7 @@ function view(
       }
     ],
     book: { version: 5, writtenAt: '2026-11-24T10:00:00Z' },
+    rewrite: null,
     ...over
   }
 }
@@ -121,18 +122,45 @@ const formOf = (el: HTMLElement) =>
   )
 
 describe('BrandScreen', () => {
-  it('is a GROS page under Settings with the way back', () => {
+  it('is a main page with the Brand book and Brand assets under it (UI-BRAND-2)', () => {
     render(<BrandScreen view={view()} />)
     expect(
       screen.getByRole('heading', { name: 'Brand', level: 1 })
     ).toBeVisible()
-    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute(
+    const menu = within(screen.getByRole('navigation', { name: 'Main' }))
+    expect(menu.getByRole('link', { name: 'Brand' })).toHaveAttribute(
       'aria-current',
       'page'
     )
+    expect(screen.getByRole('link', { name: 'Settings' })).not.toHaveAttribute(
+      'aria-current'
+    )
+    expect(screen.queryByRole('link', { name: 'Back to Settings' })).toBeNull()
     expect(
-      screen.getByRole('link', { name: 'Back to Settings' })
-    ).toHaveAttribute('href', '/settings')
+      within(card('Brand book')).getByRole('link', {
+        name: 'Review Brand book'
+      })
+    ).toHaveAttribute('href', '/brand/book')
+    expect(
+      within(card('Brand assets')).getByRole('link', {
+        name: 'Open brand assets'
+      })
+    ).toHaveAttribute('href', '/brand/assets')
+  })
+
+  it('says on the Brand book card while the book is rewritten, or was not', () => {
+    render(<BrandScreen view={view({ rewrite: 'writing' })} />)
+    expect(within(card('Brand book')).getByText('Rewriting')).toBeVisible()
+    cleanup()
+    render(<BrandScreen view={view({ rewrite: 'failed' })} />)
+    const book = card('Brand book')
+    expect(within(book).getByText('Needs you')).toBeVisible()
+    expect(book).toHaveTextContent(
+      'The Brand book was not rewritten. Open it to try again.'
+    )
+    cleanup()
+    render(<BrandScreen view={view()} />)
+    expect(within(card('Brand book')).queryByText('Rewriting')).toBeNull()
   })
 
   it('asks the owner to approve exactly the version shown', async () => {
@@ -184,7 +212,7 @@ describe('BrandScreen', () => {
     expect(book).toHaveTextContent('Version5')
     expect(
       within(book).getByRole('link', { name: 'Review Brand book' })
-    ).toHaveAttribute('href', '/settings/brand/book')
+    ).toHaveAttribute('href', '/brand/book')
     render(<BrandScreen view={view({ book: null })} />)
     expect(
       screen.getAllByRole('region', { name: 'Brand book' })[1]
@@ -200,7 +228,7 @@ describe('BrandScreen', () => {
     expect(failed).not.toHaveTextContent('Not written yet')
     expect(
       within(failed).getByRole('link', { name: 'Try again' })
-    ).toHaveAttribute('href', '/settings/brand')
+    ).toHaveAttribute('href', '/brand')
   })
 
   it('anchors the Brand version card the Brand book links to', () => {
@@ -448,7 +476,7 @@ describe('BrandScreen', () => {
     )
     expect(screen.getByRole('link', { name: 'Try again' })).toHaveAttribute(
       'href',
-      '/settings/brand'
+      '/brand'
     )
   })
 })

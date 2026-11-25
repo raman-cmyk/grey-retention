@@ -65,8 +65,8 @@ function failed(error: { code?: string; message?: string }) {
 
 function refresh() {
   for (const path of [
-    '/settings/brand',
-    '/settings/brand/book',
+    '/brand',
+    '/brand/book',
     '/settings',
     '/home',
     '/setup',

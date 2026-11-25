@@ -7425,6 +7425,7 @@ export type Database = {
         Returns: string
       }
       begin_klaviyo_key_check: { Args: { t: string }; Returns: undefined }
+      brand_book_writes_waiting: { Args: never; Returns: number }
       change_fixture_profile_evidence: {
         Args: {
           bounce: boolean
@@ -7448,6 +7449,35 @@ export type Database = {
         Returns: undefined
       }
       check_pending_subscriptions: { Args: never; Returns: number }
+      claim_brand_book_write: {
+        Args: { t?: string }
+        Returns: {
+          attempt: number
+          available_at: string
+          campaign_id: string | null
+          checkpoint: Json
+          created_at: string
+          created_by: string
+          error_code: string | null
+          failure_class: string | null
+          id: string
+          idempotency_key: string
+          input: Json
+          kind: string
+          lease_token: string | null
+          lease_until: string | null
+          max_attempts: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'job_runs'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_email_build: {
         Args: { target?: string }
         Returns: {
@@ -7719,6 +7749,10 @@ export type Database = {
         }
         Returns: string
       }
+      correct_brand_book_at: {
+        Args: { corrections: Json; expected_version: number; t: string }
+        Returns: number
+      }
       create_conversation: {
         Args: { t: string; title: string; visibility?: string }
         Returns: string
@@ -7964,6 +7998,16 @@ export type Database = {
           variant_id: string
         }[]
       }
+      finish_brand_book_write: {
+        Args: {
+          based_on: number
+          content: Json
+          job: string
+          lease: string
+          written_by: string
+        }
+        Returns: number
+      }
       finish_capture_job: {
         Args: { job: string; lease: string; output: Json }
         Returns: undefined
@@ -8165,6 +8209,10 @@ export type Database = {
       }
       preview_optimizer: {
         Args: { observed_at: string; t: string }
+        Returns: string
+      }
+      queue_brand_book_write_as_worker: {
+        Args: { cause: string; ref: string; t: string }
         Returns: string
       }
       queue_ready_l1: { Args: { t: string }; Returns: number }
@@ -8560,6 +8608,7 @@ export type Database = {
         Args: { expected_revision: number; rule: string; t: string }
         Returns: number
       }
+      retry_brand_book_write: { Args: { t: string }; Returns: string }
       retry_email_file_import: {
         Args: { import: string; t: string }
         Returns: string
@@ -8925,6 +8974,10 @@ export type Database = {
       }
       withdraw_brand_book_correction: {
         Args: { correction: string; t: string }
+        Returns: undefined
+      }
+      withdraw_brand_book_correction_at: {
+        Args: { correction: string; expected_version: number; t: string }
         Returns: undefined
       }
     }

@@ -4,7 +4,7 @@ import { LoadingPage } from '@/components/gros/nav'
 export default function AssetsLoading() {
   return (
     <LoadingPage
-      current="settings"
+      current="brand"
       title="Brand assets"
       words="Opening your brand files"
     />

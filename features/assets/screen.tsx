@@ -25,15 +25,15 @@ import {
 } from './view'
 
 /**
- * Brand assets (UI-BRAND), a GROS page under Settings at
- * `/settings/assets`: upload the brand's own images (private originals,
+ * Brand assets (UI-BRAND), a GROS page under Brand at
+ * `/brand/assets` (UI-BRAND-2): upload the brand's own images (private originals,
  * no product photo is ever generated), the files with their sorting and
  * the owner's corrections, the recent uploads, the brand kit and, for the
  * owner only, the sample data tools (test controls that never contact
  * Klaviyo or Google Drive). Every button calls the existing server action
  * (`importAssets`, `onboardingAction`), which checks again.
  */
-export const assetsHref = '/settings/assets' as const
+export const assetsHref = '/brand/assets' as const
 
 const control =
   'type-body w-full rounded-[var(--radius-md)] border-2 border-transparent bg-[var(--mist)] px-[var(--space-4)] text-[var(--ink)] focus:border-[var(--forest)] focus:bg-[var(--white)] focus:outline-none'
@@ -95,9 +95,9 @@ export function AssetsScreen({
   assistant?: string
 }) {
   return (
-    <AppPage current="settings" title="Brand assets" assistant={assistant}>
+    <AppPage current="brand" title="Brand assets" assistant={assistant}>
       <div>
-        <ButtonLink href="/settings" label="Back to Settings" kind="quiet" />
+        <ButtonLink href="/brand" label="Back to Brand" kind="quiet" />
       </div>
       {view.state === 'error' ? (
         <ErrorState
