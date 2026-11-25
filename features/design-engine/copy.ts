@@ -2,7 +2,7 @@ import type { Browser } from '@playwright/test'
 import type { BlockBrand } from '@/features/blocks/brand'
 import { GMAIL_CLIP_BYTES } from '@/features/blocks/render'
 import { previewFooterTags } from '@/features/blocks/klaviyo-tags'
-import { holdsFacts, type Lengthen } from './words'
+import { cleanEnd, holdsFacts, type Lengthen } from './words'
 import type { Blueprint, Column, Item, PartRole, Section } from './blueprint'
 import {
   desktopWindow,
@@ -386,8 +386,10 @@ export function shorten(text: string, share: number): string {
     const last = sentences.at(-1)!
     const rest = sentences.slice(0, -1).join(' ')
     // A sentence with a fact or a condition is never cut or dropped: it
-    // may limit a promise the others make ("Only on orders over $40").
-    if (holdsFacts(last)) return text
+    // may limit a promise the others make ("Only on orders over $40");
+    // and once one holds a fact, the sentences after it may qualify it
+    // ("Take 15% off. Not on gift sets."), so none of them goes either.
+    if (holdsFacts(last) || sentences.slice(0, -1).some(holdsFacts)) return text
     const room = want - (rest ? rest.length + 1 : 0)
     if (room >= Math.min(12, last.length)) {
       const cut = trimTo(last, room / last.length)
@@ -417,7 +419,7 @@ export function trimTo(text: string, share: number): string {
     out += ` ${w}`
   }
   if (out === text) out = words.slice(0, -1).join(' ')
-  return out.replace(/[\s,;:–—-]+$/, '')
+  return cleanEnd(out)
 }
 
 /** The writers' words a brand copy may cut at a word to fit its lines. */

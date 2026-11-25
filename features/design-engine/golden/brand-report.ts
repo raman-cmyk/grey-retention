@@ -2,11 +2,13 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Browser } from '@playwright/test'
 import { desktopWindow, measureHtml, phoneWindow, pictureOf } from '../browser'
-import { copyBlueprint, type CopyResult } from '../copy'
-import { leaksOf, type Leak } from '../leaks'
+import type { CopyResult } from '../copy'
+import type { Leak } from '../leaks'
 import { blueprintFrom } from '../measure'
 import { forStorage } from '../stored'
-import { swapBrand, swapOwnWords, type Cropper } from '../swap'
+import type { Cropper, SwapProduct } from '../swap'
+import { libraryCopy, withCutsInline } from '../library-copy'
+import type { PhotoTools } from '../photos'
 import {
   goldenStoreNames,
   testBrand,
@@ -77,40 +79,41 @@ async function sideBySide(
   }
 }
 
+/** A gate run's own photo tools and products (the noisy photo over a loopback server). */
+export type GateExtra = { tools?: PhotoTools; products?: SwapProduct[] }
+
 /** One library email copied for the test brand. */
 export async function brandCopy(
   browser: Browser,
   email: GoldenEmail,
-  cropper: Cropper | null
+  cropper: Cropper | 'canvas' | null,
+  extra: GateExtra = {}
 ) {
   const opened = await measureHtml(browser, email.html, desktopWindow)
   if (!opened.ok) return { ok: false as const, error: opened.error }
   const measured = blueprintFrom(opened.measurement)
   if (!measured.ok) return { ok: false as const, error: measured.error }
-  const full = measured.blueprint
-  const stored = forStorage(full)
-  const swapped = swapBrand({
+  const stored = forStorage(measured.blueprint)
+  // The way the browser job copies it (DES-ENGINE-002b): photos cut,
+  // swapped, drawn, checked, Footer block if needed, leak check.
+  const got = await libraryCopy(browser, {
     source: stored,
+    sourceHtml: email.html,
+    sourceNames: goldenStoreNames,
     brand: testBrand,
-    products: testProducts,
+    products: extra.products ?? testProducts,
     words: testWords,
     rules: testRules,
-    cropper
+    vocabulary: testVocabulary,
+    crop: cropper,
+    ...(extra.tools ? { tools: extra.tools } : {})
   })
-  if (!swapped.ok) return { ok: false as const, error: swapped.error }
-  const result = await copyBlueprint(browser, stored, swapped.target, {
-    blocked: swapped.blocked,
-    lengthen: swapped.lengthen,
-    brand: swapped.blockBrand
-  })
-  if (!result.ok) return { ok: false as const, error: result.error }
-  const leaks = leaksOf({
-    source: full,
-    sourceHtml: email.html,
-    html: result.html,
-    sourceNames: goldenStoreNames,
-    vocabulary: [...testVocabulary, ...swapOwnWords(testBrand)]
-  })
+  if (!got.ok) return { ok: false as const, error: got.error }
+  const { leaks, footerAdded, cuts, ...copy } = got
+  void footerAdded
+  // The pictures show the real cuts (the copy carries placeholders until
+  // they are hosted).
+  const result = { ...copy, html: withCutsInline(copy.html, cuts) }
   return { ok: true as const, result, leaks }
 }
 
@@ -118,12 +121,13 @@ export async function runBrandGate(
   browser: Browser,
   emails: readonly GoldenEmail[],
   out: string | null,
-  cropper: Cropper | null
+  cropper: Cropper | 'canvas' | null,
+  extra: GateExtra = {}
 ) {
   if (out) mkdirSync(out, { recursive: true })
   const rows: BrandRow[] = []
   for (const email of emails) {
-    const got = await brandCopy(browser, email, cropper).catch(
+    const got = await brandCopy(browser, email, cropper, extra).catch(
       (e: unknown) =>
         ({
           ok: false,

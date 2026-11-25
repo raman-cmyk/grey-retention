@@ -112,16 +112,16 @@ const percentSpelled = new RegExp(
 )
 /** Words that make a percent a discount (as copy QA reads them). */
 const discountBefore =
-  /(?:\b(?:save|saving|savings|up to|extra|take|get|enjoy|unlock|flat)|[-−])\s*$/i
+  /(?:\b(?:save|saving|savings|up to|extra|take|get|enjoy|unlock|flat|plus|additional|another)|[-−+])\s*$/i
 const discountAfter =
-  /^\s*-?\s*(?:off|discount|sale|savings?|reduction|cheaper|less)\b/i
+  /^\s*-?\s*(?:(?:off|discount|sale|savings?|reduction|cheaper|less)\b|(?:more|extra)\s+(?:off|discount|savings?)\b)/i
 const moneyOff = new RegExp(
   String.raw`(?:[$€£¥₹]\s?\d[\d.,]*|\b\d[\d.,]*\s?(?:[$€£¥₹]|${currency})|\b${spelled}\s+${currency})\s*(?:off|discount|back|less|cheaper)\b|\b(?:save|take|get|knock)\s+(?:up\s+to\s+)?(?:[$€£¥₹]\s?\d|\d[\d.,]*\s?(?:[$€£¥₹]|${currency})|${spelled}\s+${currency})`,
   'i'
 )
 /** Sale wording: was/now, now only $X, prices from $X, reduced… */
 const saleWords =
-  /\bwas\b[^.!?]{0,30}\bnow\b|\bnow\s+(?:only\s+)?[$€£¥₹\d]|\bonly\s+[$€£¥₹]|\b(?:prices?\s+)?(?:from|starting\s+at)\s+(?:just\s+)?[$€£¥₹]|\b(?:reduced|markdowns?|marked\s+down|clearance|sale\s+price)\b/i
+  /\bwas\b[^.!?]{0,30}\bnow\b|\bnow\s+(?:only\s+)?(?:[$€£¥₹]|\d[\d.,]*\s?(?:[$€£¥₹]|usd|eur|gbp|dollars?|euros?|pounds?)\b)|\bonly\s+[$€£¥₹]|\b(?:prices?\s+)?(?:from|starting\s+at)\s+(?:just\s+)?[$€£¥₹]|\b(?:reduced|markdowns?|marked\s+down|clearance|sale\s+price)\b/i
 /** Offers no code gives: half price, buy N get M, N for $X, spend X get Y… */
 const otherOffers = new RegExp(
   String.raw`\bhalf[\s-]+(?:off|price)\b|\bbogo\b|\bb\d+g\d+\b|\bbxgy\b|\bbuy\s+(?:\d+|${spelled}|any)\b[^.!?]{0,20}\bget\b|\b(?:\d+|${spelled})\s+for\s+(?:\d+|${spelled}|[$€£¥₹])|\bspend\s+[$€£¥₹]?\s?\d[^.!?]{0,30}\b(?:get|save|off)\b|\bgift\s+card\s+worth\b`,
@@ -132,7 +132,10 @@ const freeThings =
   /\bfree\s+(?:shipping|delivery|postage|returns?|gifts?|samples?|tote|bag|mini|trial)\b/i
 /** A code named in words: "use code X", "code: x", "coupon X", "promo code X". */
 const namedCode =
-  /\b(?:code|coupon|promo\s+code|voucher)\s*[:=]?\s*["'“]?([A-Za-z0-9][A-Za-z0-9_-]{2,})/gi
+  /\b(?:code|coupon|promo\s+code|voucher)\s*[:=]?\s*["'“]?([A-Za-z0-9][A-Za-z0-9_-]{2,})|\bpromo\s*[:=]\s*["'“]?([A-Za-z0-9][A-Za-z0-9_-]{2,})/gi
+/** Stock and scarcity claims no fact backs: "Only 5 left", "almost gone". */
+const stockClaims =
+  /\bonly\s+(?:\d+|a\s+few|few)\s+(?:left|remaining|in\s+stock)\b|\b\d+\s+left\s+in\s+stock\b|\b(?:low|limited)\s+stock\b|\bselling\s+(?:out|fast)\b|\balmost\s+(?:gone|sold\s+out)\b|\bsold\s+out\b|\bgoing\s+fast\b|\bwhile\s+(?:stocks?|supplies)\s+last\b/i
 /** "Enter X at checkout", "apply x in checkout". */
 const atCheckout =
   /\b(?:enter|use|apply|type|add)\s+(?:(?:the\s+)?(?:code|coupon|promo\s+code)\s+)?["'“]?([A-Za-z0-9][A-Za-z0-9_-]{2,})["'”]?\s+(?:at|in|during)\s+(?:the\s+)?checkout\b/gi
@@ -189,7 +192,8 @@ export function wordsAllowed(words: string, rules: WordRules): boolean {
     moneyOff.test(rest) ||
     saleWords.test(rest) ||
     otherOffers.test(rest) ||
-    freeThings.test(rest)
+    freeThings.test(rest) ||
+    stockClaims.test(rest)
   )
     return false
   const allowed = new Set(
@@ -206,8 +210,9 @@ export function wordsAllowed(words: string, rules: WordRules): boolean {
   const ownCode = offerOk ? offer!.code.toUpperCase() : null
   for (const pattern of [namedCode, atCheckout])
     for (const m of rest.matchAll(pattern)) {
-      if (notACode.test(m[1]!)) continue
-      if (m[1]!.toUpperCase() !== ownCode) return false
+      const code = m[1] ?? m[2]!
+      if (notACode.test(code)) continue
+      if (code.toUpperCase() !== ownCode) return false
     }
   for (const m of rest.matchAll(codeLike))
     if (m[0].toUpperCase() !== ownCode) return false
@@ -227,7 +232,7 @@ export function wordsAllowed(words: string, rules: WordRules): boolean {
 const conditions = new RegExp(
   [
     String.raw`\d|%|[$€£¥₹]`,
-    String.raw`\b(?:over|under|above|below)\s+(?:[$€£¥₹]|\d|${spelled}\b)`,
+    String.raw`\b(?:over|under|above|below)\s+(?:[$€£¥₹]|\d|${spelled}\s+${currency}\b)`,
     String.raw`\b(?:until|till|through|thru)\b`,
     String.raw`\bonly\s+(?:on|for|with|until|when|while|today|tonight|this|at|in|online|available)\b`,
     String.raw`\bwhen\s+you\b`,
@@ -237,6 +242,7 @@ const conditions = new RegExp(
     String.raw`\b(?:for|to)\s+new\s+(?:customers?|subscribers?|members?)\b|\bnew\s+customers?\s+only\b`,
     String.raw`\bselected\b|\bselect\s+(?:items|styles|products|lines)\b`,
     String.raw`\bexclud(?:e|es|ed|ing)\b|\bexclusions?\b|\bexcept\b`,
+    String.raw`\bnot\s+(?:on|for|in|available|valid|included|combinable|applicable)\b|\b(?:does|do)(?:\s+not|n['’]t)\s+apply\b|\bmembers?(?:\s+only)?\b|\bsubscribers?\s+only\b`,
     String.raw`\b(?:ends?|ending|expires?|expiring|valid|limited\s+(?:time|edition|stock|offer))\b`,
     String.raw`\b(?:terms|conditions)\s+apply\b|\bt\s?&\s?cs?\b`,
     String.raw`\bfree\s+(?:shipping|delivery|postage|returns?|gifts?|samples?)\b`,
@@ -245,6 +251,23 @@ const conditions = new RegExp(
   'i'
 )
 export const holdsFacts = (words: string) => conditions.test(words)
+
+/**
+ * A cut line's end made clean: no comma, colon or dash, and no small word
+ * left hanging ("…walk the rows at" → "…walk the rows").
+ */
+export function cleanEnd(text: string): string {
+  let out = text.replace(/[\s,;:–—-]+$/, '')
+  for (;;) {
+    const m =
+      /\s+(?:a|an|the|at|to|of|in|on|for|with|by|from|and|or|but|as|into|over|our|your|its|their|this|that|when|while|than|so)$/i.exec(
+        out
+      )
+    if (!m || m.index === 0) break
+    out = out.slice(0, m.index).replace(/[\s,;:–—-]+$/, '')
+  }
+  return out
+}
 
 /** Words cut at a space to at most `max` characters (one word at least). */
 export function cutTo(text: string, max: number): string {
@@ -255,7 +278,7 @@ export function cutTo(text: string, max: number): string {
     if (out.length + 1 + w.length > max) break
     out += ` ${w}`
   }
-  return out.replace(/[\s,;:–—-]+$/, '')
+  return cleanEnd(out)
 }
 
 /** Whole texts after `start`, while they fit in `max` characters (never a part of one). */
