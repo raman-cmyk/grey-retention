@@ -1,5 +1,5 @@
 import type { Browser } from '@playwright/test'
-import type { Blueprint, Section } from './blueprint'
+import type { Blueprint, Item, Section } from './blueprint'
 import { copyBlueprint, type CopyResult } from './copy'
 import { leaksOf, LeakCheckError, type Leak } from './leaks'
 import {
@@ -14,6 +14,7 @@ import {
   swapOwnWords,
   type Cropper,
   type SwapBrand,
+  type SwapPicture,
   type SwapProduct
 } from './swap'
 import type { WordPools, WordRules } from './words'
@@ -51,6 +52,12 @@ export type LibraryCopyInput = {
   origins?: readonly string[]
   /** The photo tools (tests); default: `photoTools` in this browser. */
   tools?: PhotoTools
+  /**
+   * Where a cut photo (an inline JPEG) is kept: its https address, or
+   * null. A Klaviyo drawing takes only https pictures, so the browser job
+   * hands each cut photo over here and uploads it after (DES-ENGINE-002b2).
+   */
+  host?: (inline: string, index: number) => string | null
 }
 
 export type LibraryCopyResult =
@@ -64,6 +71,29 @@ export type LibraryCopyResult =
 /** The reason a Footer block is added, after "Section n (footer)". */
 export const footerAddedWhy =
   'is the footer Klaviyo needs (the unsubscribe link and address), which the original did not have'
+
+/** The blueprint with each inline picture replaced by its hosted address. */
+function hosted(
+  bp: Blueprint,
+  host: (inline: string, index: number) => string | null
+): Blueprint {
+  const seen = new Map<string, string | null>()
+  const walk = (items: readonly Item[]): Item[] =>
+    items.map((item) => {
+      if (item.type === 'row')
+        return {
+          ...item,
+          columns: item.columns.map((c) => ({ ...c, items: walk(c.items) }))
+        }
+      if (item.type !== 'image' || !item.src?.startsWith('data:')) return item
+      if (!seen.has(item.src)) seen.set(item.src, host(item.src, seen.size))
+      return { ...item, src: seen.get(item.src) ?? null }
+    })
+  return {
+    ...bp,
+    sections: bp.sections.map((s) => ({ ...s, items: walk(s.items) }))
+  }
+}
 
 /** The blueprint with an empty footer section at its end, for the Footer block. */
 function withFooter(bp: Blueprint): Blueprint {
@@ -100,8 +130,13 @@ export async function libraryCopy(
         return { ...p, photo: photo ?? null }
       })
     )
+    const one = async (p: SwapPicture | null | undefined) =>
+      p ? ((await sizedPhotos(tools, [p]))[0] ?? null) : null
     const brand = {
       ...input.brand,
+      // The logo's own shape decides its width; a catalog keeps no sizes.
+      logo: await one(input.brand.logo),
+      logoOnDark: await one(input.brand.logoOnDark),
       photos: await sizedPhotos(tools, input.brand.photos ?? [])
     }
     const swapIn = {
@@ -117,7 +152,7 @@ export async function libraryCopy(
         : swapBrand({ ...swapIn, cropper: crop })
     if (!swapped.ok) return swapped
     let source = input.source
-    let target = swapped.target
+    let target = input.host ? hosted(swapped.target, input.host) : swapped.target
     const blocked = new Map(swapped.blocked)
     const footerAdded =
       !swapped.footer &&
