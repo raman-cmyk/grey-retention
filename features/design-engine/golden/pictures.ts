@@ -21,9 +21,15 @@ function chunk(type: string, data: Buffer) {
 const cache = new Map<string, string>()
 
 /** A `data:image/png` picture `width` × `height` (shown size) in one colour. */
-export function picture(width: number, height: number, color: string): string {
-  const w = Math.max(1, Math.round(width / 10))
-  const h = Math.max(1, Math.round(height / 10))
+export function picture(
+  width: number,
+  height: number,
+  color: string,
+  /** Every pixel (a store photo the real cut reads), not a tenth. */
+  full = false
+): string {
+  const w = Math.max(1, Math.round(full ? width : width / 10))
+  const h = Math.max(1, Math.round(full ? height : height / 10))
   const key = `${w}x${h}${color}`
   const known = cache.get(key)
   if (known) return known

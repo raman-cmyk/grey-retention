@@ -6,8 +6,9 @@ import type { CopyResult } from '../copy'
 import type { Leak } from '../leaks'
 import { blueprintFrom } from '../measure'
 import { forStorage } from '../stored'
-import type { Cropper } from '../swap'
-import { libraryCopy } from '../library-copy'
+import type { Cropper, SwapProduct } from '../swap'
+import { libraryCopy, withCutsInline } from '../library-copy'
+import type { PhotoTools } from '../photos'
 import {
   goldenStoreNames,
   testBrand,
@@ -78,11 +79,15 @@ async function sideBySide(
   }
 }
 
+/** A gate run's own photo tools and products (the noisy photo over a loopback server). */
+export type GateExtra = { tools?: PhotoTools; products?: SwapProduct[] }
+
 /** One library email copied for the test brand. */
 export async function brandCopy(
   browser: Browser,
   email: GoldenEmail,
-  cropper: Cropper | 'canvas' | null
+  cropper: Cropper | 'canvas' | null,
+  extra: GateExtra = {}
 ) {
   const opened = await measureHtml(browser, email.html, desktopWindow)
   if (!opened.ok) return { ok: false as const, error: opened.error }
@@ -96,15 +101,19 @@ export async function brandCopy(
     sourceHtml: email.html,
     sourceNames: goldenStoreNames,
     brand: testBrand,
-    products: testProducts,
+    products: extra.products ?? testProducts,
     words: testWords,
     rules: testRules,
     vocabulary: testVocabulary,
-    crop: cropper
+    crop: cropper,
+    ...(extra.tools ? { tools: extra.tools } : {})
   })
   if (!got.ok) return { ok: false as const, error: got.error }
-  const { leaks, footerAdded, ...result } = got
+  const { leaks, footerAdded, cuts, ...copy } = got
   void footerAdded
+  // The pictures show the real cuts (the copy carries placeholders until
+  // they are hosted).
+  const result = { ...copy, html: withCutsInline(copy.html, cuts) }
   return { ok: true as const, result, leaks }
 }
 
@@ -112,12 +121,13 @@ export async function runBrandGate(
   browser: Browser,
   emails: readonly GoldenEmail[],
   out: string | null,
-  cropper: Cropper | 'canvas' | null
+  cropper: Cropper | 'canvas' | null,
+  extra: GateExtra = {}
 ) {
   if (out) mkdirSync(out, { recursive: true })
   const rows: BrandRow[] = []
   for (const email of emails) {
-    const got = await brandCopy(browser, email, cropper).catch(
+    const got = await brandCopy(browser, email, cropper, extra).catch(
       (e: unknown) =>
         ({
           ok: false,

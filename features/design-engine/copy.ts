@@ -2,7 +2,7 @@ import type { Browser } from '@playwright/test'
 import type { BlockBrand } from '@/features/blocks/brand'
 import { GMAIL_CLIP_BYTES } from '@/features/blocks/render'
 import { previewFooterTags } from '@/features/blocks/klaviyo-tags'
-import { holdsFacts, type Lengthen } from './words'
+import { cleanEnd, holdsFacts, type Lengthen } from './words'
 import type { Blueprint, Column, Item, PartRole, Section } from './blueprint'
 import {
   desktopWindow,
@@ -419,7 +419,7 @@ export function trimTo(text: string, share: number): string {
     out += ` ${w}`
   }
   if (out === text) out = words.slice(0, -1).join(' ')
-  return out.replace(/[\s,;:–—-]+$/, '')
+  return cleanEnd(out)
 }
 
 /** The writers' words a brand copy may cut at a word to fit its lines. */

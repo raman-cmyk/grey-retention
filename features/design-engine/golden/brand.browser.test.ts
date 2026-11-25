@@ -3,9 +3,11 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Browser } from '@playwright/test'
 import { launch } from '@/lib/sandbox/browser.mjs'
-import { testCropper } from './brand'
+import { testCropper, testProducts } from './brand'
 import { runBrandGate } from './brand-report'
 import { libraryEmails } from './library'
+import { noisyPng, photoServer } from './noisy'
+import { photoTools } from '../photos'
 
 /**
  * DES-ENGINE-002's gate (owner plan of 25 November 2026, step 2 "Library
@@ -93,16 +95,44 @@ describe.skipIf(!on)('library 1:1 gate', () => {
   }, 600_000)
 
   it(`with the real centre cut (a canvas in the locked browser), at least ${canvasFloor} copy fully, with no leak`, async () => {
+    // The first product's photo is a detailed, noisy 1,600 × 1,000 photo
+    // on Shopify's photo host, served by a loopback server in pieces with
+    // no length (its JPEG cut is far larger than a blueprint keeps).
+    const server = await photoServer({
+      '/s/files/test/noisy-green.png': noisyPng(1600, 1000)
+    })
+    const products = testProducts.map((p, i) =>
+      i === 0
+        ? {
+            ...p,
+            photo: {
+              src: 'https://cdn.shopify.com/s/files/test/noisy-green.png',
+              width: 0,
+              height: 0,
+              alt: p.title
+            }
+          }
+        : p
+    )
     const rows = await runBrandGate(
       browser,
       emails,
       join(out, 'library-brand-canvas'),
-      'canvas'
-    )
+      'canvas',
+      { tools: photoTools(browser, { open: server.open }), products }
+    ).finally(server.close)
     expect(
       rows.filter((r) => r.error).map((r) => `${r.id}: ${r.error}`)
     ).toEqual([])
     expect(rows.flatMap((r) => r.leaks)).toEqual([])
+    // The noisy photo was cut and used (no section says it could not be).
+    expect(
+      rows.flatMap((r) =>
+        r.sections.filter((x) =>
+          /photo that could not be used/.test(x.fallback?.reason ?? '')
+        )
+      )
+    ).toEqual([])
     if (!only.length)
       expect(rows.filter((r) => r.pass).length).toBeGreaterThanOrEqual(
         canvasFloor

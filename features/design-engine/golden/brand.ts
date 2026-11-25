@@ -16,9 +16,10 @@ const pic = (
   width: number,
   height: number,
   color: string,
-  alt: string
+  alt: string,
+  full = false
 ): SwapPicture => {
-  const src = picture(width, height, color)
+  const src = picture(width, height, color, full)
   colourOf.set(src, color)
   return { src, width, height, alt }
 }
@@ -41,10 +42,10 @@ export const testBrand: SwapBrand = {
     pic(64, 64, '#5aa182', 'Fernhill on TikTok')
   ].map((p, i) => ({ ...p, href: `https://fernhill.example/follow/${i + 1}` })),
   photos: [
-    pic(1200, 600, '#8fa98f', 'Tea garden at dawn'),
-    pic(1200, 800, '#a7b89a', 'Teapot on a wooden bench'),
-    pic(960, 1200, '#b9c4a5', 'Leaves drying in baskets'),
-    pic(1200, 1200, '#c6cfb3', 'A cup of green tea')
+    pic(1200, 600, '#8fa98f', 'Tea garden at dawn', true),
+    pic(1200, 800, '#a7b89a', 'Teapot on a wooden bench', true),
+    pic(960, 1200, '#b9c4a5', 'Leaves drying in baskets', true),
+    pic(1200, 1200, '#c6cfb3', 'A cup of green tea', true)
   ],
   radius: 6,
   address: '12 Hill Lane, Greenfield'
@@ -62,7 +63,7 @@ const product = (
   price,
   compareAt,
   url: `https://fernhill.example/products/${id}`,
-  photo: pic(800, 800, color, title)
+  photo: pic(800, 800, color, title, true)
 })
 
 export const testProducts: SwapProduct[] = [
@@ -138,7 +139,7 @@ export const testWords: WordPools = {
 export const testCropper: Cropper = (photo, width, height) => {
   const color = colourOf.get(photo.src)
   if (!color) return null
-  return { ...pic(width, height, color, photo.alt), width, height }
+  return { ...pic(width, height, color, photo.alt, true), width, height }
 }
 
 /** Everything the test brand's content says. */

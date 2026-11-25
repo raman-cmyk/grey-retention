@@ -114,14 +114,14 @@ const percentSpelled = new RegExp(
 const discountBefore =
   /(?:\b(?:save|saving|savings|up to|extra|take|get|enjoy|unlock|flat|plus|additional|another)|[-−+])\s*$/i
 const discountAfter =
-  /^\s*-?\s*(?:off|discount|sale|savings?|reduction|cheaper|less|more|extra)\b/i
+  /^\s*-?\s*(?:(?:off|discount|sale|savings?|reduction|cheaper|less)\b|(?:more|extra)\s+(?:off|discount|savings?)\b)/i
 const moneyOff = new RegExp(
   String.raw`(?:[$€£¥₹]\s?\d[\d.,]*|\b\d[\d.,]*\s?(?:[$€£¥₹]|${currency})|\b${spelled}\s+${currency})\s*(?:off|discount|back|less|cheaper)\b|\b(?:save|take|get|knock)\s+(?:up\s+to\s+)?(?:[$€£¥₹]\s?\d|\d[\d.,]*\s?(?:[$€£¥₹]|${currency})|${spelled}\s+${currency})`,
   'i'
 )
 /** Sale wording: was/now, now only $X, prices from $X, reduced… */
 const saleWords =
-  /\bwas\b[^.!?]{0,30}\bnow\b|\bnow\s+(?:only\s+)?[$€£¥₹\d]|\bonly\s+[$€£¥₹]|\b(?:prices?\s+)?(?:from|starting\s+at)\s+(?:just\s+)?[$€£¥₹]|\b(?:reduced|markdowns?|marked\s+down|clearance|sale\s+price)\b/i
+  /\bwas\b[^.!?]{0,30}\bnow\b|\bnow\s+(?:only\s+)?(?:[$€£¥₹]|\d[\d.,]*\s?(?:[$€£¥₹]|usd|eur|gbp|dollars?|euros?|pounds?)\b)|\bonly\s+[$€£¥₹]|\b(?:prices?\s+)?(?:from|starting\s+at)\s+(?:just\s+)?[$€£¥₹]|\b(?:reduced|markdowns?|marked\s+down|clearance|sale\s+price)\b/i
 /** Offers no code gives: half price, buy N get M, N for $X, spend X get Y… */
 const otherOffers = new RegExp(
   String.raw`\bhalf[\s-]+(?:off|price)\b|\bbogo\b|\bb\d+g\d+\b|\bbxgy\b|\bbuy\s+(?:\d+|${spelled}|any)\b[^.!?]{0,20}\bget\b|\b(?:\d+|${spelled})\s+for\s+(?:\d+|${spelled}|[$€£¥₹])|\bspend\s+[$€£¥₹]?\s?\d[^.!?]{0,30}\b(?:get|save|off)\b|\bgift\s+card\s+worth\b`,
@@ -252,6 +252,23 @@ const conditions = new RegExp(
 )
 export const holdsFacts = (words: string) => conditions.test(words)
 
+/**
+ * A cut line's end made clean: no comma, colon or dash, and no small word
+ * left hanging ("…walk the rows at" → "…walk the rows").
+ */
+export function cleanEnd(text: string): string {
+  let out = text.replace(/[\s,;:–—-]+$/, '')
+  for (;;) {
+    const m =
+      /\s+(?:a|an|the|at|to|of|in|on|for|with|by|from|and|or|but|as|into|over|our|your|its|their|this|that|when|while|than|so)$/i.exec(
+        out
+      )
+    if (!m || m.index === 0) break
+    out = out.slice(0, m.index).replace(/[\s,;:–—-]+$/, '')
+  }
+  return out
+}
+
 /** Words cut at a space to at most `max` characters (one word at least). */
 export function cutTo(text: string, max: number): string {
   if (text.length <= max) return text
@@ -261,7 +278,7 @@ export function cutTo(text: string, max: number): string {
     if (out.length + 1 + w.length > max) break
     out += ` ${w}`
   }
-  return out.replace(/[\s,;:–—-]+$/, '')
+  return cleanEnd(out)
 }
 
 /** Whole texts after `start`, while they fit in `max` characters (never a part of one). */

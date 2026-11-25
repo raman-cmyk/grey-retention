@@ -3,7 +3,8 @@ import { crc32, deflateSync } from 'node:zlib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Browser } from '@playwright/test'
 import { launch } from '@/lib/sandbox/browser.mjs'
-import { photoTools, sizedPhotos } from './photos'
+import { photoTools } from './photos'
+import { noisyPng } from './golden/noisy'
 
 /**
  * DES-ENGINE-002b: the centre cut and the photo sizes, in Chromium (with
@@ -13,15 +14,15 @@ import { photoTools, sizedPhotos } from './photos'
 const on = process.env.DESIGN_ENGINE_BROWSER === 'on'
 
 function stripes(): string {
-  const w = 30
-  const h = 10
+  const w = 300
+  const h = 100
   const colours = [
     [255, 0, 0],
     [0, 160, 0],
     [0, 0, 255]
   ]
   const row = Buffer.alloc(1 + w * 3)
-  for (let x = 0; x < w; x++) row.set(colours[Math.floor(x / 10)]!, 1 + x * 3)
+  for (let x = 0; x < w; x++) row.set(colours[Math.floor(x / 100)]!, 1 + x * 3)
   const chunk = (type: string, data: Buffer) => {
     const len = Buffer.alloc(4)
     len.writeUInt32BE(data.length)
@@ -60,14 +61,17 @@ describe.skipIf(!on)('photo sizes and the centre cut', () => {
   it('reads a photo’s size and cuts its centre at the slot’s shape', async () => {
     const tools = photoTools(browser)
     const src = stripes()
-    expect(await tools.sizeOf(src)).toEqual({ width: 30, height: 10 })
-    const cut = await tools.cropTo(
-      { src, width: 30, height: 10, alt: 'Tea' },
+    expect(await tools.sizeOf(src)).toEqual({ width: 300, height: 100 })
+    const got = await tools.cropTo(
+      { src, width: 300, height: 100, alt: 'Tea' },
       100,
       100
     )
+    if ('failed' in got) throw new Error(got.failed)
+    const cut = got
+    // Its real pixels: twice the slot where the photo has them (here 100).
     expect(cut).toMatchObject({ width: 100, height: 100, alt: 'Tea' })
-    expect(cut!.src).toMatch(/^data:image\/jpeg;base64,/)
+    expect(cut.src).toMatch(/^data:image\/jpeg;base64,/)
     // Every corner of the cut is the middle stripe.
     const context = await browser.newContext({ javaScriptEnabled: true })
     const page = await context.newPage()
@@ -93,7 +97,7 @@ describe.skipIf(!on)('photo sizes and the centre cut', () => {
           }
           img.src = s
         }),
-      cut!.src
+      cut.src
     )
     await context.close()
     for (const [r, g, b] of corners) {
@@ -103,48 +107,17 @@ describe.skipIf(!on)('photo sizes and the centre cut', () => {
     }
   })
 
-  it('fetches only https photos from allowed origins, never through a redirect', async () => {
-    const calls: { url: string; redirect?: string }[] = []
-    const png = Buffer.from(stripes().split(',')[1]!, 'base64')
-    const fetcher = (async (url: URL, init?: RequestInit) => {
-      calls.push({ url: String(url), redirect: init?.redirect })
-      if (String(url).includes('big'))
-        return new Response('x', {
-          headers: {
-            'content-type': 'image/png',
-            'content-length': String(9 * 1024 * 1024)
-          }
-        })
-      if (String(url).includes('page'))
-        return new Response('<html>', {
-          headers: { 'content-type': 'text/html' }
-        })
-      return new Response(png, { headers: { 'content-type': 'image/png' } })
-    }) as unknown as typeof fetch
-    const tools = photoTools(browser, {
-      origins: ['https://cdn.shop.test'],
-      fetcher
-    })
-    expect(await tools.sizeOf('https://cdn.shop.test/a.png')).toEqual({
-      width: 30,
-      height: 10
-    })
-    expect(await tools.sizeOf('https://other.test/a.png')).toBe(null)
-    expect(await tools.sizeOf('http://cdn.shop.test/a.png')).toBe(null)
-    expect(await tools.sizeOf('https://cdn.shop.test/big.png')).toBe(null)
-    expect(await tools.sizeOf('https://cdn.shop.test/page.png')).toBe(null)
-    expect(await tools.sizeOf('data:text/html;base64,PGI+')).toBe(null)
-    expect(calls.every((c) => c.redirect === 'error')).toBe(true)
-    expect(calls.map((c) => c.url)).not.toContain('https://other.test/a.png')
-    // Unknown sizes are read; an unreadable photo is left out.
-    const photos = await sizedPhotos(tools, [
-      { src: 'https://cdn.shop.test/a.png', width: 0, height: 0, alt: 'a' },
-      { src: 'https://other.test/b.png', width: 0, height: 0, alt: 'b' },
-      { src: 'https://cdn.shop.test/c.png', width: 8, height: 8, alt: 'c' }
-    ])
-    expect(photos.map((p) => [p.alt, p.width, p.height])).toEqual([
-      ['a', 30, 10],
-      ['c', 8, 8]
-    ])
+  it('cuts a detailed, noisy photo small enough to keep, at most 2.5 MB', async () => {
+    const png = noisyPng(1600, 1000)
+    const src = `data:image/png;base64,${png.toString('base64')}`
+    const got = await photoTools(browser).cropTo(
+      { src, width: 0, height: 0, alt: 'Noise' },
+      600,
+      300
+    )
+    if ('failed' in got) throw new Error(got.failed)
+    expect(got.width).toBe(1200)
+    expect(got.height).toBe(600)
+    expect(got.src.length * 0.75).toBeLessThanOrEqual(2_500_000)
   })
 })

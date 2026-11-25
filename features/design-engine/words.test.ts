@@ -55,7 +55,7 @@ describe('brand words', () => {
   })
 
   it('cuts at a space, never inside a word', () => {
-    expect(cutTo('Brew a better cup of tea', 12)).toBe('Brew a')
+    expect(cutTo('Brew a better cup of tea', 12)).toBe('Brew')
     expect(cutTo('Short', 12)).toBe('Short')
     expect(trimTo('Brew a better cup, of tea', 0.75)).toBe('Brew a better cup')
     expect(trimTo('Word', 0.1)).toBe('Word')
@@ -235,5 +235,23 @@ describe('brand words', () => {
     expect(
       wordsAllowed('Only 5 left', { ...rules, claims: ['Only 5 left'] })
     ).toBe(true)
+  })
+
+  it('a percent or "now" that is not about price passes', () => {
+    for (const words of [
+      '50% more leaves in every tin',
+      'Now 30% stronger flavour',
+      'Now 3 new blends'
+    ])
+      expect(wordsAllowed(words, rules), words).toBe(true)
+    expect(wordsAllowed('Now $12', { ...rules, amounts: [] })).toBe(false)
+    expect(wordsAllowed('5% more off', rules)).toBe(false)
+  })
+
+  it('a cut never ends on a hanging small word', () => {
+    expect(
+      trimTo('Our pickers walk the rows at first light when it is cool', 0.6)
+    ).toBe('Our pickers walk the rows')
+    expect(cutTo('Brew a better cup of tea', 15)).toBe('Brew a better')
   })
 })
