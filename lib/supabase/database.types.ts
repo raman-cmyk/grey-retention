@@ -3395,6 +3395,70 @@ export type Database = {
           }
         ]
       }
+      email_copies: {
+        Row: {
+          build_id: string
+          cleaned_at: string | null
+          created_at: string
+          failure: string | null
+          inbox_message_id: string
+          input: Json
+          photos: number
+          result: Json | null
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          build_id: string
+          cleaned_at?: string | null
+          created_at?: string
+          failure?: string | null
+          inbox_message_id: string
+          input: Json
+          photos?: number
+          result?: Json | null
+          state?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          build_id?: string
+          cleaned_at?: string | null
+          created_at?: string
+          failure?: string | null
+          inbox_message_id?: string
+          input?: Json
+          photos?: number
+          result?: Json | null
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_copies_inbox_message_id_fkey'
+            columns: ['inbox_message_id']
+            isOneToOne: false
+            referencedRelation: 'inbox_messages'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_copies_tenant_id_build_id_fkey'
+            columns: ['tenant_id', 'build_id']
+            isOneToOne: false
+            referencedRelation: 'email_builds'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'email_copies_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       email_file_imports: {
         Row: {
           attachment_count: number | null
@@ -7496,6 +7560,15 @@ export type Database = {
           timezone: string
         }[]
       }
+      claim_email_copy: {
+        Args: never
+        Returns: {
+          attempt: number
+          id: string
+          lease_token: string
+          subject_key: string
+        }[]
+      }
       claim_email_file_import: {
         Args: { import: string; t: string }
         Returns: {
@@ -7689,6 +7762,7 @@ export type Database = {
           timezone: string
         }[]
       }
+      clean_email_copy: { Args: { build: string }; Returns: undefined }
       complete_asset_import: {
         Args: { import_id: string; t: string }
         Returns: undefined
@@ -8283,6 +8357,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      record_email_copy: {
+        Args: { failure?: string; job: string; lease: string; result?: Json }
+        Returns: string
+      }
       record_email_render: {
         Args: {
           bytes: number
@@ -8478,6 +8556,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      release_email_copy: {
+        Args: { job: string; lease: string }
+        Returns: undefined
+      }
       release_inbox_blueprint: {
         Args: { job: string; lease: string }
         Returns: undefined
@@ -8491,6 +8573,16 @@ export type Database = {
           ticket: string
         }
         Returns: undefined
+      }
+      request_email_copy: {
+        Args: {
+          build: string
+          input: Json
+          lease: string
+          message: string
+          photos?: number
+        }
+        Returns: Json
       }
       request_email_render: {
         Args: {

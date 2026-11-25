@@ -94,6 +94,9 @@ export function localEnvironment(status) {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: status.anon,
     SUPABASE_SERVICE_ROLE_KEY: status.service,
     GREY_LOCAL_E2E: '1',
+    // DES-ENGINE-002b2: Copy copies the chosen design in local fake mode
+    // (the copying job runs only when a journey or a developer runs it).
+    DESIGN_LIBRARY_COPY: 'on',
     CRON_SECRET: status.cronSecret
   }
 }

@@ -1,3 +1,4 @@
+import { klaviyoFooterTags } from '../blocks/klaviyo-tags'
 import { partsOf, textOf, type Blueprint, type Item } from './blueprint'
 
 /**
@@ -60,7 +61,12 @@ export const decode = (s: string) =>
     .replace(/&#x([0-9a-f]+);/gi, (_, n: string) =>
       String.fromCodePoint(parseInt(n, 16))
     )
-    .replace(/&([a-z]+);/gi, (m, n: string) => named[n.toLowerCase()] ?? m)
+    // A named character this table lacks (&rarr;, &hearts;) is a sign, never
+    // a word a reader sees: read as a space, not as its name.
+    .replace(
+      /&([a-z]+[0-9]*);/gi,
+      (_, n: string) => named[n.toLowerCase()] ?? ' '
+    )
 
 /** The words of a text, lower case, letters and digits only. */
 export const wordsIn = (text: string) =>
@@ -114,8 +120,38 @@ export type ReadEmail = {
   addresses: string[]
 }
 
+/** The engine's own Klaviyo tags (`klaviyoFooterTags`) and their labels. */
+const ownTags = Object.values(klaviyoFooterTags).map((tag) => ({
+  tag,
+  label: /"([^"]*)"/.exec(tag)?.[1] ?? ''
+}))
+
+/** The email with the engine's own Klaviyo tags replaced by their labels. */
+export function withoutOwnTags(html: string): string {
+  let out = html
+  for (const { tag, label } of ownTags)
+    out = out.split(tag).join(label ? ` ${label} ` : ' ')
+  return out
+}
+
+/**
+ * DES-ENGINE-002b2: template code a copy shows that is not one of the
+ * engine's own Klaviyo tags (`{{ "Acme Deals" }}`, `{% with … %}`): it
+ * could print anything when Klaviyo sends, so it is a leak (short excerpts).
+ */
+export function klaviyoCode(html: string): string[] {
+  return [
+    ...withoutOwnTags(html).matchAll(/\{\{[\s\S]{0,60}|\{%[\s\S]{0,60}/g)
+  ].map((m) => m[0].slice(0, 80))
+}
+
 /** Everything a reader may see of an email, and every address it reaches. */
-export function readEmail(html: string): ReadEmail {
+export function readEmail(email: string): ReadEmail {
+  // DES-ENGINE-002b2: Klaviyo's own footer tags, exactly as the engine
+  // writes them, are code Klaviyo fills when it sends, not words a reader
+  // sees: only their labels are read. Any other `{{`/`{%` stays as it is
+  // (`klaviyoCode` reports it in a copy).
+  const html = withoutOwnTags(email)
   const texts: string[] = []
   const addresses: string[] = []
   const title = /<title(?:\s[^>]*)?>([\s\S]*?)<\/title>/i.exec(html)
@@ -270,6 +306,7 @@ export function leaksOf(input: {
   }
   const files = new Set(sourceAddresses.flatMap((a) => fileName(a) ?? []))
   const ours = readEmail(input.html)
+  for (const code of klaviyoCode(input.html)) add({ kind: 'word', value: code })
   for (const a of ours.addresses) {
     const kind = /\.(?:png|jpe?g|gif|webp|svg|avif)$|^data:image/i.test(
       addressKey(a)

@@ -291,14 +291,17 @@ export function swapBrand(input: SwapInput): SwapResult {
     const view: TextRun[] = [
       { text: 'View in browser', tag: 'web_view', underline: true, color }
     ]
+    // DES-ENGINE-002b2: Klaviyo's "view in browser" link too, in every
+    // footer with links (the push refuses an email without it).
+    const all: TextRun[] = [...links, { text: ' · ' }, ...view]
     const lines = withLinks
       ? count >= 4
         ? [org, why, links, view]
         : count === 3
-          ? [org, why, links]
+          ? [org, why, all]
           : count === 2
-            ? [org, links]
-            : [[...org, { text: ' · ' }, ...links]]
+            ? [org, all]
+            : [[...org, { text: ' · ' }, ...all]]
       : count >= 2
         ? [[{ text: brand.name }], why]
         : [why]

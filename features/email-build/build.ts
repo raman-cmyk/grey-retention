@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { copiedSection } from './library-copy'
 import { emailFormats, type EmailFormat } from '@/features/strategy/plan'
 import { InMemoryMemoryStore, type MemoryStore } from '@/features/agents/memory'
 import {
@@ -153,7 +154,19 @@ export const builtEmail = z.object({
    * variations, half the audience each, no winner picked. Never with
    * `designA` (one test an email) or on a text email.
    */
-  subjectB: z.string().min(1).max(120).optional()
+  subjectB: z.string().min(1).max(120).optional(),
+  /**
+   * DES-ENGINE-002b2: a copy of the inspiration email the owner chose
+   * ("Use this design", Copy): each section's outcome, and why one was
+   * built from a library block or left out (the email's page says so).
+   */
+  library: z
+    .object({
+      emailId: z.string().max(80),
+      sections: z.array(copiedSection).max(41),
+      footerAdded: z.boolean()
+    })
+    .optional()
 })
 export type BuiltEmail = z.infer<typeof builtEmail>
 

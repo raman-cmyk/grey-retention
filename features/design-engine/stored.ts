@@ -16,11 +16,12 @@ import { blueprintFrom } from './measure'
 
 /**
  * The version of what the measuring job stores: the blueprint schema and
- * the measuring code. Bumped with either; the app answers a job that
+ * the measuring code, and (DES-ENGINE-002b2) the library copy the copy
+ * browser job makes with them. Bumped with any; the app answers a job that
  * measured with another version by trying it again later (a browser job
  * and the app may briefly run different code after a merge).
  */
-export const ENGINE_VERSION = '2026-11-25.3'
+export const ENGINE_VERSION = '2026-11-25.4'
 
 /** A web address written in words, blanked letter for letter (its length stays). */
 /**

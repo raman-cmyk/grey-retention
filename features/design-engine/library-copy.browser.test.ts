@@ -59,7 +59,9 @@ describe.skipIf(!on)('a library copy (DES-ENGINE-002b)', () => {
     expect(got).toEqual({
       ok: false,
       error:
-        'The leak check needs the original email’s own HTML, not only its stored blueprint.'
+        'The leak check needs the original email’s own HTML, not only its stored blueprint.',
+      // The same every time: never tried again.
+      retry: false
     })
   })
 })

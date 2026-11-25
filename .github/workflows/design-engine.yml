@@ -18,6 +18,11 @@ name: Design engine
 # design-golden/library-brand (and library-brand-no-crop: the same without
 # a photo cropper, as live stores are today).
 #
+# DES-ENGINE-002b2: the same 20 copies, drawn for Klaviyo, also go through
+# the email's hard checks as Create email stores them (Gmail size, links,
+# Klaviyo's footer, alt text, the max discount, spam, accessibility); at
+# least 18 must pass. The copy job loads the engine as the blueprint job.
+#
 # The results, a summary and a side-by-side picture of every email (the
 # original, the redraw, the redraw on a phone and both layouts as grey
 # boxes) are uploaded as the `design-golden` artifact on every run, so the
@@ -31,9 +36,13 @@ on:
       - 'lib/sandbox/**'
       - 'scripts/inbox-screenshots.mjs'
       - 'scripts/inbox-blueprints.mjs'
+      - 'scripts/design-copies.mjs'
       - 'scripts/ts-hooks.mjs'
       - 'scripts/ts-register.mjs'
       - 'scripts/section-render.mjs'
+      - 'features/email-build/library-copy.ts'
+      - 'features/email-build/library-copy.browser.test.ts'
+      - 'features/email-build/hard-checks.ts'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/design-engine.yml'
@@ -45,8 +54,11 @@ on:
       - 'features/inbox/sections.ts'
       - 'lib/sandbox/**'
       - 'scripts/inbox-blueprints.mjs'
+      - 'scripts/design-copies.mjs'
       - 'scripts/ts-hooks.mjs'
       - 'scripts/ts-register.mjs'
+      - 'features/email-build/library-copy.ts'
+      - 'features/email-build/hard-checks.ts'
   workflow_dispatch:
 
 permissions:
@@ -90,12 +102,16 @@ jobs:
       # load everything that job loads the same way, so a TypeScript form
       # Node cannot strip, or an import it cannot find, fails here first.
       - name: The blueprint job loads the engine as production does
-        run: node --import ./scripts/ts-register.mjs -e "const m = await import('./features/design-engine/stored.ts'); await import('./scripts/inbox-blueprints.mjs'); await import('./features/design-engine/library-copy.ts'); await import('./features/design-engine/photos.ts'); if (typeof m.measureForStorage !== 'function' || !m.ENGINE_VERSION) process.exit(1)"
+        run: node --import ./scripts/ts-register.mjs -e "const m = await import('./features/design-engine/stored.ts'); await import('./scripts/inbox-blueprints.mjs'); await import('./features/design-engine/library-copy.ts'); await import('./features/design-engine/photos.ts'); await import('./scripts/design-copies.mjs'); await import('./features/email-build/library-copy.ts'); if (typeof m.measureForStorage !== 'function' || !m.ENGINE_VERSION) process.exit(1)"
       - name: Golden set and browser tests
         env:
           DESIGN_ENGINE_BROWSER: 'on'
           DESIGN_GOLDEN_OUT: design-golden
         run: pnpm exec vitest run features/design-engine
+      - name: Library copies through the email's hard checks
+        env:
+          DESIGN_ENGINE_BROWSER: 'on'
+        run: pnpm exec vitest run features/email-build/library-copy.browser.test.ts
       - if: always()
         uses: actions/upload-artifact@v4
         with:

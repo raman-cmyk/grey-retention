@@ -106,10 +106,35 @@ function Body({ view }: { view: View }) {
               {view.status === 'working' && <KeepFresh />}
             </Card>
           </CardRow>
+          {view.copied && <Copied lines={view.copied} />}
           <Designs email={view} />
         </>
       )
   }
+}
+
+/**
+ * DES-ENGINE-002b2: how the email you chose in Inspiration was copied:
+ * the first line says it, each next one names a section built from a
+ * library block (or left out) and why.
+ */
+function Copied({ lines }: { lines: readonly string[] }) {
+  const [first, ...sections] = lines
+  return (
+    <Card>
+      <h2 className="type-heading">The design you chose</h2>
+      <p className="type-body mt-[var(--space-5)]">{first}</p>
+      {sections.length > 0 && (
+        <ul className="mt-[var(--space-4)] flex flex-col gap-[var(--space-2)]">
+          {sections.map((line) => (
+            <li key={line} className="type-body">
+              {line}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
 }
 
 /** Open in Klaviyo: Klaviyo's campaigns list, where the draft is by its name. */

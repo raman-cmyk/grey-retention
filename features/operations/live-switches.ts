@@ -4,6 +4,7 @@ import { emailAgentsOn } from '@/features/email-build/agents'
 import { draftPushLive } from '@/features/klaviyo-push/live'
 import { klaviyoMode } from '@/features/connections/live-klaviyo'
 import { designStudioOn } from '@/features/studio/waits'
+import { libraryCopyOn } from '@/features/email-build/library-copy'
 import { inboxConfig } from '@/features/inbox/config'
 import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import { strategyAgentsOn } from '@/features/strategy/agents'
@@ -121,6 +122,20 @@ export function liveSwitches(env: Env = process.env): LiveSwitch[] {
             state: 'off',
             detail: 'Off: coded blocks only. Set DESIGN_STUDIO=on.'
           },
+    // DES-ENGINE-002b2: Copy in "Use this design" copies the chosen design.
+    libraryCopyOn(env)
+      ? {
+          label: 'Copy the chosen design',
+          state: 'on',
+          detail:
+            'On: “Use this design” with Copy copies the chosen email’s design for the brand, section by section (the copying job runs where the scheduled jobs are on, SCHEDULED_JOBS_ENABLED).'
+        }
+      : {
+          label: 'Copy the chosen design',
+          state: 'off',
+          detail:
+            'Off: Copy follows the chosen email’s order with coded blocks. Set DESIGN_LIBRARY_COPY=on.'
+        },
     klaviyoMode(env) === 'live'
       ? {
           label: 'Klaviyo reading',
