@@ -10,18 +10,25 @@
 --   its words and rules; never an address to fetch photos from: those are
 --   the server's fixed list); `result` the drawn email (cut photos as
 --   placeholders until the app signs their links), each section's outcome
---   and why, and the leak check. Members of the workspace read their own
---   copies (and operators every copy); nobody in a browser writes one.
+--   and why, the leak check, and each stored photo's path, tag and size.
+--   Members of the workspace read their own copies (and operators every
+--   copy); nobody in a browser writes one.
 -- * Job kind `design.copy`, leased like every platform job (4 tries), but
 --   claimed through `claim_email_copy`, whose lease is 10 minutes (photos
---   are fetched and cut, and the email drawn up to 6 times).
+--   are fetched and cut, and the email drawn up to 6 times); a job of a
+--   workspace that is not active waits an hour, no try counted.
 -- * Its cut photos go to the private bucket `email-copies`, at
---   `<workspace>/<build>/<n>.jpg` (JPEG, at most 3 MiB), through signed
---   upload links only; nobody in a browser reads or writes the bucket. A
---   copy is recorded only when every photo it names is stored there. The
---   push imports them into Klaviyo (rule 11).
+--   `<workspace>/<build>/<lease>/<n>.jpg` (JPEG, at most 3 MiB), through
+--   signed upload links that never overwrite; nobody in a browser reads or
+--   writes the bucket. A copy is recorded only when every photo it names is
+--   stored under its own claim's folder, and `result.stored` pins each one
+--   (path, tag, size): a stale claim cannot change a recorded photo, and
+--   the app checks the tag again before it signs a link. The push imports
+--   them into Klaviyo (rule 11). `cleaned_at`: the photos were removed
+--   (`clean_email_copy`, once the email no longer needs them).
 -- * Recording a copy (or its job failing for good) brings the build's
 --   design step forward (`not_before` now), so the next claim goes on.
+-- * Tenant first, then the build or copy (as every build-leased command).
 -- * The number is chosen at merge time (D24).
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -29,7 +36,7 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
   on conflict (id) do nothing;
 
 create table public.email_copies (
-  build_id uuid primary key references public.email_builds(id) on delete cascade,
+  build_id uuid primary key,
   tenant_id uuid not null references public.tenants(id),
   inbox_message_id uuid not null references public.inbox_messages(id),
   state text not null default 'queued' check (state in ('queued', 'done', 'failed')),
@@ -37,12 +44,15 @@ create table public.email_copies (
   result jsonb check (result is null or (jsonb_typeof(result) = 'object' and octet_length(result::text) <= 400000)),
   failure text check (failure ~ '^[a-z0-9_]{1,60}$'),
   photos integer not null default 0 check (photos between 0 and 24),
+  cleaned_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  foreign key (tenant_id, build_id) references public.email_builds (tenant_id, id) on delete cascade,
   check ((state = 'done') = (result is not null)),
   check ((state = 'failed') = (failure is not null))
 );
 create index email_copies_tenant on public.email_copies (tenant_id, created_at desc);
+create index email_copies_to_clean on public.email_copies (updated_at) where cleaned_at is null and state <> 'queued';
 alter table public.email_copies enable row level security;
 create policy email_copies_member_read on public.email_copies for select to authenticated
   using (private.is_active_member(tenant_id) or (select private.is_operator()));
@@ -59,14 +69,29 @@ alter table public.platform_jobs drop constraint platform_jobs_kind_check,
     check (kind in ('inbox.poll','inbox.assets','inbox.screenshot','inbox.label','inbox.confirm','inbox.variant',
                     'studio.render','studio.preview','inbox.blueprint','design.copy'));
 
+-- Only jobs (the service role) run the copy commands.
+create or replace function private.copy_job_role()
+returns void language plpgsql stable security definer set search_path='' as $$
+begin
+  if coalesce(auth.role(), '') <> 'service_role' then
+    raise exception 'Only jobs copy emails' using errcode = '42501';
+  end if;
+end $$;
+revoke all on function private.copy_job_role() from public, anon, authenticated, service_role;
+
 -- The design step asks for its copy (under its live lease). The first ask
 -- stores the input and queues the job; later asks only read the state.
 -- Returns {state, result, failure, photos}.
 create or replace function public.request_email_copy(build uuid, lease uuid, message uuid, input jsonb,
   photos integer default 0)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare b public.email_builds; c public.email_copies;
+declare b public.email_builds; c public.email_copies; t uuid;
 begin
+  perform private.copy_job_role();
+  -- Tenant first, then the build (as every build-leased command).
+  select e.tenant_id into t from public.email_builds e where e.id = build;
+  if not found then raise exception 'Lease unavailable' using errcode = 'PT409'; end if;
+  perform 1 from public.tenants where id = t for share;
   b := private.leased_email_build(build, lease, 'build_queued');
   if b.step is distinct from 'design' then
     raise exception 'Only the design step copies an email' using errcode = 'PT409', detail = 'not_design_step';
@@ -97,34 +122,57 @@ end $$;
 revoke all on function public.request_email_copy(uuid, uuid, uuid, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.request_email_copy(uuid, uuid, uuid, jsonb, integer) to service_role;
 
--- The browser job's claim: one copy job, leased for 10 minutes.
+-- The browser job's claim: one copy job of an active workspace, leased for
+-- 10 minutes. A job of a paused or closed workspace waits an hour and its
+-- try is given back (the next job is looked at).
 create or replace function public.claim_email_copy()
 returns table (id uuid, subject_key text, lease_token uuid, attempt integer)
 language plpgsql security definer set search_path='' as $$
-declare j record;
+declare j record; active boolean;
 begin
-  if coalesce(auth.role(), '') <> 'service_role' then
-    raise exception 'Only jobs copy emails' using errcode = '42501';
-  end if;
-  select c.id, c.subject_key, c.lease_token, c.attempt into j
-    from public.claim_platform_job(array['design.copy']) c;
-  if j.id is null then return; end if;
-  update public.platform_jobs p set lease_expires_at = now() + interval '10 minutes', updated_at = now()
-    where p.id = j.id and p.lease_token = j.lease_token;
-  return query select j.id, j.subject_key, j.lease_token, j.attempt;
+  perform private.copy_job_role();
+  for i in 1..10 loop
+    select c.id, c.subject_key, c.lease_token, c.attempt into j
+      from public.claim_platform_job(array['design.copy']) c;
+    if j.id is null then return; end if;
+    select coalesce(w.status = 'active', false) into active
+      from public.email_copies x join public.tenants w on w.id = x.tenant_id
+      where j.subject_key ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        and x.build_id = j.subject_key::uuid;
+    -- No copy row: handed out, and the job's side settles it.
+    if active is distinct from false then
+      update public.platform_jobs p set lease_expires_at = now() + interval '10 minutes', updated_at = now()
+        where p.id = j.id and p.lease_token = j.lease_token;
+      return query select j.id, j.subject_key, j.lease_token, j.attempt;
+      return;
+    end if;
+    update public.platform_jobs p
+      set status = 'retry_wait', lease_token = null, lease_expires_at = null,
+          attempt = greatest(0, p.attempt - 1), last_error_code = 'workspace_inactive',
+          available_at = now() + interval '1 hour', updated_at = now()
+      where p.id = j.id;
+  end loop;
 end $$;
 revoke all on function public.claim_email_copy() from public, anon, authenticated;
 grant execute on function public.claim_email_copy() to service_role;
 
 -- The browser job's result: the copy, or a reason it could not be made.
--- Once per build. Every photo it names must be stored at its own path
--- (`<workspace>/<build>/<n>.jpg`, n below the build's `photos`). Finishes
--- the job and brings the design step forward.
+-- Once per build. Every photo it names must be stored under this claim's
+-- own folder (`<workspace>/<build>/<lease>/<n>.jpg`, n below the build's
+-- `photos`); each is pinned in `result.stored` with its tag and size.
+-- Finishes the job and brings the design step forward.
 create or replace function public.record_email_copy(job uuid, lease uuid, result jsonb default null,
   failure text default null)
 returns text language plpgsql security definer set search_path='' as $$
-declare j public.platform_jobs; build uuid; c public.email_copies; n jsonb;
+declare j public.platform_jobs; build uuid; c public.email_copies; n jsonb; t uuid; o storage.objects;
+  stored jsonb := '[]'::jsonb; path text;
 begin
+  perform private.copy_job_role();
+  -- Tenant first, then the job and the copy.
+  select x.tenant_id into t from public.platform_jobs p join public.email_copies x
+    on p.subject_key ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' and x.build_id = p.subject_key::uuid
+    where p.id = job and p.kind = 'design.copy';
+  if t is not null then perform 1 from public.tenants where id = t for share; end if;
   j := private.platform_lease(job, lease);
   if j.kind <> 'design.copy' then raise exception 'Not a copy job' using errcode = '23514'; end if;
   build := j.subject_key::uuid;
@@ -148,15 +196,20 @@ begin
       if jsonb_typeof(n) <> 'number' or (n #>> '{}') !~ '^[0-9]{1,2}$' or (n #>> '{}')::integer >= c.photos then
         raise exception 'Invalid copy photo' using errcode = '23514';
       end if;
-      if not exists (select 1 from storage.objects o where o.bucket_id = 'email-copies'
-                     and o.name = c.tenant_id || '/' || c.build_id || '/' || (n #>> '{}') || '.jpg') then
+      path := c.tenant_id || '/' || c.build_id || '/' || lease || '/' || (n #>> '{}') || '.jpg';
+      select * into o from storage.objects s where s.bucket_id = 'email-copies' and s.name = path;
+      if not found or coalesce(o.metadata->>'eTag', '') = '' then
         raise exception 'Stored photo missing' using errcode = '23514';
       end if;
+      stored := stored || jsonb_build_array(jsonb_build_object('index', (n #>> '{}')::integer, 'path', path,
+        'etag', o.metadata->>'eTag', 'size', (o.metadata->>'size')::bigint));
     end loop;
   end if;
   update public.email_copies
     set state = case when record_email_copy.result is null then 'failed' else 'done' end,
-        result = record_email_copy.result, failure = record_email_copy.failure, updated_at = now()
+        result = case when record_email_copy.result is null then null
+                      else record_email_copy.result || jsonb_build_object('stored', stored) end,
+        failure = record_email_copy.failure, updated_at = now()
     where build_id = build and state = 'queued';
   update public.platform_jobs
     set status = 'succeeded', lease_token = null, lease_expires_at = null,
@@ -177,6 +230,7 @@ create or replace function public.release_email_copy(job uuid, lease uuid)
 returns void language plpgsql security definer set search_path = '' as $$
 declare j public.platform_jobs;
 begin
+  perform private.copy_job_role();
   j := private.platform_lease(job, lease);
   if j.kind <> 'design.copy' then raise exception 'Not a copy job' using errcode = '23514'; end if;
   update public.platform_jobs
@@ -188,12 +242,27 @@ end $$;
 revoke all on function public.release_email_copy(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.release_email_copy(uuid, uuid) to service_role;
 
--- A job that failed four times leaves its copy failed (the design step then
--- draws coded blocks and says why).
+-- The app removed a copy's photos (the email no longer needs them).
+create or replace function public.clean_email_copy(build uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  perform private.copy_job_role();
+  update public.email_copies set cleaned_at = now()
+    where build_id = build and state <> 'queued' and cleaned_at is null;
+end $$;
+revoke all on function public.clean_email_copy(uuid) from public, anon, authenticated;
+grant execute on function public.clean_email_copy(uuid) to service_role;
+
+-- A job that failed four times (its tries, or its leases running out)
+-- leaves its copy failed (the design step then draws coded blocks and says
+-- why). A job whose key is no build's (only a server bug could make one)
+-- is left alone: this runs inside every job claim's lease recovery, which
+-- must never stop on it.
 create or replace function private.fail_email_copy()
 returns trigger language plpgsql security definer set search_path='' as $$
 begin
-  if new.kind = 'design.copy' and new.status = 'failed' and old.status is distinct from 'failed' then
+  if new.kind = 'design.copy' and new.status = 'failed' and old.status is distinct from 'failed'
+     and new.subject_key ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
     update public.email_copies set state = 'failed', failure = 'copy_job_failed', updated_at = now()
       where build_id = new.subject_key::uuid and state = 'queued';
     update public.email_builds set not_before = now(), updated_at = now()
@@ -207,8 +276,10 @@ create trigger fail_email_copy after update of status on public.platform_jobs
   execute function private.fail_email_copy();
 
 -- The design studio's claim (DST-006b) never takes a design step waiting
--- for its library copy: the copy's own record brings that step forward, for
--- the ordinary claims. Otherwise as in 090079.
+-- for its library copy, nor one waiting for its blueprint to be measured
+-- (its saved work says `library`; no copy row yet) before its time: the
+-- copy's own record brings that step forward, for the ordinary claims.
+-- Otherwise as in 090079.
 create or replace function public.claim_studio_build(target uuid default null)
 returns table (id uuid, tenant_id uuid, state text, step text, progress jsonb, run_id uuid, slot integer,
   planned jsonb, email jsonb, push_key uuid, timezone text, start_on date, lease_token uuid)
@@ -235,6 +306,8 @@ begin
           and not exists (select 1 from public.email_renders v where v.build_id = e.id and v.state = 'queued')))
         -- DES-ENGINE-002b2: never a step waiting for its library copy.
         and not exists (select 1 from public.email_copies c where c.build_id = e.id and c.state = 'queued')
+        and not coalesce(e.progress->'work'->'design' ? 'library' and e.not_before > now()
+                 and not exists (select 1 from public.email_copies c where c.build_id = e.id and c.state <> 'queued'), false)
         and exists (select 1 from public.tenants w where w.id = e.tenant_id and w.status = 'active')
         and (target is null or e.id = target)
       order by e.updated_at, e.id

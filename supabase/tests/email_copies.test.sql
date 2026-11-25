@@ -1,5 +1,5 @@
 begin;
-select plan(46);
+select plan(66);
 
 -- DES-ENGINE-002b2: "Use this design" with Copy. The design step asks for
 -- a library copy of the chosen inspiration email; a browser job outside
@@ -49,12 +49,17 @@ $$;
 select ok(not bool_or(has_function_privilege(r, f, 'execute')), 'browser roles cannot ask for, claim, record or hand back a copy')
   from unnest(array['anon','authenticated']) r,
        unnest(array['public.request_email_copy(uuid,uuid,uuid,jsonb,integer)','public.claim_email_copy()',
-                    'public.record_email_copy(uuid,uuid,jsonb,text)','public.release_email_copy(uuid,uuid)']) f;
+                    'public.record_email_copy(uuid,uuid,jsonb,text)','public.release_email_copy(uuid,uuid)',
+                    'public.clean_email_copy(uuid)']) f;
 select ok(bool_and(has_function_privilege('service_role', f, 'execute')), 'jobs can')
   from unnest(array['public.request_email_copy(uuid,uuid,uuid,jsonb,integer)','public.claim_email_copy()',
-                    'public.record_email_copy(uuid,uuid,jsonb,text)','public.release_email_copy(uuid,uuid)']) f;
-select ok(not bool_or(has_function_privilege(r, 'private.fail_email_copy()', 'execute')), 'the failure trigger is not callable')
-  from unnest(array['anon','authenticated','service_role']) r;
+                    'public.record_email_copy(uuid,uuid,jsonb,text)','public.release_email_copy(uuid,uuid)',
+                    'public.clean_email_copy(uuid)']) f;
+select ok(not bool_or(has_function_privilege(r, f, 'execute')), 'the failure trigger and the role check are not callable')
+  from unnest(array['anon','authenticated','service_role']) r, unnest(array['private.fail_email_copy()','private.copy_job_role()']) f;
+select ok(exists (select 1 from pg_constraint where conrelid = 'public.email_copies'::regclass and contype = 'f'
+  and pg_get_constraintdef(oid) like 'FOREIGN KEY (tenant_id, build_id) REFERENCES email_builds(tenant_id, id) ON DELETE CASCADE'),
+  'a copy belongs to its build in the build''s own workspace');
 select ok(not bool_or(has_table_privilege(r, 'public.email_copies', p)), 'nobody writes copies but the commands, not even the worker')
   from unnest(array['anon','authenticated','service_role']) r, unnest(array['insert','update','delete','truncate']) p;
 select ok(not has_table_privilege('anon', 'public.email_copies', 'select'), 'anon cannot read copies');
@@ -78,19 +83,20 @@ select public.record_inbox_blueprint(current_setting('test.bjob')::uuid,
   (select lease_token from public.platform_jobs where id = current_setting('test.bjob')::uuid), pg_temp.bp());
 reset role;
 
--- Two planned emails of workspace 101.
+-- Four planned emails of workspace 101.
 select set_config('test.today', ((now() at time zone (select timezone from public.tenants where id = '00000000-0000-4000-8000-000000000101'))::date)::text, true);
 insert into public.strategy_runs (id, tenant_id, start_on, state, pulse, offer_pick, plan, created_by) values
   ('00000000-0000-4000-8000-00000000e501', '00000000-0000-4000-8000-000000000101', current_setting('test.today')::date, 'planned',
    '{"offers":[]}', '{"mode":"auto"}',
-   jsonb_build_object('slots', jsonb_build_array(
-     jsonb_build_object('date', (current_setting('test.today')::date + 2)::text, 'time', '10:00', 'emailType', 'launch'),
-     jsonb_build_object('date', (current_setting('test.today')::date + 3)::text, 'time', '10:00', 'emailType', 'launch'))),
+   jsonb_build_object('slots', (select jsonb_agg(jsonb_build_object('date', (current_setting('test.today')::date + 2 + i)::text,
+     'time', '10:00', 'emailType', 'launch')) from generate_series(0, 3) i)),
    '00000000-0000-4000-8000-000000000001');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
 set local role authenticated;
 select set_config('test.build', public.create_email_build('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-00000000e501', 0)::text, true);
 select set_config('test.build2', public.create_email_build('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-00000000e501', 1)::text, true);
+select set_config('test.build3', public.create_email_build('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-00000000e501', 2)::text, true);
+select set_config('test.build4', public.create_email_build('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-00000000e501', 3)::text, true);
 reset role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 set local role service_role;
@@ -104,6 +110,8 @@ select public.finish_email_step(current_setting('test.build')::uuid, pg_temp.lea
 select set_config('test.lease', pg_temp.lease(current_setting('test.build')::uuid)::text, true);
 select throws_ok($$select public.request_email_copy(current_setting('test.build')::uuid, gen_random_uuid(), current_setting('test.message')::uuid, '{}', 0)$$,
   'PT409', 'Lease unavailable', 'only under the build''s own lease');
+select throws_ok($$select public.request_email_copy(gen_random_uuid(), current_setting('test.lease')::uuid, current_setting('test.message')::uuid, '{}', 0)$$,
+  'PT409', 'Lease unavailable', 'never for a build that is not there');
 select throws_ok($$select pg_temp.ask(message => current_setting('test.bare')::uuid)$$, 'PT409', 'The inspiration email has no blueprint',
   'never an email with no measured blueprint');
 select throws_ok($$select pg_temp.ask('[]')$$, '22023', 'Invalid copy input', 'its input is an object');
@@ -122,7 +130,19 @@ select is((select count(*)::int from public.claim_studio_build(current_setting('
   'the design studio never takes a step waiting for its copy');
 select is((select count(*)::int from public.claim_email_build(current_setting('test.build')::uuid)), 0, 'nor does the sweep before its time');
 
--- Members read their own workspace's copies only.
+-- Waiting for its blueprint (no copy yet): the studio waits too, until its time is up.
+select set_config('test.lease3', pg_temp.to_design(current_setting('test.build3')::uuid)::text, true);
+select public.wait_email_round(current_setting('test.build3')::uuid, current_setting('test.lease3')::uuid, '{"library":{"waits":1}}', 1800);
+select is((select count(*)::int from public.claim_studio_build(current_setting('test.build3')::uuid)), 0,
+  'the design studio never takes a step waiting for its blueprint');
+reset role;
+update public.email_builds set not_before = now() - interval '1 second', updated_at = now() - interval '2 minutes'
+  where id = current_setting('test.build3')::uuid;
+set local role service_role;
+select is((select count(*)::int from public.claim_studio_build(current_setting('test.build3')::uuid)), 1,
+  'once its time is up, it takes it as before');
+
+-- Members read their own workspace's copies; platform admins every copy.
 reset role;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
 set local role authenticated;
@@ -135,13 +155,40 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 set local role authenticated;
 select is((select count(*)::int from public.email_copies), 0, 'another workspace''s owner reads none');
 reset role;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000000002","role":"authenticated"}', true);
+set local role authenticated;
+select is((select count(*)::int from public.email_copies), 1, 'a platform admin reads every copy');
+reset role;
 insert into storage.objects(bucket_id, name, metadata) values
-  ('email-copies', '00000000-0000-4000-8000-000000000101/' || current_setting('test.build') || '/0.jpg', '{"size":1000,"mimetype":"image/jpeg"}');
+  ('email-copies', '00000000-0000-4000-8000-000000000101/' || current_setting('test.build') || '/x/0.jpg', '{"size":1000,"mimetype":"image/jpeg"}');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
 set local role authenticated;
 select is((select count(*)::int from storage.objects where bucket_id = 'email-copies'), 0, 'no member reads the cut photos (signed links only)');
 reset role;
+
+-- Only jobs run the copy commands, even with the database role.
+select set_config('request.jwt.claims', '{}', true);
+set local role service_role;
+select throws_ok($$select public.claim_email_copy()$$, '42501', 'Only jobs copy emails', 'no claim without the job''s role');
+select throws_ok($$select public.record_email_copy(gen_random_uuid(), gen_random_uuid(), failure => 'copy_failed')$$,
+  '42501', 'Only jobs copy emails', 'no record without the job''s role');
+select throws_ok($$select public.release_email_copy(gen_random_uuid(), gen_random_uuid())$$,
+  '42501', 'Only jobs copy emails', 'no hand-back without the job''s role');
+reset role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+set local role service_role;
+
+-- A paused workspace's copy waits an hour, its try given back.
+reset role;
+update public.tenants set status = 'paused' where id = '00000000-0000-4000-8000-000000000101';
+set local role service_role;
+select is((select count(*)::int from public.claim_email_copy()), 0, 'a paused workspace''s copy is not handed out');
+select is((select status || ':' || attempt || ':' || last_error_code || ':' || (available_at > now() + interval '59 minutes')
+  from public.platform_jobs where kind = 'design.copy' and subject_key = current_setting('test.build')),
+  'retry_wait:0:workspace_inactive:true', 'it waits an hour, no try counted');
+reset role;
+update public.tenants set status = 'active' where id = '00000000-0000-4000-8000-000000000101';
+update public.platform_jobs set available_at = now() where kind = 'design.copy' and subject_key = current_setting('test.build');
 set local role service_role;
 
 -- The browser job claims the copy for 10 minutes.
@@ -151,7 +198,7 @@ select is((select subject_key from public.platform_jobs where id = current_setti
 select ok((select lease_expires_at > now() + interval '9 minutes' from public.platform_jobs where id = current_setting('test.job')::uuid), 'for 10 minutes');
 select is((select count(*)::int from public.claim_email_copy()), 0, 'one claim at a time');
 
--- What it records: a copy whose photos are all stored in the workspace's folder.
+-- What it records: a copy whose photos are all stored in this claim's folder.
 select throws_ok($$select public.record_email_copy(current_setting('test.job')::uuid, gen_random_uuid(), pg_temp.copy('[0]'))$$,
   'PT409', null, 'under the job''s own lease');
 select throws_ok($$select public.record_email_copy(current_setting('test.job')::uuid, current_setting('test.jl')::uuid)$$,
@@ -164,37 +211,83 @@ select throws_ok($$select public.record_email_copy(current_setting('test.job')::
   '23514', 'Invalid copy photo', 'only the photos it was given links for');
 reset role;
 insert into storage.objects(bucket_id, name, metadata) values
-  ('email-copies', '00000000-0000-4000-8000-000000000102/' || current_setting('test.build') || '/1.jpg', '{"size":1000,"mimetype":"image/jpeg"}');
+  ('email-copies', '00000000-0000-4000-8000-000000000101/' || current_setting('test.build') || '/' || current_setting('test.jl') || '/0.jpg',
+   '{"size":1000,"mimetype":"image/jpeg","eTag":"\"e0\""}'),
+  -- An older claim's photo, and one in another workspace's folder.
+  ('email-copies', '00000000-0000-4000-8000-000000000101/' || current_setting('test.build') || '/' || gen_random_uuid() || '/1.jpg',
+   '{"size":1000,"mimetype":"image/jpeg","eTag":"\"e1\""}'),
+  ('email-copies', '00000000-0000-4000-8000-000000000102/' || current_setting('test.build') || '/' || current_setting('test.jl') || '/1.jpg',
+   '{"size":1000,"mimetype":"image/jpeg","eTag":"\"e1\""}');
 set local role service_role;
 select throws_ok($$select public.record_email_copy(current_setting('test.job')::uuid, current_setting('test.jl')::uuid, pg_temp.copy('[0,1]'))$$,
-  '23514', 'Stored photo missing', 'a photo in another workspace''s folder is not the copy''s');
+  '23514', 'Stored photo missing', 'a photo of another claim or another workspace is not this copy''s');
 select is(public.record_email_copy(current_setting('test.job')::uuid, current_setting('test.jl')::uuid, pg_temp.copy('[0]')), 'done', 'the copy is recorded');
 select is((select state || ':' || (result->>'html') from public.email_copies where build_id = current_setting('test.build')::uuid), 'done:<p>copy</p>', 'and kept');
+select is((select result->'stored' from public.email_copies where build_id = current_setting('test.build')::uuid),
+  jsonb_build_array(jsonb_build_object('index', 0, 'path', '00000000-0000-4000-8000-000000000101/' || current_setting('test.build') || '/' || current_setting('test.jl') || '/0.jpg',
+    'etag', '"e0"', 'size', 1000)), 'with each photo pinned: its claim''s path, tag and size');
 select is((select status from public.platform_jobs where id = current_setting('test.job')::uuid), 'succeeded', 'its job is done');
 select ok((select not_before <= now() from public.email_builds where id = current_setting('test.build')::uuid), 'the waiting design step is brought forward');
 select throws_ok($$select public.record_email_copy(current_setting('test.job')::uuid, current_setting('test.jl')::uuid, pg_temp.copy('[0]'))$$,
   'PT409', null, 'a copy is recorded once');
-select set_config('test.lease', pg_temp.lease(current_setting('test.build')::uuid)::text, true);
-select ok(current_setting('test.lease') <> '', 'the next claim takes the build at once');
+reset role;
+update public.email_builds set updated_at = now() - interval '2 minutes' where id = current_setting('test.build')::uuid;
+set local role service_role;
+select set_config('test.lease', (select c.lease_token::text from public.claim_studio_build(current_setting('test.build')::uuid) c), true);
+select ok(current_setting('test.lease') <> '', 'once its copy is done, the design studio takes it as before');
 select is(pg_temp.ask()->>'state', 'done', 'and reads the done copy');
+select lives_ok($$select public.clean_email_copy(current_setting('test.build')::uuid)$$, 'its photos'' removal is marked');
+select ok((select cleaned_at is not null from public.email_copies where build_id = current_setting('test.build')::uuid), 'once');
 
--- A browser on another engine version hands its job back, no try counted.
+-- A copy that cannot be made is recorded as failed, and the step goes on.
 select set_config('test.lease', pg_temp.to_design(current_setting('test.build2')::uuid)::text, true);
 select set_config('test.build', current_setting('test.build2'), true);
 select is(pg_temp.ask()->>'state', 'queued', 'the second email asks for its copy');
 select public.wait_email_round(current_setting('test.build')::uuid, current_setting('test.lease')::uuid, '{"library":{"waits":1}}', 1800);
 select set_config('test.job', (select id::text from public.claim_email_copy()), true);
-select public.release_email_copy(current_setting('test.job')::uuid, (select lease_token from public.platform_jobs where id = current_setting('test.job')::uuid));
+select set_config('test.jl', (select lease_token::text from public.platform_jobs where id = current_setting('test.job')::uuid), true);
+select is(public.record_email_copy(current_setting('test.job')::uuid, current_setting('test.jl')::uuid, failure => 'copy_failed'), 'failed',
+  'a copy that cannot be made is recorded as failed');
+select is((select c.state || ':' || c.failure || ':' || j.status from public.email_copies c, public.platform_jobs j
+  where c.build_id = current_setting('test.build')::uuid and j.id = current_setting('test.job')::uuid), 'failed:copy_failed:succeeded',
+  'with its reason, its job done');
+select ok((select not_before <= now() from public.email_builds where id = current_setting('test.build')::uuid), 'and the step goes on (coded blocks)');
+
+-- A browser on another engine version hands its job back, no try counted.
+select set_config('test.lease', pg_temp.to_design(current_setting('test.build4')::uuid)::text, true);
+select set_config('test.build', current_setting('test.build4'), true);
+select is(pg_temp.ask()->>'state', 'queued', 'the fourth email asks for its copy');
+select public.wait_email_round(current_setting('test.build')::uuid, current_setting('test.lease')::uuid, '{"library":{"waits":1}}', 1800);
+select set_config('test.job', (select id::text from public.claim_email_copy()), true);
+select set_config('test.jl', (select lease_token::text from public.platform_jobs where id = current_setting('test.job')::uuid), true);
+select throws_ok($$select public.release_email_copy(current_setting('test.job')::uuid, gen_random_uuid())$$, 'PT409', null,
+  'only under the job''s own lease');
+reset role;
+insert into public.platform_jobs(kind, subject_key, idempotency_key) values ('inbox.variant', 'test-variant', 'test:copy.variant');
+set local role service_role;
+select set_config('test.vjob', (select id::text from public.platform_jobs where idempotency_key = 'test:copy.variant'), true);
+select set_config('test.vl', (select lease_token::text from public.claim_platform_job(array['inbox.variant'])), true);
+select throws_ok($$select public.release_email_copy(current_setting('test.vjob')::uuid, current_setting('test.vl')::uuid)$$, '23514', 'Not a copy job',
+  'never another kind''s job');
+select public.release_email_copy(current_setting('test.job')::uuid, current_setting('test.jl')::uuid);
 select is((select status || ':' || attempt || ':' || last_error_code || ':' || (available_at > now() + interval '9 minutes')
   from public.platform_jobs where id = current_setting('test.job')::uuid), 'retry_wait:0:version_skew:true', 'handed back for 10 minutes, no try counted');
 
--- A copy job that fails four times leaves its copy failed and the step goes on.
+-- A copy job whose leases keep running out fails for good on the fourth,
+-- and leaves its copy failed; the step goes on.
 reset role;
 update public.platform_jobs set attempt = 3, available_at = now() where id = current_setting('test.job')::uuid;
 set local role service_role;
 select set_config('test.jl', (select lease_token::text from public.claim_email_copy()), true);
-select public.fail_platform_job(current_setting('test.job')::uuid, current_setting('test.jl')::uuid, 'timeout', 'timeout');
-select is((select status from public.platform_jobs where id = current_setting('test.job')::uuid), 'failed', 'the fourth try fails the job');
+reset role;
+update public.platform_jobs set lease_expires_at = now() - interval '1 minute' where id = current_setting('test.job')::uuid;
+-- A job with a key that is no build's, failing at the same time, stops nothing.
+insert into public.platform_jobs(kind, subject_key, idempotency_key, status, attempt, lease_token, lease_expires_at)
+  values ('design.copy', 'not-a-build', 'test:copy.bad', 'leased', 4, gen_random_uuid(), now() - interval '1 minute');
+set local role service_role;
+select lives_ok($$select public.claim_platform_job(array['studio.render'])$$, 'the lease recovery runs, past a job with a bad key');
+select is((select status || ':' || last_error_code from public.platform_jobs where id = current_setting('test.job')::uuid), 'failed:lease_expired',
+  'the fourth lease that ran out fails the job');
 select is((select state || ':' || failure from public.email_copies where build_id = current_setting('test.build')::uuid), 'failed:copy_job_failed',
   'and its copy, with the reason');
 select ok((select not_before <= now() from public.email_builds where id = current_setting('test.build')::uuid), 'the design step goes on (coded blocks)');

@@ -1,3 +1,4 @@
+import { klaviyoFooterTags } from '../blocks/klaviyo-tags'
 import { partsOf, textOf, type Blueprint, type Item } from './blueprint'
 
 /**
@@ -114,17 +115,38 @@ export type ReadEmail = {
   addresses: string[]
 }
 
+/** The engine's own Klaviyo tags (`klaviyoFooterTags`) and their labels. */
+const ownTags = Object.values(klaviyoFooterTags).map((tag) => ({
+  tag,
+  label: /"([^"]*)"/.exec(tag)?.[1] ?? ''
+}))
+
+/** The email with the engine's own Klaviyo tags replaced by their labels. */
+export function withoutOwnTags(html: string): string {
+  let out = html
+  for (const { tag, label } of ownTags)
+    out = out.split(tag).join(label ? ` ${label} ` : ' ')
+  return out
+}
+
+/**
+ * DES-ENGINE-002b2: template code a copy shows that is not one of the
+ * engine's own Klaviyo tags (`{{ "Acme Deals" }}`, `{% with … %}`): it
+ * could print anything when Klaviyo sends, so it is a leak (short excerpts).
+ */
+export function klaviyoCode(html: string): string[] {
+  return [
+    ...withoutOwnTags(html).matchAll(/\{\{[\s\S]{0,60}|\{%[\s\S]{0,60}/g)
+  ].map((m) => m[0].slice(0, 80))
+}
+
 /** Everything a reader may see of an email, and every address it reaches. */
 export function readEmail(email: string): ReadEmail {
-  // DES-ENGINE-002b2: Klaviyo's own tags ({{ organization.name }},
-  // {% unsubscribe "Unsubscribe" %}) are code Klaviyo fills when it
-  // sends, not words a reader sees: only a tag's quoted label is read.
-  const html = email
-    .replace(/\{\{[^{}]{0,300}\}\}/g, ' ')
-    .replace(
-      /\{%\s*[a-z_]+\s*(?:"([^"{}%]{0,200})")?[^{}%]{0,300}%\}/gi,
-      (_, label?: string) => (label ? ` ${label} ` : ' ')
-    )
+  // DES-ENGINE-002b2: Klaviyo's own footer tags, exactly as the engine
+  // writes them, are code Klaviyo fills when it sends, not words a reader
+  // sees: only their labels are read. Any other `{{`/`{%` stays as it is
+  // (`klaviyoCode` reports it in a copy).
+  const html = withoutOwnTags(email)
   const texts: string[] = []
   const addresses: string[] = []
   const title = /<title(?:\s[^>]*)?>([\s\S]*?)<\/title>/i.exec(html)
@@ -279,6 +301,7 @@ export function leaksOf(input: {
   }
   const files = new Set(sourceAddresses.flatMap((a) => fileName(a) ?? []))
   const ours = readEmail(input.html)
+  for (const code of klaviyoCode(input.html)) add({ kind: 'word', value: code })
   for (const a of ours.addresses) {
     const kind = /\.(?:png|jpe?g|gif|webp|svg|avif)$|^data:image/i.test(
       addressKey(a)

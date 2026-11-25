@@ -3398,6 +3398,7 @@ export type Database = {
       email_copies: {
         Row: {
           build_id: string
+          cleaned_at: string | null
           created_at: string
           failure: string | null
           inbox_message_id: string
@@ -3410,6 +3411,7 @@ export type Database = {
         }
         Insert: {
           build_id: string
+          cleaned_at?: string | null
           created_at?: string
           failure?: string | null
           inbox_message_id: string
@@ -3422,6 +3424,7 @@ export type Database = {
         }
         Update: {
           build_id?: string
+          cleaned_at?: string | null
           created_at?: string
           failure?: string | null
           inbox_message_id?: string
@@ -3434,18 +3437,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'email_copies_build_id_fkey'
-            columns: ['build_id']
-            isOneToOne: true
-            referencedRelation: 'email_builds'
-            referencedColumns: ['id']
-          },
-          {
             foreignKeyName: 'email_copies_inbox_message_id_fkey'
             columns: ['inbox_message_id']
             isOneToOne: false
             referencedRelation: 'inbox_messages'
             referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_copies_tenant_id_build_id_fkey'
+            columns: ['tenant_id', 'build_id']
+            isOneToOne: false
+            referencedRelation: 'email_builds'
+            referencedColumns: ['tenant_id', 'id']
           },
           {
             foreignKeyName: 'email_copies_tenant_id_fkey'
@@ -7759,6 +7762,7 @@ export type Database = {
           timezone: string
         }[]
       }
+      clean_email_copy: { Args: { build: string }; Returns: undefined }
       complete_asset_import: {
         Args: { import_id: string; t: string }
         Returns: undefined

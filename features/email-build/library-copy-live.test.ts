@@ -10,8 +10,14 @@ vi.mock('./worker', () => ({ runEmailBuilds: vi.fn(async () => ({ ran: 1 })) }))
 
 const { libraryPortsFor, visibleEmail, withPhotoLinks, copyPhotoLinkSeconds } =
   await import('./library-copy-live')
-const { copyJobs, copyResult, finishCopy, runCopiedBuilds } =
-  await import('./copy-jobs')
+const {
+  cleanCopyPhotos,
+  copiesWaiting,
+  copyJobs,
+  copyResult,
+  finishCopy,
+  runCopiedBuilds
+} = await import('./copy-jobs')
 const { runEmailBuilds } = await import('./worker')
 
 const tenant = '00000000-0000-4000-8000-000000000101'
@@ -30,6 +36,13 @@ function fakeDb(answers: {
   rows?: Rows
   rpc?: Record<string, { data?: unknown; error?: unknown }>
   signed?: { signedUrl: string | null; error: string | null }[]
+  /** Stored objects by folder: name, tag, size (`list`). */
+  files?: Record<
+    string,
+    { name: string; id: string | null; eTag?: string; size?: number }[]
+  >
+  /** Files `download` reads, by path. */
+  texts?: Record<string, string>
 }) {
   const calls: { fn: string; args: unknown }[] = []
   const db = {
@@ -52,6 +65,12 @@ function fakeDb(answers: {
         },
         gte: () => q,
         lte: () => q,
+        lt: () => q,
+        is: () => q,
+        neq: (c: string, v: unknown) => {
+          rows = rows.filter((r) => !(c in r) || r[c] !== v)
+          return q
+        },
         order: () => q,
         limit: () => q,
         maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
@@ -84,8 +103,30 @@ function fakeDb(answers: {
             error: null
           }
         },
-        createSignedUploadUrl: async (path: string) => {
-          calls.push({ fn: `upload:${bucket}`, args: { path } })
+        list: async (folder: string) => {
+          calls.push({ fn: `list:${bucket}`, args: { folder } })
+          return {
+            data: (answers.files?.[folder] ?? []).map((f) => ({
+              name: f.name,
+              id: f.id,
+              metadata: { eTag: f.eTag, size: f.size }
+            })),
+            error: null
+          }
+        },
+        download: async (path: string) => {
+          calls.push({ fn: `download:${bucket}`, args: { path } })
+          const text = answers.texts?.[path]
+          return text === undefined
+            ? { data: null, error: { message: 'missing' } }
+            : { data: new Blob([text]), error: null }
+        },
+        remove: async (paths: string[]) => {
+          calls.push({ fn: `remove:${bucket}`, args: { paths } })
+          return { data: [], error: null }
+        },
+        createSignedUploadUrl: async (path: string, options?: unknown) => {
+          calls.push({ fn: `upload:${bucket}`, args: { path, options } })
           return {
             data: { signedUrl: `https://store.example/u/${path}?token=t` },
             error: null
@@ -259,31 +300,113 @@ describe('the copy port (DES-ENGINE-002b2)', () => {
     ])
   })
 
-  it('signs a done copy’s cut photos for a year in the workspace’s own folder', async () => {
+  const claimLease = '00000000-0000-4000-8000-0000000000e1'
+  const folder = `${tenant}/${build}/${claimLease}`
+  const pinnedRecord = (over: Partial<CopyRecord> = {}) => ({
+    ...record(over),
+    stored: [0, 1].map((index) => ({
+      index,
+      path: `${folder}/${index}.jpg`,
+      etag: `"e${index}"`,
+      size: 1000 + index
+    }))
+  })
+  const storedFiles = {
+    [folder]: [0, 1].map((i) => ({
+      name: `${i}.jpg`,
+      id: `f${i}`,
+      eTag: `"e${i}"`,
+      size: 1000 + i
+    }))
+  }
+
+  it('signs a done copy’s pinned photos for 30 days, after checking each is still the one recorded', async () => {
     const { db, calls } = fakeDb({
       rpc: {
-        request_email_copy: { data: { state: 'done', result: record() } }
-      }
+        request_email_copy: { data: { state: 'done', result: pinnedRecord() } }
+      },
+      files: storedFiles
     })
     const got = await libraryPortsFor(db, { tenant, build, lease }).copy(
       message,
       input,
       10
     )
-    expect(calls[1]).toEqual({
+    expect(calls[1]).toEqual({ fn: 'list:email-copies', args: { folder } })
+    expect(calls[2]).toEqual({
       fn: 'sign:email-copies',
       args: {
-        paths: [`${tenant}/${build}/0.jpg`, `${tenant}/${build}/1.jpg`],
+        paths: [`${folder}/0.jpg`, `${folder}/1.jpg`],
         seconds: copyPhotoLinkSeconds
       }
     })
-    expect(copyPhotoLinkSeconds).toBe(365 * 24 * 3600)
+    expect(copyPhotoLinkSeconds).toBe(30 * 24 * 3600)
     expect(got.state).toBe('done')
     if (got.state !== 'done') return
     expect(got.record.html).not.toContain('email-copies.invalid')
     expect(got.record.html).toContain(
-      `https://store.example/s/${tenant}/${build}/1.jpg?token=t`
+      `https://store.example/s/${folder}/1.jpg?token=t`
     )
+  })
+
+  it('never signs a photo that changed or went after the copy was recorded, or one outside the build’s folder', async () => {
+    const changed = fakeDb({
+      rpc: {
+        request_email_copy: { data: { state: 'done', result: pinnedRecord() } }
+      },
+      files: {
+        [folder]: [
+          { name: '0.jpg', id: 'f0', eTag: '"e0"', size: 1000 },
+          { name: '1.jpg', id: 'f1', eTag: '"other"', size: 1001 }
+        ]
+      }
+    })
+    expect(
+      await libraryPortsFor(changed.db, { tenant, build, lease }).copy(
+        message,
+        input,
+        10
+      )
+    ).toEqual({ state: 'failed', reason: copyFailures.photo_changed })
+    expect(changed.calls.some((c) => c.fn === 'sign:email-copies')).toBe(false)
+    const gone = fakeDb({
+      rpc: {
+        request_email_copy: { data: { state: 'done', result: pinnedRecord() } }
+      },
+      files: {}
+    })
+    expect(
+      await libraryPortsFor(gone.db, { tenant, build, lease }).copy(
+        message,
+        input,
+        10
+      )
+    ).toEqual({ state: 'failed', reason: copyFailures.photo_changed })
+    const other = '00000000-0000-4000-8000-0000000000c9'
+    const elsewhere = fakeDb({
+      rpc: {
+        request_email_copy: {
+          data: {
+            state: 'done',
+            result: {
+              ...pinnedRecord(),
+              stored: pinnedRecord().stored.map((p) => ({
+                ...p,
+                path: p.path.replace(build, other)
+              }))
+            }
+          }
+        }
+      },
+      files: storedFiles
+    })
+    expect(
+      await libraryPortsFor(elsewhere.db, { tenant, build, lease }).copy(
+        message,
+        input,
+        10
+      )
+    ).toEqual({ state: 'failed', reason: copyFailures.copy_failed })
   })
 
   it('a placeholder with no stored photo, or an unreadable record, is a failed copy', async () => {
@@ -392,18 +515,20 @@ const handOutRows: Rows = {
   email_copies: [queued],
   email_builds: [{ id: build, state: 'build_queued', step: 'design' }],
   inbox_blueprints: [{ state: 'ready', blueprint: blueprint() }],
-  inbox_messages: [{ marked_html_path: 'marked/m1.html' }]
+  inbox_messages: [{ marked_html_path: 'marked/m1.html' }],
+  platform_jobs: [{ id: job, kind: 'design.copy', subject_key: build }]
 }
 const claimed = {
   claim_email_copy: {
     data: [{ id: job, subject_key: build, lease_token: lease, attempt: 1 }]
   }
 }
+const on = { DESIGN_LIBRARY_COPY: 'on' }
 
 describe('the copy browser job’s side in the app (DES-ENGINE-002b2)', () => {
-  it('hands out one copy: its input, the blueprint, a short link to the original and upload links in the workspace’s folder', async () => {
+  it('hands out one copy: its input, the blueprint, a short link to the original and upload links in its own claim’s folder that never overwrite', async () => {
     const { db, calls } = fakeDb({ rows: handOutRows, rpc: claimed })
-    const got = await copyJobs(db, ENGINE_VERSION)
+    const got = await copyJobs(db, ENGINE_VERSION, on)
     expect(got.skew).toBe(false)
     expect(got.jobs).toHaveLength(1)
     const j = got.jobs[0]!
@@ -412,15 +537,26 @@ describe('the copy browser job’s side in the app (DES-ENGINE-002b2)', () => {
     expect(j.uploads.map((u) => u.index)).toEqual([0, 1, 2])
     expect(
       calls.filter((c) => c.fn === 'upload:email-copies').map((c) => c.args)
-    ).toEqual([0, 1, 2].map((i) => ({ path: `${tenant}/${build}/${i}.jpg` })))
+    ).toEqual(
+      [0, 1, 2].map((i) => ({
+        path: `${tenant}/${build}/${lease}/${i}.jpg`,
+        options: undefined
+      }))
+    )
     // The photo hosts are the server's own fixed list, never the store's.
     expect(j.origins).toContain('https://cdn.shopify.com')
     expect(j.origins).not.toContain('https://cedar.example')
   })
 
-  it('claims nothing for a browser on another engine version', async () => {
+  it('claims nothing with the switch off, or for a browser on another engine version', async () => {
     const { db, calls } = fakeDb({ rows: handOutRows, rpc: claimed })
-    expect(await copyJobs(db, 'old')).toEqual({ jobs: [], skew: true })
+    expect(await copyJobs(db, ENGINE_VERSION, {})).toEqual({
+      jobs: [],
+      skew: false,
+      off: true
+    })
+    expect(await copiesWaiting(db, {})).toBe(0)
+    expect(await copyJobs(db, 'old', on)).toEqual({ jobs: [], skew: true })
     expect(calls).toEqual([])
   })
 
@@ -446,38 +582,87 @@ describe('the copy browser job’s side in the app (DES-ENGINE-002b2)', () => {
       rows: { ...handOutRows, ...rows },
       rpc: claimed
     })
-    expect((await copyJobs(db, ENGINE_VERSION)).jobs).toEqual([])
+    expect((await copyJobs(db, ENGINE_VERSION, on)).jobs).toEqual([])
     expect(calls.at(-1)).toEqual({
       fn: 'record_email_copy',
       args: { job, lease, failure }
     })
   })
 
-  it('records a copy, a final failure, or a try again; another engine version hands the job back', async () => {
-    const done = fakeDb({ rpc: { record_email_copy: { data: 'done' } } })
+  const original =
+    '<table><tr><td><p>Pine and Co summer edit for everyone</p></td></tr></table>'
+  const clean = {
+    rows: handOutRows,
+    texts: { 'marked/m1.html': original }
+  }
+
+  it('checks the copy for leaks again itself before recording it', async () => {
+    const done = fakeDb({
+      ...clean,
+      rpc: { record_email_copy: { data: 'done' } }
+    })
+    const ok = record({
+      html: '<p>Cedar Studio</p>',
+      photos: []
+    })
     expect(
       await finishCopy(
         done.db,
-        copyResult.parse({
-          job,
-          lease,
-          engine: ENGINE_VERSION,
-          record: record()
-        })
+        copyResult.parse({ job, lease, engine: ENGINE_VERSION, record: ok })
       )
     ).toEqual({ ok: true, state: 'done' })
-    expect(done.calls[0]).toEqual({
-      fn: 'record_email_copy',
-      args: { job, lease, result: record() }
+    expect(done.calls).toContainEqual({
+      fn: 'download:inbox-raw',
+      args: { path: 'marked/m1.html' }
     })
+    expect(done.calls.at(-1)).toEqual({
+      fn: 'record_email_copy',
+      args: { job, lease, result: ok }
+    })
+    // The browser job said no leak; the app finds the other brand's words.
+    const leaked = fakeDb({
+      ...clean,
+      rpc: { record_email_copy: { data: 'failed' } }
+    })
+    await finishCopy(
+      leaked.db,
+      copyResult.parse({
+        job,
+        lease,
+        engine: ENGINE_VERSION,
+        record: record({
+          html: '<p>Cedar Studio summer edit for everyone</p>',
+          photos: []
+        })
+      })
+    )
+    expect(leaked.calls.at(-1)).toEqual({
+      fn: 'record_email_copy',
+      args: { job, lease, failure: 'copy_leaked' }
+    })
+    expect(copyFailures.copy_leaked).toContain('other brand')
+    // The original cannot be read now: nothing is recorded (tried later).
+    const unreadable = fakeDb({ rows: handOutRows })
+    expect(
+      await finishCopy(
+        unreadable.db,
+        copyResult.parse({ job, lease, engine: ENGINE_VERSION, record: ok })
+      )
+    ).toEqual({ ok: false, code: 'leak_check_unavailable' })
+    expect(unreadable.calls.some((c) => c.fn === 'record_email_copy')).toBe(
+      false
+    )
+  })
+
+  it('records a final failure or a try again; another engine version hands the job back', async () => {
     const again = fakeDb({})
     await finishCopy(
       again.db,
-      copyResult.parse({ job, lease, retry: 'timeout' })
+      copyResult.parse({ job, lease, retry: 'engine_error' })
     )
     expect(again.calls[0]).toEqual({
       fn: 'fail_platform_job',
-      args: { job, lease, failure: 'timeout', error_code: 'timeout' }
+      args: { job, lease, failure: 'protocol', error_code: 'engine_error' }
     })
     const skew = fakeDb({})
     await finishCopy(
@@ -498,7 +683,7 @@ describe('the copy browser job’s side in the app (DES-ENGINE-002b2)', () => {
           job,
           lease,
           engine: ENGINE_VERSION,
-          record: record()
+          failure: 'copy_failed'
         })
       )
     ).toEqual({ ok: false, code: '23514' })
@@ -528,16 +713,55 @@ describe('the copy browser job’s side in the app (DES-ENGINE-002b2)', () => {
         deadline: Date.now() + 60_000,
         env: {}
       })
-    ).toEqual({ off: true, builds: 0, ran: 0 })
+    ).toEqual({ off: true, builds: 0, ran: 0, cleaned: 0 })
     expect(
       await runCopiedBuilds(fakeDb({ rows }).db, {
         deadline: Date.now() + 60_000,
-        env: { DESIGN_LIBRARY_COPY: 'on' }
+        env: on
       })
-    ).toEqual({ off: false, builds: 1, ran: 1 })
+    ).toMatchObject({ off: false, builds: 1, ran: 1 })
     expect(runEmailBuilds).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ build, library: true })
     )
+  })
+
+  it('removes the photos no email needs, once, and keeps those a drafted copy still shows', async () => {
+    const other = '00000000-0000-4000-8000-0000000000c2'
+    const kept = '00000000-0000-4000-8000-0000000000c3'
+    const at = new Date().toISOString()
+    const { db, calls } = fakeDb({
+      rows: {
+        email_copies: [
+          { build_id: build, tenant_id: tenant, state: 'done', updated_at: at },
+          {
+            build_id: other,
+            tenant_id: tenant,
+            state: 'failed',
+            updated_at: at
+          },
+          { build_id: kept, tenant_id: tenant, state: 'done', updated_at: at }
+        ],
+        email_builds: [
+          // Drawn with coded blocks instead: its copy is not needed.
+          { id: build, state: 'drafted', library: null },
+          { id: other, state: 'drafted', library: null },
+          // The copy is the email: kept for its 30 days.
+          { id: kept, state: 'drafted', library: { sections: [] } }
+        ]
+      },
+      files: {
+        [`${tenant}/${build}`]: [{ name: lease, id: null }],
+        [`${tenant}/${build}/${lease}`]: [{ name: '0.jpg', id: 'f0' }]
+      }
+    })
+    expect(await cleanCopyPhotos(db)).toBe(2)
+    expect(calls).toContainEqual({
+      fn: 'remove:email-copies',
+      args: { paths: [`${tenant}/${build}/${lease}/0.jpg`] }
+    })
+    expect(
+      calls.filter((c) => c.fn === 'clean_email_copy').map((c) => c.args)
+    ).toEqual([{ build }, { build: other }])
   })
 })

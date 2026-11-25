@@ -56,7 +56,8 @@ describe('/api/internal/design/copies (DES-ENGINE-002b2)', () => {
     expect(client.rpc).not.toHaveBeenCalled()
   })
 
-  it('hands nothing to a browser on another engine version, claiming nothing', async () => {
+  it('hands nothing to a browser on another engine version, or with the switch off, claiming nothing', async () => {
+    vi.stubEnv('DESIGN_LIBRARY_COPY', 'on')
     const client = db()
     service.createServiceClient.mockReturnValue(client)
     for (const query of ['', '?engine=older']) {
@@ -68,17 +69,54 @@ describe('/api/internal/design/copies (DES-ENGINE-002b2)', () => {
       expect(got.status).toBe(200)
       expect(await got.json()).toEqual({ jobs: [], skew: true })
     }
-    expect(client.rpc).not.toHaveBeenCalled()
-  })
-
-  it('carries nothing on with the switch off', async () => {
-    service.createServiceClient.mockReturnValue(db())
-    const got = await GET(
-      new NextRequest(`${url}?carry=1`, {
+    vi.stubEnv('DESIGN_LIBRARY_COPY', '')
+    const off = await GET(
+      new NextRequest(`${url}?engine=${ENGINE_VERSION}`, {
         headers: { authorization: `Bearer ${secret}` }
       })
     )
-    expect(await got.json()).toEqual({ off: true, builds: 0, ran: 0 })
+    expect(await off.json()).toEqual({ jobs: [], skew: false, off: true })
+    const peek = await GET(
+      new NextRequest(`${url}?peek=1`, {
+        headers: { authorization: `Bearer ${secret}` }
+      })
+    )
+    expect(await peek.json()).toEqual({ waiting: 0 })
+    expect(client.rpc).not.toHaveBeenCalled()
+  })
+
+  it('carries on with a POST only, and nothing with the switch off', async () => {
+    service.createServiceClient.mockReturnValue(db())
+    const got = await POST(
+      new NextRequest(`${url}?carry=1`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${secret}` }
+      })
+    )
+    expect(await got.json()).toEqual({
+      off: true,
+      builds: 0,
+      ran: 0,
+      cleaned: 0
+    })
+  })
+
+  it('stops reading a body past the limit even without a length', async () => {
+    service.createServiceClient.mockReturnValue(db())
+    const big = new ReadableStream<Uint8Array>({
+      start(c) {
+        for (let i = 0; i < 10; i++) c.enqueue(new Uint8Array(50_000))
+        c.close()
+      }
+    })
+    const request = new NextRequest(url, {
+      method: 'POST',
+      body: big,
+      headers: { authorization: `Bearer ${secret}` },
+      duplex: 'half'
+    } as never)
+    expect(request.headers.get('content-length')).toBeNull()
+    expect((await POST(request)).status).toBe(413)
   })
 
   it('refuses a body too large (413), not JSON or of the wrong shape (400)', async () => {

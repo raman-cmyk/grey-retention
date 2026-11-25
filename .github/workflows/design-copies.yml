@@ -39,9 +39,11 @@ jobs:
   copies:
     if: vars.SCHEDULED_JOBS_ENABLED == 'true'
     runs-on: ubuntu-latest
-    # Each call may be tried twice, 2 minutes apart (CI-005); a run copies
-    # for at most 12 minutes, then carries the emails on (2 minutes).
-    timeout-minutes: 22
+    # The peek may be tried twice, 2 minutes apart (CI-005); the setup takes
+    # about 5 minutes; a run claims a copy only while the whole copy fits in
+    # its 12 minutes, then carries the emails on (at most 2): a run ends
+    # well inside this limit, never in the middle of a copy.
+    timeout-minutes: 30
     env:
       APP_URL: https://grey-retention-app.vercel.app
     steps:

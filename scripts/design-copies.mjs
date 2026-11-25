@@ -23,10 +23,21 @@ import { launch } from '../lib/sandbox/browser.mjs'
 
 /** Copies made per run at most. */
 export const perRun = 10
-/** A run's time, inside the job's 20 minutes. */
+/**
+ * A run's time: with the peek (up to 4.5 minutes with its retry), the
+ * setup (about 5) and the carry-on (up to 2.2), the job ends well inside
+ * its 30 minutes, never in the middle of a copy.
+ */
 export const runBudgetMs = 12 * 60_000
-/** One copy's time, inside its 10-minute lease (the report needs a moment). */
-export const copyBudgetMs = 8 * 60_000
+/** One copy's drawing, inside its 10-minute lease. */
+export const copyBudgetMs = 6 * 60_000
+/** All of one copy's uploads together. */
+export const uploadBudgetMs = 90_000
+/** Its report. */
+export const reportMs = 30_000
+/** A copy is claimed only while all of it fits in the run. */
+export const claimUntil = (start) =>
+  start + runBudgetMs - copyBudgetMs - uploadBudgetMs - reportMs
 
 const loopback = (u) =>
   u.protocol === 'http:' &&
@@ -91,16 +102,19 @@ async function call(base, secret, init = {}, query = '') {
   return response.json()
 }
 
-/** Uploads one cut photo (an inline JPEG) to its signed link. */
-export async function upload(url, inline, fetchImpl = fetch) {
+/**
+ * Uploads one cut photo (an inline JPEG) to its signed link, within `ms`.
+ * Never over a stored photo: each claim has its own folder.
+ */
+export async function upload(url, inline, fetchImpl = fetch, ms = 60_000) {
   const m = /^data:image\/jpeg;base64,([a-z0-9+/]+={0,2})$/i.exec(inline)
-  if (!m || !linkOk(url)) throw new Error('upload_failed')
+  if (!m || !linkOk(url) || ms < 1_000) throw new Error('upload_failed')
   const response = await fetchImpl(url, {
     method: 'PUT',
     body: Buffer.from(m[1], 'base64'),
     redirect: 'error',
-    signal: AbortSignal.timeout(60_000),
-    headers: { 'content-type': 'image/jpeg', 'x-upsert': 'true' }
+    signal: AbortSignal.timeout(Math.min(60_000, ms)),
+    headers: { 'content-type': 'image/jpeg' }
   })
   if (!response.ok) throw new Error('upload_failed')
 }
@@ -109,12 +123,18 @@ export async function upload(url, inline, fetchImpl = fetch) {
 export async function run({
   base,
   secret,
-  browser,
+  browser: first,
   log = console.log,
   copy,
   tools,
   engine,
-  send = upload,
+  send = (url, inline, ms) => upload(url, inline, fetch, ms),
+  /**
+   * A new browser after a copy ran out of time (the old one is closed, so
+   * nothing of that copy goes on behind the next). Without it, the run
+   * stops there.
+   */
+  relaunch,
   now = Date.now
 }) {
   const engineMods =
@@ -125,13 +145,15 @@ export async function run({
           import('../features/design-engine/photos.ts'),
           import('../features/design-engine/stored.ts')
         ])
+  let browser = first
   const copyFor = copy ?? engineMods[0].libraryCopy
   const toolsFor =
     tools ?? ((origins) => engineMods[1].photoTools(browser, { origins }))
   const version = engine ?? engineMods[2].ENGINE_VERSION
   const counts = { copied: 0, failed: 0, retry: 0, skew: false, carried: 0 }
-  const until = now() + runBudgetMs
-  for (let n = 0; n < perRun && now() < until; n++) {
+  const lastClaim = claimUntil(now())
+  let stopped = false
+  for (let n = 0; n < perRun && !stopped && now() <= lastClaim; n++) {
     const { jobs, skew } = await call(
       base,
       secret,
@@ -183,11 +205,25 @@ export async function run({
       } catch {
         counts.retry++
         await report({ retry: 'timeout' })
+        // The copy may still be drawing: its browser goes, and a new one
+        // takes the next copy (or the run stops).
+        await browser.close().catch(() => {})
+        if (!relaunch) {
+          stopped = true
+          break
+        }
+        browser = await relaunch()
         continue
       }
       if (!made.ok) {
-        counts.failed++
-        await report({ engine: version, failure: 'copy_failed' })
+        // The browser failed, not the email: tried again while tries remain.
+        if (made.retry) {
+          counts.retry++
+          await report({ retry: 'engine_error' })
+        } else {
+          counts.failed++
+          await report({ engine: version, failure: 'copy_failed' })
+        }
         continue
       }
       const uploads = new Map(job.uploads.map((u) => [u.index, u.url]))
@@ -197,9 +233,10 @@ export async function run({
         continue
       }
       const photos = []
+      const uploadsEnd = now() + uploadBudgetMs
       try {
         for (const [index, cut] of made.cuts.entries()) {
-          await send(uploads.get(index), cut.inline)
+          await send(uploads.get(index), cut.inline, uploadsEnd - now())
           photos.push(index)
         }
       } catch {
@@ -229,7 +266,7 @@ export async function run({
     const carried = await call(
       base,
       secret,
-      { timeout: 130_000 },
+      { method: 'POST', timeout: 130_000 },
       '?carry=1'
     ).catch(() => null)
     counts.carried = Number(carried?.builds) || 0
@@ -248,9 +285,14 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     process.exit(1)
   }
   const { chromium } = await import('@playwright/test')
-  const browser = await launch(chromium)
+  let browser = await launch(chromium)
   try {
-    const counts = await run({ base, secret, browser })
+    const counts = await run({
+      base,
+      secret,
+      browser,
+      relaunch: async () => (browser = await launch(chromium))
+    })
     if (counts.skew) {
       console.log(
         '::warning::The app runs another design engine version than this job; no email was copied. Deploy both from the same commit.'
@@ -265,6 +307,6 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     console.error(`Copy run stopped: ${words}`)
     process.exitCode = 1
   } finally {
-    await browser.close()
+    await browser.close().catch(() => {})
   }
 }

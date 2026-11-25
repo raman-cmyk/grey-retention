@@ -6,8 +6,8 @@ import {
   blueprintWords,
   copyFailures,
   copyInputSchema,
-  copyPhotoPath,
   copyRecord,
+  storedPhotos,
   photoPlaceholder,
   type BlueprintState,
   type CopyFailure,
@@ -26,14 +26,22 @@ import {
  *   blueprint's state (`inspirationBlueprint`), each in plain words.
  * - `copy`: asks for the copy under the build's lease
  *   (`request_email_copy`, stored once) and reads it; a done copy's cut
- *   photos are signed for a year (as the design studio's pictures) and put
- *   in place of their placeholders, so Klaviyo can import them (rule 11).
+ *   photos, pinned by the database in this build's own folder with their
+ *   tag and size, are checked again (changed or gone: refused), signed for
+ *   30 days and put in place of their placeholders, so Klaviyo can import
+ *   them (rule 11).
  */
 
 type Db = SupabaseClient<Database>
 
-/** How long a cut photo's link works (the push imports it into Klaviyo). */
-export const copyPhotoLinkSeconds = 365 * 24 * 60 * 60
+/**
+ * How long a cut photo's link works: the push imports it into Klaviyo
+ * within minutes, and the email's page shows it for 30 days (then its
+ * photos are removed, `cleanCopyPhotos`).
+ */
+export const copyPhotoLinkSeconds = 30 * 24 * 60 * 60
+
+const dirOf = (path: string) => path.slice(0, path.lastIndexOf('/'))
 
 /** Whether the workspace may see the email, and what the build needs of it. */
 export async function visibleEmail(
@@ -159,11 +167,47 @@ export function libraryPortsFor(
       const record = copyRecord.safeParse(got?.result)
       if (got?.state !== 'done' || !record.success)
         return { state: 'failed', reason: copyFailures.copy_failed }
-      const links = new Map<number, string>()
+      // Each photo as the database pinned it, in this build's own folder,
+      // with the tag and size it had when the copy was recorded.
+      const pinned = storedPhotos.safeParse(
+        (got.result as { stored?: unknown } | null)?.stored
+      )
+      if (!pinned.success)
+        return { state: 'failed', reason: copyFailures.copy_failed }
+      const pins = new Map(pinned.data.map((p) => [p.index, p]))
+      const own = `${input.tenant}/${input.build}/`
       const indexes = [...new Set(record.data.photos)]
+      if (indexes.some((i) => !pins.get(i)?.path.startsWith(own)))
+        return { state: 'failed', reason: copyFailures.copy_failed }
+      const links = new Map<number, string>()
       if (indexes.length) {
-        const signed = await db.storage.from('email-copies').createSignedUrls(
-          indexes.map((i) => copyPhotoPath(input.tenant, input.build, i)),
+        const files = db.storage.from('email-copies')
+        const folders = [
+          ...new Set(indexes.map((i) => dirOf(pins.get(i)!.path)))
+        ]
+        const seen = new Map<string, { etag?: unknown; size?: unknown }>()
+        for (const folder of folders) {
+          const listed = await files.list(folder, { limit: 100 })
+          if (listed.error) throw listed.error
+          for (const f of listed.data ?? [])
+            seen.set(`${folder}/${f.name}`, {
+              etag: f.metadata?.eTag,
+              size: f.metadata?.size
+            })
+        }
+        // Changed or gone since it was recorded: never signed.
+        for (const i of indexes) {
+          const pin = pins.get(i)!
+          const now = seen.get(pin.path)
+          if (
+            !now ||
+            now.etag !== pin.etag ||
+            (pin.size !== null && Number(now.size) !== pin.size)
+          )
+            return { state: 'failed', reason: copyFailures.photo_changed }
+        }
+        const signed = await files.createSignedUrls(
+          indexes.map((i) => pins.get(i)!.path),
           copyPhotoLinkSeconds
         )
         if (signed.error) throw signed.error

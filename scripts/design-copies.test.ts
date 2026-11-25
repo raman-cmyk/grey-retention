@@ -3,7 +3,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Browser } from '@playwright/test'
 import type { LibraryCopyInput } from '@/features/design-engine/library-copy'
 import type { PhotoTools } from '@/features/design-engine/photos'
-import { linkOk, photoHosts, run, sectionOf, upload } from './design-copies.mjs'
+import {
+  claimUntil,
+  copyBudgetMs,
+  linkOk,
+  photoHosts,
+  run,
+  sectionOf,
+  upload
+} from './design-copies.mjs'
 
 const jpeg = `data:image/jpeg;base64,${Buffer.from('jpeg').toString('base64')}`
 const job = (n: number, uploads = 2) => ({
@@ -104,7 +112,8 @@ describe('the library copy browser (DES-ENGINE-002b2)', () => {
       expect.objectContaining({
         method: 'PUT',
         redirect: 'error',
-        headers: { 'content-type': 'image/jpeg', 'x-upsert': 'true' }
+        // Never over a stored photo.
+        headers: { 'content-type': 'image/jpeg' }
       })
     )
     await expect(
@@ -116,10 +125,22 @@ describe('the library copy browser (DES-ENGINE-002b2)', () => {
     await expect(upload(undefined, jpeg, put as never)).rejects.toThrow(
       'upload_failed'
     )
+    // No time left for it: never started.
+    await expect(
+      upload('https://db.test/u', jpeg, put as never, 500)
+    ).rejects.toThrow('upload_failed')
   })
 
   it('copies each email, uploads its cuts and reports the copy, a final failure or a retry; then carries the builds on', async () => {
-    const queue = [[job(1)], [job(2, 0)], [job(3)], [job(4)], [job(5)], []]
+    const queue = [
+      [job(1)],
+      [job(2, 0)],
+      [job(3)],
+      [job(4)],
+      [job(5)],
+      [job(6)],
+      []
+    ]
     const posts: Record<string, unknown>[] = []
     const claims: string[] = []
     vi.stubGlobal(
@@ -127,13 +148,17 @@ describe('the library copy browser (DES-ENGINE-002b2)', () => {
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url.startsWith('https://app.test/')) {
           expect(init?.redirect).toBe('error')
+          if (url.endsWith('?carry=1')) {
+            // The carry-on changes state: a POST.
+            expect(init?.method).toBe('POST')
+            claims.push(url)
+            return new Response('{"off":false,"builds":1,"ran":2}')
+          }
           if (init?.method === 'POST') {
             posts.push(JSON.parse(String(init.body)))
             return new Response('{"ok":true}')
           }
           claims.push(url)
-          if (url.endsWith('?carry=1'))
-            return new Response('{"off":false,"builds":1,"ran":2}')
           return new Response(JSON.stringify({ jobs: queue.shift() ?? [] }))
         }
         if (url.includes('/3.marked'))
@@ -148,8 +173,14 @@ describe('the library copy browser (DES-ENGINE-002b2)', () => {
       made(1),
       made(1), // job 2 has no upload links: too many photos
       // job 3's HTML cannot be read: never copied
-      { ok: false as const, error: 'could not draw' },
-      made(1) // job 5: the upload fails
+      { ok: false as const, error: 'could not draw', retry: false },
+      made(1), // job 5: the upload fails
+      // job 6: the browser crashed: tried again, never a final failure
+      {
+        ok: false as const,
+        error: 'The email could not be copied: Target page closed',
+        retry: true
+      }
     ]
     const lines: string[] = []
     const counts = await run({
@@ -174,11 +205,11 @@ describe('the library copy browser (DES-ENGINE-002b2)', () => {
     expect(counts).toEqual({
       copied: 1,
       failed: 2,
-      retry: 2,
+      retry: 3,
       skew: false,
       carried: 1
     })
-    expect(claims.filter((u) => u.includes('?engine=v-test'))).toHaveLength(6)
+    expect(claims.filter((u) => u.includes('?engine=v-test'))).toHaveLength(7)
     expect(claims.at(-1)).toBe(
       'https://app.test/api/internal/design/copies?carry=1'
     )
@@ -210,11 +241,74 @@ describe('the library copy browser (DES-ENGINE-002b2)', () => {
       { job: 'j2', lease: 'l2', engine: 'v-test', failure: 'too_many_photos' },
       { job: 'j3', lease: 'l3', retry: 'html_unreadable' },
       { job: 'j4', lease: 'l4', engine: 'v-test', failure: 'copy_failed' },
-      { job: 'j5', lease: 'l5', retry: 'upload_failed' }
+      { job: 'j5', lease: 'l5', retry: 'upload_failed' },
+      { job: 'j6', lease: 'l6', retry: 'engine_error' }
     ])
     expect(lines).toEqual([
-      'Copies made: 1. Cannot be copied: 2. To try again: 2. Emails carried on: 1.'
+      'Copies made: 1. Cannot be copied: 2. To try again: 3. Emails carried on: 1.'
     ])
+  })
+
+  it('a copy out of time closes its browser and takes a new one, or stops the run; nothing is claimed that cannot finish', async () => {
+    const posts: Record<string, unknown>[] = []
+    let claimed = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.startsWith('https://app.test/')) {
+          if (init?.method === 'POST') {
+            if (!url.endsWith('?carry=1'))
+              posts.push(JSON.parse(String(init.body)))
+            return new Response('{"ok":true}')
+          }
+          claimed++
+          return new Response(JSON.stringify({ jobs: [job(claimed)] }))
+        }
+        return new Response('<table data-gr-section="1"></table>')
+      })
+    )
+    vi.useFakeTimers()
+    try {
+      let t = 0
+      const closed: number[] = []
+      const browser = (n: number) =>
+        ({ close: async () => void closed.push(n) }) as unknown as Browser
+      const run1 = run({
+        base: 'https://app.test',
+        secret: 'x'.repeat(40),
+        browser: browser(1),
+        log: () => undefined,
+        engine: 'v-test',
+        tools: () => ({}) as PhotoTools,
+        // Never finishes: the copy's own deadline ends it.
+        copy: () => new Promise(() => {}),
+        now: () => t
+      })
+      await vi.advanceTimersByTimeAsync(copyBudgetMs + 1)
+      const counts = await run1
+      // No new browser to take: the run stops after the first.
+      expect(counts).toMatchObject({ copied: 0, retry: 1 })
+      expect(closed).toEqual([1])
+      expect(posts).toEqual([{ job: 'j1', lease: 'l1', retry: 'timeout' }])
+      // Past the last moment a whole copy fits, nothing is claimed.
+      claimed = 0
+      t = 0
+      const late = run({
+        base: 'https://app.test',
+        secret: 'x'.repeat(40),
+        browser: browser(2),
+        log: () => undefined,
+        engine: 'v-test',
+        tools: () => ({}) as PhotoTools,
+        copy: async () => made(0) as never,
+        now: () => (t += claimUntil(0) + 1)
+      })
+      await vi.runAllTimersAsync()
+      expect((await late).copied).toBe(0)
+      expect(claimed).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('says so when the app runs another engine version, and copies nothing', async () => {

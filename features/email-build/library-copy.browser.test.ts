@@ -110,7 +110,7 @@ describe.skipIf(!on)('library copies through the hard checks', () => {
       const links = new Map(
         got.cuts.map((_, i) => [
           i,
-          `https://project.supabase.co/storage/v1/object/sign/email-copies/${copyPhotoPath('t', 'b', i)}?token=x`
+          `https://project.supabase.co/storage/v1/object/sign/email-copies/${copyPhotoPath('t', 'b', 'l', i)}?token=x`
         ])
       )
       const html = withPhotoLinks(got.html, links)

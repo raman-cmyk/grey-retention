@@ -65,7 +65,23 @@ export type LibraryCopyResult =
        */
       cuts: Cut[]
     })
-  | { ok: false; error: string }
+  | {
+      ok: false
+      error: string
+      /**
+       * DES-ENGINE-002b2: the browser failed (it crashed, a page closed or
+       * timed out), not the email: worth another try. False for a refusal
+       * that would be the same every time (a copy that does not fit, a
+       * leak check without the original).
+       */
+      retry: boolean
+    }
+
+/** A browser failure, not the email's (Playwright's and the engine's words). */
+export const transientError = (error: string) =>
+  /could not be copied:|could not be opened|took too long|timeout|timed out|target (?:page|closed)|has been closed|browser.*closed|crash|protocol error|disconnected|net::err/i.test(
+    error
+  )
 
 /** The reason a Footer block is added, after "Section n (footer)". */
 export const footerAddedWhy =
@@ -127,7 +143,7 @@ export async function libraryCopy(
       crop === 'canvas'
         ? await swapWithCrops(swapIn, tools)
         : swapBrand({ ...swapIn, cropper: crop })
-    if (!swapped.ok) return swapped
+    if (!swapped.ok) return { ...swapped, retry: false }
     let source = input.source
     let target = swapped.target
     const blocked = new Map(swapped.blocked)
@@ -146,7 +162,7 @@ export async function libraryCopy(
       brand: swapped.blockBrand,
       mode: input.mode ?? 'preview'
     })
-    if (!result.ok) return result
+    if (!result.ok) return { ...result, retry: transientError(result.error) }
     const leaks = leaksOf({
       source: input.source,
       sourceHtml: input.sourceHtml,
@@ -162,10 +178,11 @@ export async function libraryCopy(
     }
   } catch (error) {
     if (error instanceof LeakCheckError)
-      return { ok: false, error: error.message }
+      return { ok: false, error: error.message, retry: false }
     return {
       ok: false,
-      error: `The email could not be copied: ${error instanceof Error ? error.message : String(error)}`
+      error: `The email could not be copied: ${error instanceof Error ? error.message : String(error)}`,
+      retry: true
     }
   }
 }

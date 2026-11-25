@@ -123,7 +123,7 @@ export const copyRecord = z.object({
     .array(z.object({ kind: z.string().max(20), value: z.string().max(200) }))
     .max(200),
   footerAdded: z.boolean(),
-  /** The cut photos uploaded, by index (`<workspace>/<build>/<i>.jpg`). */
+  /** The cut photos uploaded, by index (`<workspace>/<build>/<lease>/<i>.jpg`). */
   photos: z
     .array(
       z
@@ -135,17 +135,51 @@ export const copyRecord = z.object({
 })
 export type CopyRecord = z.infer<typeof copyRecord>
 
+/**
+ * Each recorded photo as the database pinned it (`record_email_copy`): its
+ * path in its claim's folder, its stored tag and size, checked again
+ * before its link is signed.
+ */
+export const storedPhotos = z
+  .array(
+    z.object({
+      index: z
+        .int()
+        .min(0)
+        .max(maxCopyPhotos - 1),
+      path: z
+        .string()
+        .regex(/^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/\d{1,2}\.jpg$/),
+      etag: z.string().min(1).max(200),
+      size: z.number().int().min(0).nullable()
+    })
+  )
+  .max(maxCopyPhotos)
+export type StoredPhotos = z.infer<typeof storedPhotos>
+
 /** The placeholder a cut photo has until its link is signed (`cutPlaceholder`). */
 export const photoPlaceholder = (index: number) =>
   `https://email-copies.invalid/${index}.jpg`
 
-/** Where the browser job stores a cut photo (the private `email-copies` bucket). */
-export const copyPhotoPath = (tenant: string, build: string, index: number) =>
-  `${tenant}/${build}/${index}.jpg`
+/**
+ * Where the browser job stores a cut photo (the private `email-copies`
+ * bucket): its claim's own folder, so a stale claim never touches a
+ * recorded photo.
+ */
+export const copyPhotoPath = (
+  tenant: string,
+  build: string,
+  lease: string,
+  index: number
+) => `${tenant}/${build}/${lease}/${index}.jpg`
 
 /** Why the browser job could not copy an email, in the owner's words. */
 export const copyFailures = {
   copy_failed: 'the copy could not be drawn',
+  copy_leaked:
+    'the copy still showed something of the other brand when GROS checked it',
+  build_moved_on: 'the email was already being made another way',
+  photo_changed: 'one of its photos changed after it was copied',
   too_many_photos: 'it needs more photos than one copy can hold',
   blueprint_gone: 'its measured design is no longer stored',
   source_missing: 'the original email is no longer stored',

@@ -458,7 +458,7 @@ describe('CI workflows', () => {
       ['inbox-screenshots.yml', 30],
       ['klaviyo-results.yml', 10],
       ['studio-renders.yml', 18],
-      ['design-copies.yml', 22]
+      ['design-copies.yml', 30]
     ] as const
     for (const [name, minutes] of scheduled) {
       const text = read(name)

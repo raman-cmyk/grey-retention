@@ -9,6 +9,9 @@ import type { SectionOutcome } from '../features/design-engine/copy'
 export const perRun: number
 export const runBudgetMs: number
 export const copyBudgetMs: number
+export const uploadBudgetMs: number
+export const reportMs: number
+export function claimUntil(start: number): number
 export function linkOk(url: string): boolean
 export function photoHosts(origins: unknown): string[]
 export function sectionOf(s: SectionOutcome): {
@@ -20,7 +23,8 @@ export function sectionOf(s: SectionOutcome): {
 export function upload(
   url: string | undefined,
   inline: string,
-  fetchImpl?: typeof fetch
+  fetchImpl?: typeof fetch,
+  ms?: number
 ): Promise<void>
 export function run(options: {
   base: string
@@ -34,7 +38,9 @@ export function run(options: {
   tools?: (origins: string[]) => PhotoTools
   /** The engine version reported (tests; else `ENGINE_VERSION`). */
   engine?: string
-  send?: (url: string | undefined, inline: string) => Promise<void>
+  send?: (url: string | undefined, inline: string, ms: number) => Promise<void>
+  /** A new browser after a copy ran out of time; without it the run stops. */
+  relaunch?: () => Promise<Browser>
   now?: () => number
 }): Promise<{
   copied: number

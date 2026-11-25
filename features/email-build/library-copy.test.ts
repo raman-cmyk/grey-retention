@@ -106,8 +106,8 @@ describe('the library copy’s input (DES-ENGINE-002b2)', () => {
     expect(sale(false)).toBeNull()
   })
 
-  it('keeps each cut photo in the workspace’s own folder', () => {
-    expect(copyPhotoPath('t1', 'b1', 3)).toBe('t1/b1/3.jpg')
+  it('keeps each cut photo in the workspace’s own folder, under its claim', () => {
+    expect(copyPhotoPath('t1', 'b1', 'l1', 3)).toBe('t1/b1/l1/3.jpg')
   })
 
   it('refuses a record with too many photos or no sections', () => {
