@@ -45,7 +45,7 @@ import FlowPage from '@/app/(gros)/results/flows/[flowId]/page'
 import MetricError from '@/app/(gros)/results/metrics/[metricId]/error'
 import MetricLoading from '@/app/(gros)/results/metrics/[metricId]/loading'
 import MetricPage from '@/app/(gros)/results/metrics/[metricId]/page'
-import ResultsNotFound from '@/app/(gros)/results/not-found'
+import ResultsNotFound from '@/app/(gros)/results/campaigns/not-found'
 import type { KlaviyoData } from '@/features/klaviyo-data/reader'
 import { sampleKlaviyoSnapshot } from '@/lib/providers/fake-klaviyo-read'
 import nextConfig from '@/next.config'
@@ -267,6 +267,27 @@ describe('the Klaviyo pages under Results (UI-KLV)', () => {
     ).toHaveTextContent('Klaviyo has numbers once it is sent.')
     expect(screen.getByText('No send time is set yet.')).toBeInTheDocument()
     expect(document.body).not.toHaveTextContent(/What was sent/)
+  })
+
+  it('a sent campaign Klaviyo has no numbers for says so, never that it is not sent', async () => {
+    const data = sample()
+    if (data.state === 'not_connected' || !('snapshot' in data))
+      throw new Error('sample')
+    const sent = data.snapshot.campaigns.find((c) => c.status === 'sent')!
+    const withoutNumbers = {
+      ...data,
+      snapshot: {
+        ...data.snapshot,
+        campaigns: data.snapshot.campaigns.map((c) =>
+          c.id === sent.id ? { ...c, stats: null } : c
+        )
+      }
+    }
+    mocks.klaviyoData.mockResolvedValue(withoutNumbers)
+    render(await campaign(sent.id))
+    const how = screen.getByRole('region', { name: 'How it did' })
+    expect(how).toHaveTextContent('Klaviyo has no numbers for it yet.')
+    expect(how).not.toHaveTextContent('once it is sent')
   })
 
   it('a flow: what it earned, what starts it, its steps opening each email', async () => {

@@ -134,7 +134,9 @@ function StatsCard({
           <p className="type-body text-[var(--stone)]">
             {c.status === 'Cancelled'
               ? 'It was cancelled, so it has no numbers.'
-              : 'Klaviyo has numbers once it is sent.'}
+              : c.status === 'Sent'
+                ? 'Klaviyo has no numbers for it yet.'
+                : 'Klaviyo has numbers once it is sent.'}
           </p>
           <p className="type-caption text-[var(--stone)]">{source}</p>
         </div>

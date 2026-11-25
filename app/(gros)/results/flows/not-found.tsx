@@ -1,6 +1,6 @@
 import { KlaviyoNotFound } from '@/features/klaviyo-detail/page-states'
 
-/** A campaign, flow, flow email or metric Klaviyo does not have (UI-KLV). */
+/** A Klaviyo flows page whose id Klaviyo does not have (UI-KLV); the rest of Results keeps the general not-found page. */
 export default function ResultsNotFound() {
   return <KlaviyoNotFound />
 }
