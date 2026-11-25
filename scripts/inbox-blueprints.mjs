@@ -129,7 +129,15 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const { chromium } = await import('@playwright/test')
   const browser = await launch(chromium)
   try {
-    await run({ base, secret, browser })
+    const counts = await run({ base, secret, browser })
+    // A version mismatch that lasts past a deploy must be seen, not just
+    // printed: the run is marked and turns red.
+    if (counts.skew) {
+      console.log(
+        '::warning::The app runs another design engine version than this job; no blueprint was measured. Deploy both from the same commit.'
+      )
+      process.exitCode = 1
+    }
   } catch (error) {
     const words = String(error?.message ?? error)
       .split(secret)

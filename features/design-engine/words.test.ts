@@ -162,7 +162,8 @@ describe('brand words', () => {
       'Brew a better cup',
       'Free from additives',
       'Only the best leaves',
-      'Off to a great start'
+      'Off to a great start',
+      'We dry them slowly over two days'
     ])
       expect(holdsFacts(words), words).toBe(false)
     const pick = wordPicker(
@@ -199,5 +200,40 @@ describe('brand words', () => {
     expect(
       shorten('Our tins are refillable. We pick by hand at dawn.', 0.5)
     ).toBe('Our tins are refillable.')
+    // Once a sentence holds a fact, what follows it may qualify it.
+    expect(shorten('Take 15% off. Not on gift sets.', 0.5)).toBe(
+      'Take 15% off. Not on gift sets.'
+    )
+    expect(
+      shorten('Free shipping this week. Members only, it never stacks.', 0.4)
+    ).toBe('Free shipping this week. Members only, it never stacks.')
+    for (const words of [
+      'Not on gift sets',
+      'Not available in stores',
+      'For members',
+      'Excluding samplers',
+      'Does not apply to sale tins'
+    ])
+      expect(holdsFacts(words), words).toBe(true)
+  })
+
+  it('never a code without the word code, more than the offer, or a stock claim', () => {
+    for (const words of [
+      'Promo: SPRING',
+      'promo = spring',
+      'Take 15% off, plus 5% more',
+      'An extra 5% off',
+      'Only 5 left',
+      'Only a few left in stock',
+      'Selling fast',
+      'Almost gone'
+    ])
+      expect(wordsAllowed(words, rules), words).toBe(false)
+    expect(wordsAllowed('Promo: FERN15', rules)).toBe(true)
+    expect(wordsAllowed('Promo video inside', rules)).toBe(true)
+    // A stock fact the brand stands behind is a claim.
+    expect(
+      wordsAllowed('Only 5 left', { ...rules, claims: ['Only 5 left'] })
+    ).toBe(true)
   })
 })

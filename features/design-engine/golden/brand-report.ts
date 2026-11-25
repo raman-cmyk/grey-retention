@@ -2,11 +2,12 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Browser } from '@playwright/test'
 import { desktopWindow, measureHtml, phoneWindow, pictureOf } from '../browser'
-import { copyBlueprint, type CopyResult } from '../copy'
-import { leaksOf, type Leak } from '../leaks'
+import type { CopyResult } from '../copy'
+import type { Leak } from '../leaks'
 import { blueprintFrom } from '../measure'
 import { forStorage } from '../stored'
-import { swapBrand, swapOwnWords, type Cropper } from '../swap'
+import type { Cropper } from '../swap'
+import { libraryCopy } from '../library-copy'
 import {
   goldenStoreNames,
   testBrand,
@@ -81,36 +82,29 @@ async function sideBySide(
 export async function brandCopy(
   browser: Browser,
   email: GoldenEmail,
-  cropper: Cropper | null
+  cropper: Cropper | 'canvas' | null
 ) {
   const opened = await measureHtml(browser, email.html, desktopWindow)
   if (!opened.ok) return { ok: false as const, error: opened.error }
   const measured = blueprintFrom(opened.measurement)
   if (!measured.ok) return { ok: false as const, error: measured.error }
-  const full = measured.blueprint
-  const stored = forStorage(full)
-  const swapped = swapBrand({
+  const stored = forStorage(measured.blueprint)
+  // The way the browser job copies it (DES-ENGINE-002b): photos cut,
+  // swapped, drawn, checked, Footer block if needed, leak check.
+  const got = await libraryCopy(browser, {
     source: stored,
+    sourceHtml: email.html,
+    sourceNames: goldenStoreNames,
     brand: testBrand,
     products: testProducts,
     words: testWords,
     rules: testRules,
-    cropper
+    vocabulary: testVocabulary,
+    crop: cropper
   })
-  if (!swapped.ok) return { ok: false as const, error: swapped.error }
-  const result = await copyBlueprint(browser, stored, swapped.target, {
-    blocked: swapped.blocked,
-    lengthen: swapped.lengthen,
-    brand: swapped.blockBrand
-  })
-  if (!result.ok) return { ok: false as const, error: result.error }
-  const leaks = leaksOf({
-    source: full,
-    sourceHtml: email.html,
-    html: result.html,
-    sourceNames: goldenStoreNames,
-    vocabulary: [...testVocabulary, ...swapOwnWords(testBrand)]
-  })
+  if (!got.ok) return { ok: false as const, error: got.error }
+  const { leaks, footerAdded, ...result } = got
+  void footerAdded
   return { ok: true as const, result, leaks }
 }
 
@@ -118,7 +112,7 @@ export async function runBrandGate(
   browser: Browser,
   emails: readonly GoldenEmail[],
   out: string | null,
-  cropper: Cropper | null
+  cropper: Cropper | 'canvas' | null
 ) {
   if (out) mkdirSync(out, { recursive: true })
   const rows: BrandRow[] = []

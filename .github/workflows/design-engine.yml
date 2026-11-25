@@ -9,7 +9,8 @@ name: Design engine
 # engine's other browser tests run too. No app, no database, no secret and
 # no outside request: the emails and their pictures are made in code.
 #
-# DES-ENGINE-002: the library 1:1 gate runs in the same step. The 20
+# DES-ENGINE-002: the library 1:1 gate runs in the same step (with the real
+# centre cut since DES-ENGINE-002b1: library-brand-canvas, floor 18). The 20
 # library-shaped emails are copied for a synthetic test brand (its colours,
 # fonts, logo, photos, products and words); at least 18 must keep the
 # original's structure, and no copy may show a word, picture, link or name

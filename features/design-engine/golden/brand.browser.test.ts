@@ -32,6 +32,8 @@ const only = (process.env.DESIGN_GOLDEN_ONLY ?? '')
 export const brandGateTarget = 18
 /** The path live stores take today (no cropper): 9 observed, 1 of margin. */
 export const noCropFloor = 8
+/** The real centre cut on a canvas (DES-ENGINE-002b): the path live stores take. */
+export const canvasFloor = 18
 
 describe.skipIf(!on)('library 1:1 gate', () => {
   let browser: Browser
@@ -87,6 +89,23 @@ describe.skipIf(!on)('library 1:1 gate', () => {
     if (!only.length)
       expect(rows.filter((r) => r.pass).length).toBeGreaterThanOrEqual(
         noCropFloor
+      )
+  }, 600_000)
+
+  it(`with the real centre cut (a canvas in the locked browser), at least ${canvasFloor} copy fully, with no leak`, async () => {
+    const rows = await runBrandGate(
+      browser,
+      emails,
+      join(out, 'library-brand-canvas'),
+      'canvas'
+    )
+    expect(
+      rows.filter((r) => r.error).map((r) => `${r.id}: ${r.error}`)
+    ).toEqual([])
+    expect(rows.flatMap((r) => r.leaks)).toEqual([])
+    if (!only.length)
+      expect(rows.filter((r) => r.pass).length).toBeGreaterThanOrEqual(
+        canvasFloor
       )
   }, 600_000)
 })
