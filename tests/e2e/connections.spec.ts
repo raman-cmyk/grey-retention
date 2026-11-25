@@ -69,6 +69,8 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
   await expect(
     page
       .getByRole('region', { name: 'Catalog', exact: true })
+      // The product list (the Stock form's choice repeats the name).
+      .getByRole('list', { name: 'Products', exact: true })
       .getByText('Original demo product 1 · Synthetic', { exact: true })
   ).toBeVisible()
   await page.goto('/settings/assets')

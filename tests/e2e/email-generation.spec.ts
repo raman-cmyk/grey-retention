@@ -314,7 +314,9 @@ test('the old shell sidebar, account menu and mobile drawer work with keyboard a
     const nav = page.getByRole('navigation', {
       name: 'Client workspace navigation'
     })
-    // The old sidebar's Brand and Brand assets open the GROS pages.
+    // The old sidebar's Brand and Brand assets open the GROS pages; Brand
+    // assets sits in the More tools group, which starts closed.
+    await nav.getByRole('button', { name: 'More tools', exact: true }).click()
     await expect(
       nav.getByRole('link', { name: 'Brand assets', exact: true })
     ).toHaveAttribute('href', '/settings/assets')
