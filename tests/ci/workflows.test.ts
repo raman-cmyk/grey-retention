@@ -230,7 +230,11 @@ describe('CI workflows', () => {
   })
 
   it('installs browser system packages best effort, so a mirror outage is not a failed run', () => {
-    for (const name of ['browser.yml', 'inbox-screenshots.yml']) {
+    for (const name of [
+      'browser.yml',
+      'inbox-screenshots.yml',
+      'design-engine.yml'
+    ]) {
       const text = read(name)
       expect(text).not.toContain('playwright install --with-deps')
       expect(text).toContain('pnpm exec playwright install chromium')
@@ -247,6 +251,24 @@ describe('CI workflows', () => {
       )
     }
     expect(read('browser.yml')).toMatch(/for attempt in 1 2; do/)
+  })
+
+  it('runs the design engine golden set in the browser and always keeps its pictures (DES-ENGINE-001)', () => {
+    const text = read('design-engine.yml')
+    expect(pathFilters(text)).toContain('features/design-engine/**')
+    for (const filter of pathFilters(text))
+      expect(
+        tracked.some((file) => matches(filter, file)),
+        filter
+      ).toBe(true)
+    expect(text).toContain("DESIGN_ENGINE_BROWSER: 'on'")
+    expect(text).toContain('run: pnpm exec vitest run features/design-engine\n')
+    // The owner looks at the pictures whether the run passed or not.
+    expect(text).toMatch(
+      /- if: always\(\)\n {8}uses: actions\/upload-artifact@v4\n {8}with:\n {10}name: design-golden\n/
+    )
+    // No secret and no app: the golden set needs neither.
+    expect(text).not.toMatch(/secrets\.|APP_URL|supabase start/)
   })
 
   it('keeps a failed browser run debuggable', () => {

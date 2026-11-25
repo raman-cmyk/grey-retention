@@ -10,3 +10,4 @@ pnpm-lock.yaml
 
 # Generated local code-graph cache
 graphify-out
+design-golden
