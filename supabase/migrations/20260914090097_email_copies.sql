@@ -155,12 +155,12 @@ begin
     end loop;
   end if;
   update public.email_copies
-    set state = case when result is null then 'failed' else 'done' end,
+    set state = case when record_email_copy.result is null then 'failed' else 'done' end,
         result = record_email_copy.result, failure = record_email_copy.failure, updated_at = now()
     where build_id = build and state = 'queued';
   update public.platform_jobs
     set status = 'succeeded', lease_token = null, lease_expires_at = null,
-        result = jsonb_build_object('state', case when result is null then 'failed' else 'done' end),
+        result = jsonb_build_object('state', case when record_email_copy.result is null then 'failed' else 'done' end),
         finished_at = now(), updated_at = now()
     where id = j.id;
   -- The waiting design step goes on at the next claim.
