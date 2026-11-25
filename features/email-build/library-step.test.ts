@@ -7,6 +7,7 @@ import {
   copyWords,
   type CopyInput,
   type CopyRecord,
+  type BlueprintState,
   type CopyState,
   type LibraryCopyPort
 } from './library-copy'
@@ -88,11 +89,11 @@ function fakePort(
   return { port, asked }
 }
 
-const ready = {
+const ready: BlueprintState = {
   state: 'ready',
   messageId: 'm-1',
   sourceNames: ['Pine & Co', 'pine.example']
-} as const
+}
 
 async function step(
   port: LibraryCopyPort,
@@ -228,7 +229,9 @@ describe('the library step (DES-ENGINE-002b2)', () => {
 })
 
 describe('Copy in the design step, behind the switch (DES-ENGINE-002b2)', () => {
-  const ctx = (over: Partial<BuildCtx> & { library?: LibraryCopyPort }) => ({
+  const ctx = (
+    over: Omit<Partial<BuildCtx>, 'fallbacks'> & { library?: LibraryCopyPort }
+  ) => ({
     tenantId,
     callerKey: 'email-build:b1',
     fallbacks: memoryFallbackLog(),
