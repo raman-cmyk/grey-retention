@@ -10,6 +10,8 @@ vi.mock('@/lib/supabase/service', () => service)
 import type { BrandBookContent } from './brand-book'
 import {
   brandBookWriteKind,
+  clickDeadlineMs,
+  clickWriteMs,
   prepareBrandBookWrite,
   rewriteBrandBookNow,
   rewriteBrandBookSoon,
@@ -34,6 +36,7 @@ function database(
   {
     claimError = null as unknown,
     finishError = null as unknown,
+    finishErrors = [] as unknown[],
     newest = { version: 4, content: book('Calm') } as unknown,
     waiting = [] as boolean[]
   } = {}
@@ -55,7 +58,10 @@ function database(
       }
     }
     if (name === 'finish_brand_book_write')
-      return { data: 5, error: finishError }
+      return {
+        data: 5,
+        error: finishErrors.length ? finishErrors.shift() : finishError
+      }
     return { data: null, error: null }
   })
   const from = vi.fn((table: string) => {
@@ -185,10 +191,10 @@ describe('runBrandBookWrites', () => {
     ).toEqual(['j3'])
   })
 
-  it('fails a write whose lease was lost or whose book changed meanwhile', async () => {
+  it('fails a write whose lease was lost', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { db, calls } = database([{ id: 'j1', tenant_id: 't1' }], {
-      finishError: { code: 'PT409', hint: 'brand_book_changed' }
+      finishError: { code: 'PT409', message: 'Lease unavailable' }
     })
     expect(
       await runBrandBookWrites(db, {
@@ -203,6 +209,71 @@ describe('runBrandBookWrites', () => {
     expect(calls[2]!.args).toMatchObject({ failure: 'transient' })
   })
 
+  it('writes once more from a newer book the strategist saved meanwhile, under the same lease', async () => {
+    const { db, calls } = database([{ id: 'j1', tenant_id: 't1' }], {
+      finishErrors: [{ code: 'PT409', hint: 'brand_book_changed' }, null]
+    })
+    const prepare = vi
+      .fn()
+      .mockResolvedValueOnce({ basedOn: 3, content: book('Plain') })
+      .mockResolvedValueOnce({ basedOn: 4, content: book('Plain') })
+    expect(await runBrandBookWrites(db, { tenantId: 't1', prepare })).toEqual({
+      ran: 1,
+      failed: 0
+    })
+    expect(
+      calls
+        .filter((c) => c.name === 'finish_brand_book_write')
+        .map((c) => (c.args as { based_on: number }).based_on)
+    ).toEqual([3, 4])
+    expect(calls.map((c) => c.name)).not.toContain('fail_job')
+  })
+
+  it('fails when the book changed again, or there is no time to write it again', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const changed = { code: 'PT409', hint: 'brand_book_changed' }
+    const twice = database([{ id: 'j1', tenant_id: 't1' }], {
+      finishErrors: [changed, changed]
+    })
+    const prepare = async () => ({ basedOn: 3, content: book('Plain') })
+    expect(await runBrandBookWrites(twice.db, { prepare })).toEqual({
+      ran: 0,
+      failed: 1
+    })
+    expect(
+      twice.calls.filter((c) => c.name === 'finish_brand_book_write')
+    ).toHaveLength(2)
+    let clock = 0
+    const late = database([{ id: 'j1', tenant_id: 't1' }], {
+      finishErrors: [changed]
+    })
+    expect(
+      await runBrandBookWrites(late.db, {
+        deadline: 100,
+        ms: 50,
+        now: () => (clock += 30),
+        prepare
+      })
+    ).toEqual({ ran: 0, failed: 1 })
+    expect(
+      late.calls.filter((c) => c.name === 'finish_brand_book_write')
+    ).toHaveLength(1)
+  })
+
+  it('never retries a book the database refuses', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { db, calls } = database([{ id: 'j1', tenant_id: 't1' }], {
+      finishError: { code: '23514', message: 'Invalid Brand book' }
+    })
+    await runBrandBookWrites(db, {
+      prepare: async () => ({ basedOn: 3, content: book('Plain') })
+    })
+    expect(calls.at(-1)).toEqual({
+      name: 'fail_job',
+      args: { job: 'j1', lease: 'lease-j1', failure: 'validation' }
+    })
+  })
+
   it('waits for the workspace’s running write, then runs the one queued behind it', async () => {
     const { db, calls } = database(
       ['busy', 'busy', { id: 'j2', tenant_id: 't1' }],
@@ -215,7 +286,8 @@ describe('runBrandBookWrites', () => {
       await runBrandBookWrites(db, {
         tenantId: 't1',
         limit: 3,
-        busyUntil: Date.now() + 60_000,
+        deadline: Date.now() + 60_000,
+        waitForBusy: true,
         sleep,
         prepare: async () => ({ basedOn: 4, content: book('Plain') })
       })
@@ -226,21 +298,32 @@ describe('runBrandBookWrites', () => {
     ).toHaveLength(4)
   })
 
-  it('stops waiting when nothing is queued behind, or when its time is up', async () => {
+  it('stops waiting when nothing is queued behind, or when a whole write no longer fits', async () => {
     const idle = database(['busy'], { waiting: [false] })
     const sleep = vi.fn(async () => {})
     await runBrandBookWrites(idle.db, {
       tenantId: 't1',
-      busyUntil: Date.now() + 60_000,
+      deadline: Date.now() + 60_000,
+      waitForBusy: true,
       sleep
     })
     expect(sleep).not.toHaveBeenCalled()
+    // 600 ms left, a write takes 200: the claim fits, a wait of 500 does not.
     const late = database(['busy'], { waiting: [true] })
     await runBrandBookWrites(late.db, {
       tenantId: 't1',
-      busyUntil: 1_000,
-      now: () => 990,
-      ms: 20,
+      deadline: 1_000,
+      now: () => 400,
+      ms: 200,
+      waitForBusy: true,
+      sleep
+    })
+    expect(sleep).not.toHaveBeenCalled()
+    // Without waitForBusy (the readers' run) it never waits.
+    const readers = database(['busy'], { waiting: [true] })
+    await runBrandBookWrites(readers.db, {
+      tenantId: 't1',
+      deadline: Date.now() + 60_000,
       sleep
     })
     expect(sleep).not.toHaveBeenCalled()
@@ -269,6 +352,7 @@ describe('writeFailure', () => {
     expect(writeFailure({ code: 'PT409' })).toBe('transient')
     expect(writeFailure(null)).toBe('transient')
     expect(writeFailure({ code: 'too_many_corrections' })).toBe('validation')
+    expect(writeFailure({ code: '23514' })).toBe('validation')
   })
 })
 
@@ -287,7 +371,9 @@ describe('rewriteBrandBookNow', () => {
 })
 
 describe('rewriteBrandBookSoon', () => {
-  it('runs the workspace’s rewrites after the reply, as the worker', async () => {
+  it('runs the workspace’s rewrites after the reply, as the worker, within its deadline', async () => {
+    expect(clickDeadlineMs).toBe(25_000)
+    expect(clickDeadlineMs - clickWriteMs).toBe(15_000)
     const { db, calls } = database([])
     service.createServiceClient.mockReturnValue(db)
     rewriteBrandBookSoon('t1')

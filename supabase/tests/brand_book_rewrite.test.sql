@@ -277,5 +277,46 @@ reset role;
 select is((select count(*)::integer from public.brand_book_corrections where id=(select id from live_correction) and withdrawn_at is null),1,
   'the other workspace''s correction stays live');
 
+-- Retries stay bounded: the worker's own causes (a read, a stale book)
+-- reuse a waiting write without giving it more tries; the owner's do.
+update public.job_runs set status='retry_wait', attempt=3 where id=current_setting('test.mine')::uuid;
+set local role service_role;
+select pg_temp.as_worker();
+select is(public.queue_brand_book_write_as_worker('00000000-0000-4000-8000-000000000101','read',gen_random_uuid()::text)::text,
+  current_setting('test.mine'),'a read reuses the waiting write');
+select is((select status||'/'||attempt from public.job_runs where id=current_setting('test.mine')::uuid),'queued/3','with only the tries it has left');
+select is(public.queue_brand_book_write_as_worker('00000000-0000-4000-8000-000000000101','stale','2026-11-25T10')::text,
+  current_setting('test.mine'),'so does a stale book');
+select is((select attempt from public.job_runs where id=current_setting('test.mine')::uuid),3,'still three tries used');
+reset role;
+set local role authenticated;
+select pg_temp.as_member('00000000-0000-4000-8000-000000000001');
+select lives_ok($$select public.correct_brand_book_at('00000000-0000-4000-8000-000000000101',2,
+  '[{"section":"offering","action":"add","value":"Wool scarves."}]'::jsonb)$$,'the owner corrects again');
+select is((select status||'/'||attempt from public.job_runs where id=current_setting('test.mine')::uuid),'queued/0','his change gives it its full tries');
+
+-- A paused workspace's rewrite never saves; the worker queues for active profiles only.
+reset role;
+update public.job_runs set status='succeeded' where id=current_setting('test.job2')::uuid;
+set local role service_role;
+select pg_temp.as_worker();
+select set_config('test.job4',(select id::text from public.claim_brand_book_write('00000000-0000-4000-8000-000000000101')),true);
+select is(current_setting('test.job4'),current_setting('test.mine'),'the waiting rewrite is claimed');
+reset role;
+update public.tenants set status='paused' where id='00000000-0000-4000-8000-000000000101';
+set local role service_role;
+select pg_temp.as_worker();
+select throws_ok($$select public.finish_brand_book_write(current_setting('test.job4')::uuid,pg_temp.lease(current_setting('test.job4')),
+  2,'{"x":1}'::jsonb,'brand-book@2')$$,'42501',null,'a paused workspace''s book is never saved');
+select is(pg_temp.newest(),2,'the book is unchanged');
+reset role;
+update public.tenants set status='active' where id='00000000-0000-4000-8000-000000000102';
+update public.profiles set status='inactive' where id='00000000-0000-4000-8000-000000000004';
+update public.job_runs set status='succeeded' where tenant_id='00000000-0000-4000-8000-000000000102' and kind='brand.write_book';
+set local role service_role;
+select pg_temp.as_worker();
+select is(public.queue_brand_book_write_as_worker('00000000-0000-4000-8000-000000000102','read',gen_random_uuid()::text),null,
+  'a workspace whose only member is inactive gets no rewrite queued for him');
+
 select * from finish();
 rollback;

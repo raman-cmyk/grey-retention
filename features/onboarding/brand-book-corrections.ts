@@ -4,7 +4,7 @@ import type { Database } from '@/lib/supabase/database.types'
 
 /**
  * The owner's corrections of the Brand book (owner pick #58, ONB-058). The
- * owner (or an admin) removes a line, replaces it with his own words, adds
+ * owner (only the owner since UI-BRAND-2) removes a line, replaces it with his own words, adds
  * a line, or sets a fact (`correct_brand_book`); a correction names its
  * line by its words (case and spacing aside), so it holds when the book is
  * written again. Applied on top of what the readers found (ONB-106b's
@@ -80,7 +80,7 @@ export async function listCorrections(
   )
 }
 
-/** Corrects one line (owner or admin; the database checks). Returns its id. */
+/** Corrects one line (the owner only since UI-BRAND-2; the database checks). Returns its id. */
 export async function correctBrandBook(
   db: Db,
   tenantId: string,

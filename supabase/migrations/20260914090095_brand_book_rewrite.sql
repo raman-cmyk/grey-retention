@@ -14,9 +14,11 @@
 --     book (`queue_brand_book_write_as_worker`), so every book the code
 --     writes goes through the same fenced save.
 --   A write that has not started yet covers every later change (it reads
---   everything when it runs), so a waiting write is reused, made due now
---   and given its full tries again: at most one waiting write a
---   workspace. A write already running may have read before the change,
+--   everything when it runs), so a waiting write is reused and made due
+--   now: at most one waiting write a workspace. The owner's own change
+--   (approve, a correction, take back, Try again) gives it its full tries
+--   again; the worker's (a read, a stale book) never does, so retries stay
+--   bounded. A write already running may have read before the change,
 --   so a new one is queued behind it. The key makes a repeated cause
 --   idempotent.
 -- * Leased (60 s), at most four tries (`fail_job`'s back-off, the worker's
@@ -52,8 +54,9 @@ create index job_runs_brand_book_writes on public.job_runs (tenant_id, created_a
 
 -- Queues a rewrite of the workspace's Brand book (the caller holds the
 -- workspace lock). A waiting write is reused: due now, with its full
--- tries again. Otherwise a new one is added under its key (once per
--- cause). Null when nobody can be named as its creator.
+-- tries again only for the owner's own change. Otherwise a new one is
+-- added under its key (once per cause). Null when nobody can be named as
+-- its creator.
 create or replace function private.queue_brand_book_write(t uuid, cause text, ref text, who uuid)
 returns uuid language plpgsql security definer set search_path = '' as $$
 declare j uuid; key text := 'brand-book:' || cause || ':' || ref;
@@ -62,8 +65,9 @@ begin
     where r.tenant_id = t and r.kind = 'brand.write_book' and r.status in ('queued', 'retry_wait')
     order by r.created_at desc limit 1 for update;
   if j is not null then
-    update public.job_runs set status = 'queued', attempt = 0, available_at = now(), failure_class = null,
-        error_code = null, updated_at = now()
+    update public.job_runs set status = 'queued',
+        attempt = case when cause in ('approved', 'corrected', 'withdrawn', 'retry') then 0 else attempt end,
+        available_at = now(), failure_class = null, error_code = null, updated_at = now()
       where id = j;
     return j;
   end if;
@@ -80,10 +84,11 @@ end $$;
 revoke all on function private.queue_brand_book_write(uuid, text, text, uuid) from public, anon, authenticated, service_role;
 
 -- Whom a rewrite the worker queues is created for: the workspace's first
--- active owner, else its first active member.
+-- active owner, else its first active member (active profiles only).
 create or replace function private.workspace_actor(t uuid) returns uuid
 language sql stable security definer set search_path = '' as $$
   select m.profile_id from public.tenant_memberships m
+    join public.profiles p on p.id = m.profile_id and p.status = 'active'
     where m.tenant_id = t and m.status = 'active'
     order by (m.role = 'owner') desc, m.created_at, m.profile_id
     limit 1
@@ -269,7 +274,9 @@ begin
   perform private.require_service();
   select r.tenant_id into t from public.job_runs r where r.id = job;
   if t is null then raise exception 'Lease unavailable' using errcode = 'PT409'; end if;
-  perform 1 from public.tenants where id = t for update;
+  -- An active workspace only, as `save_brand_book`.
+  perform 1 from public.tenants where id = t and status = 'active' for update;
+  if not found then raise exception 'Active workspace required' using errcode = '42501'; end if;
   select * into j from public.job_runs where id = job for update;
   if j.kind <> 'brand.write_book' or j.status <> 'running' or j.lease_token is distinct from lease
     or j.lease_until <= now() then

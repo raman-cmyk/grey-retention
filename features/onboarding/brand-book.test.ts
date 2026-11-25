@@ -3,14 +3,14 @@ import { brandBookHeader } from '@/features/agents/memory'
 import {
   brandBookAuthor,
   brandBookFrom,
+  changedBook,
+  composeBrandBook,
   maxBookChars,
   sameBook,
-  saveBrandBook,
   staleBooks,
   strategistAuthor,
   within,
   withCorrections,
-  writeBrandBook,
   type BrandBookParts
 } from './brand-book'
 import type { Correction } from './brand-book-corrections'
@@ -343,65 +343,21 @@ describe('brandBookFrom (ONB-106b)', () => {
   })
 })
 
-describe('saveBrandBook (ONB-106b)', () => {
-  type Answer = { data: unknown; error: unknown }
-  const db = (
-    latest: unknown,
-    rpc = vi.fn(async (): Promise<Answer> => ({ data: 3, error: null }))
-  ) => {
-    const chain = {
-      select: () => chain,
-      eq: () => chain,
-      order: () => chain,
-      limit: async () => latest
-    }
-    return { client: { from: () => chain, rpc } as never, rpc }
-  }
+describe('changedBook (ONB-106b; UI-BRAND-2: the rewrite job saves it)', () => {
   const book = brandBookFrom(parts())
 
-  it('saves a new version only when the book changed, whatever its keys’ order', async () => {
+  it('gives the book to save only when it changed, whatever its keys’ order', () => {
     const reordered = JSON.parse(JSON.stringify(book, Object.keys(book).sort()))
     expect(sameBook(book, { ...reordered, ...book })).toBe(true)
-    const same = db({ data: [{ content: { ...book } }], error: null })
-    expect(await saveBrandBook(same.client, tenantId, book)).toBeNull()
-    expect(same.rpc).not.toHaveBeenCalled()
-    const changed = db({
-      data: [{ content: { ...book, sample: true } }],
-      error: null
-    })
-    expect(await saveBrandBook(changed.client, tenantId, book)).toBe(3)
-    expect(changed.rpc).toHaveBeenCalledWith('save_brand_book', {
-      t: tenantId,
-      content: book,
-      written_by: brandBookAuthor
-    })
-  })
-
-  it('throws when a read or the save fails', async () => {
-    await expect(
-      saveBrandBook(
-        db({ data: null, error: { code: '42501' } }).client,
-        tenantId,
-        book
-      )
-    ).rejects.toMatchObject({ code: '42501' })
-    await expect(
-      saveBrandBook(
-        db(
-          { data: [], error: null },
-          vi.fn(async (): Promise<Answer> => ({
-            data: null,
-            error: { code: 'PT409' }
-          }))
-        ).client,
-        tenantId,
-        book
-      )
-    ).rejects.toMatchObject({ code: 'PT409' })
+    expect(changedBook({ ...book }, book)).toBeNull()
+    expect(changedBook({ ...book, sample: true }, book)).toEqual(book)
+    // No book yet: the first one is saved.
+    expect(changedBook(undefined, book)).toEqual(book)
+    expect(changedBook(null, book)).toEqual(book)
   })
 })
 
-describe('writeBrandBook (ONB-106b)', () => {
+describe('composeBrandBook (ONB-106b)', () => {
   function client(
     rows: { profile?: unknown; status?: unknown; error?: string } = {}
   ) {
@@ -451,30 +407,29 @@ describe('writeBrandBook (ONB-106b)', () => {
     approved_revision: 2
   }
 
-  it('reads only this workspace and saves its book', async () => {
+  it('reads only this workspace and writes its book, saving nothing', async () => {
     const { db, eqs, rpc } = client({
       profile,
       status: { currency: 'USD', featurable: 3, live: true }
     })
     const r = reads()
-    expect(await writeBrandBook(db, tenantId, r)).toBe(1)
+    const saved = await composeBrandBook(db, tenantId, r)
     for (const read of Object.values(r))
       expect(read).toHaveBeenCalledWith(db, tenantId)
     expect(eqs).toEqual([
       ['brand_profiles', 'tenant_id', tenantId],
-      ['catalog_status', 'tenant_id', tenantId],
-      ['brand_books', 'tenant_id', tenantId]
+      ['catalog_status', 'tenant_id', tenantId]
     ])
-    const saved = rpc.mock.calls[0]![1] as { content: { owner: unknown } }
-    expect(saved.content.owner).toEqual({
+    expect(rpc).not.toHaveBeenCalled()
+    expect(saved!.owner).toEqual({
       positioning: 'Linen.',
       voice: 'Warm.',
       prohibitions: 'Never cheap.'
     })
   })
 
-  it('saves the book with the owner’s corrections (ONB-058)', async () => {
-    const { db, rpc } = client({
+  it('writes the book with the owner’s corrections (ONB-058)', async () => {
+    const { db } = client({
       profile,
       status: { currency: 'USD', featurable: 3, live: true }
     })
@@ -499,11 +454,9 @@ describe('writeBrandBook (ONB-106b)', () => {
         })
       ])
     }
-    expect(await writeBrandBook(db, tenantId, r)).toBe(1)
+    const content = await composeBrandBook(db, tenantId, r)
     expect(r.corrections).toHaveBeenCalledWith(db, tenantId)
-    const saved = rpc.mock.calls[0]![1] as {
-      content: { observed: { voice: string[] }; facts: { returnDays: number } }
-    }
+    const saved = { content: content! }
     expect(saved.content.observed.voice).toEqual(['Warm and witty.'])
     expect(saved.content.facts.returnDays).toBe(60)
     expect(saved.content).toMatchObject({
@@ -512,7 +465,7 @@ describe('writeBrandBook (ONB-106b)', () => {
     })
   })
 
-  it('never saves a sample book for a real brand, and an unapproved profile is not confirmed', async () => {
+  it('never writes a sample book for a real brand, and an unapproved profile is not confirmed', async () => {
     const sampleReads = {
       ...reads(),
       findings: vi.fn(async () => [
@@ -521,10 +474,10 @@ describe('writeBrandBook (ONB-106b)', () => {
       history: vi.fn(async () => null)
     }
     const real = client({ profile, status: null })
-    expect(await writeBrandBook(real.db, tenantId, sampleReads)).toBeNull()
+    expect(await composeBrandBook(real.db, tenantId, sampleReads)).toBeNull()
     // Not even with his corrections.
     expect(
-      await writeBrandBook(real.db, tenantId, {
+      await composeBrandBook(real.db, tenantId, {
         ...sampleReads,
         corrections: vi.fn(async () => [
           correction({ section: 'voice', action: 'add', value: 'Warm.' })
@@ -536,24 +489,22 @@ describe('writeBrandBook (ONB-106b)', () => {
       profile: { ...profile, synthetic: true, approved_revision: 1 },
       status: null
     })
-    expect(await writeBrandBook(synthetic.db, tenantId, sampleReads)).toBe(1)
-    const saved = synthetic.rpc.mock.calls[0]![1] as {
-      content: { owner: unknown; sample: boolean }
-    }
-    expect(saved.content).toMatchObject({ owner: null, sample: true })
+    expect(
+      await composeBrandBook(synthetic.db, tenantId, sampleReads)
+    ).toMatchObject({ owner: null, sample: true })
   })
 
   it('throws when the profile, the catalog or the corrections read fails', async () => {
     for (const table of ['brand_profiles', 'catalog_status'])
       await expect(
-        writeBrandBook(client({ error: table }).db, tenantId, reads())
+        composeBrandBook(client({ error: table }).db, tenantId, reads())
       ).rejects.toMatchObject({ code: '42501' })
     const r = {
       ...reads(),
       corrections: vi.fn(async () => Promise.reject({ code: 'PGRST000' }))
     }
     const { db, rpc } = client({ profile })
-    await expect(writeBrandBook(db, tenantId, r)).rejects.toMatchObject({
+    await expect(composeBrandBook(db, tenantId, r)).rejects.toMatchObject({
       code: 'PGRST000'
     })
     expect(rpc).not.toHaveBeenCalled()

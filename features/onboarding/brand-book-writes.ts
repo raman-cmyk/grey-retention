@@ -8,10 +8,9 @@ import type { FailureClass } from '@/features/workflow/domain/contracts'
 import { workspaceTimezone } from '@/features/strategy/offers'
 import {
   brandBookAuthor,
+  changedBook,
   composeBrandBook,
-  sameBook,
   within,
-  withoutStrategy,
   type BrandBookContent
 } from './brand-book'
 import { listCorrections } from './brand-book-corrections'
@@ -39,8 +38,15 @@ import { readKlaviyoHistory } from './history/read'
 export const brandBookWriteKind = 'brand.write_book'
 /** The longest one write may take (a few small reads, one save). */
 export const brandBookWriteMs = 15_000
-/** How long a click waits for its workspace's running rewrite to end. */
-export const busyWaitMs = 20_000
+/**
+ * After a click: everything ends within `clickDeadlineMs` of the reply
+ * (the Brand pages allow 60 s, `maxDuration`), each write taking at most
+ * `clickWriteMs`. A write already running in the workspace is waited for
+ * only while a whole write still fits before the deadline, so at most
+ * `clickDeadlineMs - clickWriteMs` (15 s).
+ */
+export const clickDeadlineMs = 25_000
+export const clickWriteMs = 10_000
 
 type Db = SupabaseClient<Database>
 
@@ -86,24 +92,25 @@ export async function prepareBrandBookWrite(
 ): Promise<PreparedWrite> {
   const before = await newestBook(db, tenantId)
   const content = await compose(db, tenantId)
-  const basedOn = before?.version ?? 0
-  if (!content) return { basedOn, content: null }
-  if (
-    before &&
-    sameBook(
-      withoutStrategy(before.content as BrandBookContent),
-      withoutStrategy(content)
-    )
-  )
-    return { basedOn, content: null }
-  return { basedOn, content }
+  return {
+    basedOn: before?.version ?? 0,
+    content: content ? changedBook(before?.content, content) : null
+  }
 }
 
 /** A write that ran out of time or met a busy database is tried again. */
 export function writeFailure(error: unknown): FailureClass {
   const code = (error as { code?: string } | null)?.code
-  return code === 'too_many_corrections' ? 'validation' : 'transient'
+  // A book the database refuses (23514) or corrections that can never fit
+  // are refused again on every try: no retry.
+  return code === 'too_many_corrections' || code === '23514'
+    ? 'validation'
+    : 'transient'
 }
+
+/** The finish found a newer book than the write read (the strategist saved). */
+const newerBook = (error: unknown) =>
+  (error as { hint?: string } | null)?.hint === 'brand_book_changed'
 
 export type BrandBookWrites = { ran: number; failed: number }
 
@@ -124,9 +131,12 @@ async function waitingFor(db: Db, tenantId: string) {
 /**
  * Runs the due Brand book rewrites, one after another, as the worker: of
  * one workspace (`tenantId`) or of any. A write is started only before
- * `deadline`. With `busyUntil` (a click, one workspace), a due write that
- * waits behind the workspace's running one is waited for until then and
- * run next. It never throws: a failed write is recorded on its job and
+ * `deadline`. With `waitForBusy` (a click, one workspace, with a
+ * deadline), a due write waiting behind the workspace's running one is
+ * waited for while a whole write still fits before the deadline, then run.
+ * A write that finds a newer book than it read (the strategist saved
+ * meanwhile) is written again once from it, under the same lease, while
+ * time remains. It never throws: a failed write is recorded on its job and
  * tried again later.
  */
 export async function runBrandBookWrites(
@@ -135,7 +145,7 @@ export async function runBrandBookWrites(
     tenantId?: string
     limit?: number
     deadline?: number
-    busyUntil?: number
+    waitForBusy?: boolean
     now?: () => number
     sleep?: (ms: number) => Promise<void>
     prepare?: (db: Db, tenantId: string) => Promise<PreparedWrite>
@@ -163,8 +173,9 @@ export async function runBrandBookWrites(
         // behind it runs next, once it ends.
         if (
           options.tenantId &&
-          options.busyUntil !== undefined &&
-          now() + ms <= options.busyUntil &&
+          options.waitForBusy &&
+          options.deadline !== undefined &&
+          now() + 500 + ms <= options.deadline &&
           (await waitingFor(db, options.tenantId))
         ) {
           await sleep(500)
@@ -174,14 +185,23 @@ export async function runBrandBookWrites(
       }
       n++
       try {
-        const write = await within(prepare(db, job.tenant_id), ms)
-        const finished = await db.rpc('finish_brand_book_write', {
-          job: job.id,
-          lease: job.lease_token,
-          based_on: write.basedOn,
-          content: (write.content ?? null) as never,
-          written_by: write.content ? brandBookAuthor : (null as never)
-        })
+        const finish = async () => {
+          const write = await within(prepare(db, job.tenant_id), ms)
+          return db.rpc('finish_brand_book_write', {
+            job: job.id,
+            lease: job.lease_token!,
+            based_on: write.basedOn,
+            content: (write.content ?? null) as never,
+            written_by: write.content ? brandBookAuthor : (null as never)
+          })
+        }
+        let finished = await finish()
+        // Once more from the newer book, while the lease and time allow.
+        if (
+          newerBook(finished.error) &&
+          (options.deadline === undefined || now() + ms <= options.deadline)
+        )
+          finished = await finish()
         if (finished.error) throw finished.error
         run.ran++
       } catch (error) {
@@ -233,8 +253,9 @@ export async function rewriteBrandBookNow(
 
 /**
  * Right after the owner's click (approve, correct, take back, Try again):
- * the workspace's due rewrites run once the reply is sent, waiting a while
- * for one already running there. When they cannot (no worker client), they
+ * the workspace's due rewrites run once the reply is sent, all within
+ * `clickDeadlineMs`, waiting for one already running there while a whole
+ * write still fits (about 15 s at most). When they cannot (no worker client), they
  * stay queued for the readers' run.
  */
 export function rewriteBrandBookSoon(tenantId: string) {
@@ -244,7 +265,9 @@ export function rewriteBrandBookSoon(tenantId: string) {
     await runBrandBookWrites(service, {
       tenantId,
       limit: 3,
-      busyUntil: Date.now() + busyWaitMs
+      ms: clickWriteMs,
+      deadline: Date.now() + clickDeadlineMs,
+      waitForBusy: true
     })
   })
 }

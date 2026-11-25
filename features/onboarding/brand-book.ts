@@ -295,36 +295,28 @@ export function withoutStrategy(book: BrandBookContent): BrandBookContent {
 }
 
 /**
- * Saves the Brand book as a new version when it changed (the worker's
- * service-role client; `save_brand_book` is the only way to write one).
- * Returns the version saved, or null when nothing changed. A book whose own
- * content changed is saved without a strategy: the old one read another
- * book, and the strategist writes a new one (ONB-106c).
+ * The book to save when it changed from the newest version (`before`, its
+ * content), null when it did not, whatever its keys' order. The
+ * strategist's reading is not code's content (ONB-106c): an unchanged book
+ * keeps the version that carries it, and a changed one is saved without
+ * the old reading (it read another book; the strategist writes a new one).
+ * UI-BRAND-2: only the rewrite job saves a book the code writes, under its
+ * lease (`finish_brand_book_write`, `features/onboarding/brand-book-writes.ts`).
  */
-export async function saveBrandBook(
-  db: Db,
-  tenantId: string,
+export function changedBook(
+  before: unknown,
   content: BrandBookContent
-): Promise<number | null> {
-  const latest = await db
-    .from('brand_books')
-    .select('content')
-    .eq('tenant_id', tenantId)
-    .order('version', { ascending: false })
-    .limit(1)
-  if (latest.error) throw latest.error
-  const before = latest.data?.[0]?.content as BrandBookContent | undefined
-  // ONB-106c: the strategist's reading is not code's content; an unchanged
-  // book keeps the version that carries it.
-  if (before && sameBook(withoutStrategy(before), withoutStrategy(content)))
+): BrandBookContent | null {
+  if (
+    before &&
+    typeof before === 'object' &&
+    sameBook(
+      withoutStrategy(before as BrandBookContent),
+      withoutStrategy(content)
+    )
+  )
     return null
-  const saved = await db.rpc('save_brand_book', {
-    t: tenantId,
-    content: content as never,
-    written_by: brandBookAuthor
-  })
-  if (saved.error) throw saved.error
-  return saved.data as number
+  return withoutStrategy(content)
 }
 
 async function profileOf(db: Db, tenantId: string) {
@@ -347,20 +339,6 @@ async function catalogStatusOf(db: Db, tenantId: string) {
     .maybeSingle()
   if (error) throw error
   return data
-}
-
-/**
- * Reads the workspace's findings, catalog, history and profile, and saves
- * the Brand book when it changed. A real brand with only sample data gets
- * none (an agent would read it as the brand's). A failed read throws.
- */
-export async function writeBrandBook(
-  db: Db,
-  tenantId: string,
-  reads: BookReads
-): Promise<number | null> {
-  const book = await composeBrandBook(db, tenantId, reads)
-  return book ? saveBrandBook(db, tenantId, book) : null
 }
 
 /** What a Brand book is written from (the worker's reads). */

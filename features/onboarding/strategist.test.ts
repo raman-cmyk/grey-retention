@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { brandBookBlock, maxBrandBookChars } from '@/features/agents/memory'
 import {
   brandBookFrom,
   maxBookChars,
-  saveBrandBook,
+  changedBook,
   withoutStrategy,
   type BrandBookContent
 } from './brand-book'
@@ -26,7 +26,6 @@ import {
   type StrategistOutput
 } from './strategist'
 
-const tenantId = '00000000-0000-4000-8000-000000000101'
 const found = (topic: string, statement: string, source = 'site') =>
   ({
     topic,
@@ -345,40 +344,24 @@ describe('the Brand strategist (ONB-106c)', () => {
   })
 })
 
-describe('saveBrandBook with a strategy (ONB-106c)', () => {
-  const db = (latest: unknown) => {
-    const chain = {
-      select: () => chain,
-      eq: () => chain,
-      order: () => chain,
-      limit: async () => latest
-    }
-    const rpc = vi.fn(async () => ({ data: 4, error: null }))
-    return { client: { from: () => chain, rpc } as never, rpc }
-  }
-
-  it('keeps the version with the strategy while the book’s own content is the same', async () => {
+describe('changedBook with a strategy (ONB-106c)', () => {
+  it('keeps the version with the strategy while the book’s own content is the same', () => {
     const book = realBook()
     const strategy: Strategy = checkStrategy(answer(), book)!
-    const same = db({
-      data: [{ content: withStrategy(book, strategy) }],
-      error: null
-    })
-    expect(await saveBrandBook(same.client, tenantId, book)).toBeNull()
-    expect(same.rpc).not.toHaveBeenCalled()
+    expect(changedBook(withStrategy(book, strategy), book)).toBeNull()
   })
 
-  it('saves a changed book without the old strategy', async () => {
+  it('saves a changed book without the old strategy', () => {
     const book = realBook()
     const old = withStrategy(
       { ...book, products: { ...book.products, bestsellers: [] } },
       checkStrategy(answer(), book)!
     )
-    const changed = db({ data: [{ content: old }], error: null })
-    expect(await saveBrandBook(changed.client, tenantId, book)).toBe(4)
-    const saved = (changed.rpc.mock.calls[0] as unknown[])[1] as {
-      content: BrandBookContent
-    }
-    expect(saved.content).not.toHaveProperty('strategy')
+    const saved = changedBook(
+      old,
+      withStrategy(book, checkStrategy(answer(), book)!)
+    )
+    expect(saved).not.toBeNull()
+    expect(saved).not.toHaveProperty('strategy')
   })
 })
