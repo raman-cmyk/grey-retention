@@ -152,9 +152,6 @@ export const designerNavigation: ShellNavigation = {
 
 // Child pages highlight their parent area (OWNER_JOURNEYS.md §2 fix).
 const parentAreas: Record<string, readonly string[]> = {
-  // Klaviyo detail pages belong to Home (until Results); segments and lists
-  // are GROS pages under Audiences (UI-AUDc).
-  '/home': ['/campaigns/klaviyo', '/flows', '/flow-messages', '/metrics'],
   // An open brief belongs to the designer's Assignments desk.
   '/designer/dashboard': ['/designer/assignments']
 }
@@ -172,7 +169,7 @@ export function isCurrentPath(pathname: string, href: string) {
 
 /**
  * The nav item for `pathname`: the most specific match wins, whatever the
- * nav order (so /campaigns/klaviyo/… is Dashboard, /campaigns/… Campaigns).
+ * nav order.
  */
 export function currentNavigationHref(
   navigation: ShellNavigation,

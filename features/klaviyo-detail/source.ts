@@ -1,6 +1,3 @@
-import type { Route } from 'next'
-import type { KlaviyoCampaign } from '@/lib/providers/klaviyo-read'
-import type { PillTone } from '@/lib/campaign-status'
 import { relativeTime } from '@/lib/brand-time'
 import type {
   ConnectionState,
@@ -8,11 +5,9 @@ import type {
 } from '@/features/klaviyo-data/reader'
 
 /**
- * What the Klaviyo detail pages (flows, metrics, Klaviyo campaigns) kept
- * from the retired dashboard (UI-HOMEb): where their numbers come from, a
- * campaign's status look, and the way back: Home until Results. A
- * segment's and a list's page are GROS pages under Audiences (UI-AUDc,
- * `features/audiences/detail.ts`), which read `sourceLine` too.
+ * Where the Klaviyo pages' numbers come from (Audiences and its segment
+ * and list pages, Results and its campaign, flow and metric pages), said
+ * the same way everywhere.
  */
 const notConnectedWords: Record<ConnectionState, string> = {
   connected: 'Klaviyo is connected.',
@@ -32,15 +27,3 @@ export function sourceLine(data: KlaviyoData, now: Date) {
     ? `Last synced ${relativeTime(data.snapshot.syncedAt, now)}.`
     : 'Sample Klaviyo data: made up for this preview, not synced from a real account.'
 }
-
-export const campaignTone: Record<KlaviyoCampaign['status'], PillTone> = {
-  sent: 'solid',
-  scheduled: 'info',
-  draft: 'warning',
-  cancelled: 'danger'
-}
-
-const homeHref: Route = '/home'
-
-/** The way back from a detail page: Home. */
-export const backHome = { href: homeHref, label: 'Back to Home' } as const

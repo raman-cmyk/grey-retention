@@ -1,6 +1,8 @@
 import 'server-only'
+import type { Route } from 'next'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { klaviyoData, type KlaviyoData } from '@/features/klaviyo-data/reader'
+import { flowHref, klaviyoCampaignHref } from '@/features/klaviyo-detail/hrefs'
 import { sourceLine } from '@/features/klaviyo-detail/source'
 import { optInWords } from '@/features/klaviyo-detail/words'
 import { formatBrandDate, relativeTime, validTimezone } from '@/lib/brand-time'
@@ -31,6 +33,8 @@ export type AudienceUse = {
   name: string
   /** Joined with a middle dot: Campaign · Sent · Sends to it. */
   details: string[]
+  /** Its own page under Results (UI-KLV). */
+  href: Route
 }
 
 type Common = {
@@ -99,7 +103,8 @@ function campaignsUsing(
           'Campaign',
           campaignStatus[c.status],
           sends ? `Sends to this ${what}` : `Leaves this ${what} out`
-        ]
+        ],
+        href: klaviyoCampaignHref(c.id)
       }
     ]
   })
@@ -153,7 +158,8 @@ export function listView(
         ...(f.status === 'live'
           ? ['Live', 'Starts when someone joins']
           : ['Draft', 'Would start when someone joins'])
-      ]
+      ],
+      href: flowHref(f.id)
     }))
   return {
     state: 'ready',

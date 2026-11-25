@@ -88,6 +88,8 @@ describe('segment and list views (UI-AUDc)', () => {
       expect(use.details[2]).toMatch(
         /^(Sends to this segment|Leaves this segment out)$/
       )
+      // Each opens its own page under Results (UI-KLV).
+      expect(use.href).toMatch(/^\/results\/campaigns\/CMP/)
     }
   })
 
@@ -194,6 +196,12 @@ describe('the segment and list pages (UI-AUDc)', () => {
     const used = within(screen.getByRole('region', { name: 'Used by' }))
     expect(used.getAllByRole('listitem').length).toBeGreaterThan(0)
     expect(used.getAllByText(/^Flow · /).length).toBeGreaterThan(0)
+    // Each opens its own page under Results (UI-KLV).
+    const opens = used
+      .getAllByRole('link', { name: 'Open' })
+      .map((l) => l.getAttribute('href'))
+    expect(opens).toContain('/results/flows/FLWwel001')
+    expect(opens).toContain('/results/campaigns/CMPspr001')
     // Nothing on the page leads back to the old pages.
     for (const link of screen.getAllByRole('link'))
       expect(link.getAttribute('href')).not.toMatch(/^\/(lists|segments)\//)
