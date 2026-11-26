@@ -123,6 +123,27 @@ describe('geminiRequestBody', () => {
 })
 
 describe('GeminiProvider', () => {
+  it.each([
+    [
+      'Schema has too many states: private website text and key',
+      'schema_rejected'
+    ],
+    [
+      'Unsupported thinking level: private website text and key',
+      'thinking_rejected'
+    ]
+  ])(
+    'categorizes rejected requests without retaining the provider message',
+    async (message, category) => {
+      const fetch = vi.fn(async () =>
+        json({ error: { status: 'INVALID_ARGUMENT', message } }, 400)
+      )
+      const e = await failure(provider(fetch).generate(request))
+      expect(e.details.diagnostic).toBe(`400 INVALID_ARGUMENT ${category}`)
+      expect(JSON.stringify(e)).not.toContain(message)
+    }
+  )
+
   it('posts to generateContent with the key in a header, never the URL', async () => {
     const fetch = vi.fn(async () => json(ok('{"block":"hero_product"}')))
     const response = await provider(fetch).generate(request)

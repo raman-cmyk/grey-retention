@@ -19,6 +19,15 @@ import {
 export const geminiBaseUrl = 'https://generativelanguage.googleapis.com/v1beta'
 export const maxResponseBytes = 1_048_576
 const maxErrorBytes = 65_536
+/** Fixed categories only: provider messages can echo private input. */
+function requestRejection(body: unknown): string | undefined {
+  const message = (body as { error?: { message?: unknown } } | null)?.error
+    ?.message
+  if (typeof message !== 'string') return undefined
+  if (/schema|too many states/i.test(message)) return 'schema_rejected'
+  if (/thinking|reasoning/i.test(message)) return 'thinking_rejected'
+  return undefined
+}
 const notConnectedCauses = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED'])
 const refusalReasons = new Set([
   'SAFETY',
@@ -319,7 +328,12 @@ export class GeminiProvider implements AiProvider {
         (parsed as { error?: { status?: unknown } } | null)?.error?.status
       )
       const reasons = errorReasons(parsed)
-      const diagnostic = [String(status), code, ...reasons]
+      const diagnostic = [
+        String(status),
+        code,
+        ...reasons,
+        ...(status === 400 ? [requestRejection(parsed)] : [])
+      ]
         .filter(Boolean)
         .join(' ')
       if (

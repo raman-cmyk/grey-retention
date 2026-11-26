@@ -167,13 +167,21 @@ export async function runAgent<I, O>(
     }
   })
   if (!result.ok) {
+    // Keep only a status and fixed request categories. Never persist raw
+    // diagnostics: another provider or a test double may echo private input.
+    const http = result.diagnostic?.match(/^([45][0-9]{2})(?: |$)/)?.[1]
+    const category = result.diagnostic
+      ?.split(' ')
+      .find((part) => ['schema_rejected', 'thinking_rejected'].includes(part))
     const runId = await ctx.log.record({
       ...base,
       provider: null,
       model: null,
       costMicro: 0,
       verdict: 'failed',
-      detail: result.code,
+      detail: [result.code, http ? `http_${http}` : null, category]
+        .filter(Boolean)
+        .join(':'),
       output: null
     })
     return {
