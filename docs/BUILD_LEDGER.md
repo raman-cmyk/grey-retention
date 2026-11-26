@@ -356,7 +356,11 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 ## Build takeover tasks
 
-SITE-SCHEMA-001 — review, Codex live onboarding: reduce the Site reader response grammar with required nullable topic values; keep the existing strict fact and evidence checks. Owns reader.ts and reader/founder tests; no SQL or saved finding contract change.
+ONB-RESILIENCE-001 — complete, Codex live onboarding: preserve successfully checked site pages when another page has a temporary model outage, retry a wholly unanswered site, and match the history request timeout to its admission margin. No SQL or persisted finding/history shape changes.
+
+HISTORY-BATCH-001 — complete, Codex live onboarding: read expanded campaign messages in the provider default batches of 20, keeping the 300-message ceiling and worker time bound. Owns Klaviyo history paths and tests; no database or saved history shape change.
+
+SITE-SCHEMA-001 — complete, Codex live onboarding: reduce the Site reader response grammar with required nullable topic values; keep the existing strict fact and evidence checks. Owns reader.ts and reader/founder tests; no SQL or saved finding contract change.
 
 AI-DIAG-001 — complete, Codex live onboarding: preserve only HTTP status and fixed schema/thinking rejection categories in failed agent run detail. Provider messages and arbitrary diagnostic text are never persisted; no SQL or failure-code change.
 
@@ -4794,6 +4798,39 @@ Append entries using this exact shape:
 - Verification run: 162 focused site/reader tests passed; full verify passed (4,642 tests, formatting, lint, typecheck, production build), plus the final focused suite after simplifying nullable enums. Code reviewer ready, 38 independent tests passed. Official Gemini structured-output guidance read 26 Nov: required nullable fields and application-side bounds reduce grammar states.
 - Known issues: paid live verification follows deployment, within the authorized allowance.
 - Next consumer: live website import retry.
+
+### 2026-11-26 — HISTORY-BATCH-001 — smaller campaign message pages
+
+- Status: review
+- Branch/worktree: `codex/history-batch-size`
+- Commit(s): this change
+- Changed contracts: campaign message requests use Klaviyo's documented default of 20 records per page, at most 15 pages (the existing ceiling of 300 messages). The worker time budget, cursor validation, partial-read reporting and read scopes are unchanged. Larger expanded pages repeatedly exceeded the 6-second request cap in the first live account; a smaller batch is tested live after deployment.
+- Migrations: none.
+- Verification run: focused history suites and full verify in progress. Regression coverage checks bounded pagination and explicit incomplete state at the page limit.
+- Known issues: catalog import succeeded with 16 real products (15 featurable), partial at its window limits. Paid catalog analysis succeeded. Site-v3 is deployed but two live attempts returned provider HTTP 503, using the existing bounded retries. History has exhausted its four transient tries and will be restarted after this change. Discounts still await the owner's limit and codes.
+- Next consumer: live history import verification.
+
+### 2026-11-26 — ONB-RESILIENCE-001 — preserve partial source reads
+
+- Status: review
+- Branch/worktree: `codex/onboarding-resilience`
+- Commit(s): this change
+- Changed contracts: a temporary unavailable/timeout Site model call skips that page; successfully answered and checked pages are kept. If no model call answered, the run still retries. Budget, rate-limit, setup, programming and database errors retain their previous behavior. History alone gets a 12-second Klaviyo request cap and the same 12-second worker admission margin inside its unchanged 30-second run; catalog requests stay at 6 seconds. No new dependency or saved-source shape change.
+- Migrations: none.
+- Verification run: focused source tests and full verify in progress; code review requested. Tests cover mixed page failures, whole-site outage, budget/rate-limit failure, history timeout forwarding and unchanged catalog timeout.
+- Known issues: paid Site-v3 calls now return valid parsed responses on some pages, but a concurrent 503 discarded the run under the previous worker. History still timed out with smaller batches at its old 6-second cap. Changes are verified live after deployment within the existing allowance.
+- Next consumer: live source import retry and owner review.
+
+### 2026-11-26 — live onboarding repair — verified handoff
+
+- Status: complete
+- Branch/worktree: `codex/launch-verification`
+- Commit(s): fixes merged in #665, #667, #668, #669 and #670; production through `d3ef1924` verified Ready.
+- Changed contracts: no further code change in this handoff. Runtime verification: full-access private key checked and saved in the approved existing founder workspace; live catalog read saved 16 products (15 featurable), live history saved 80 sent emails, and the live website saved five checked findings plus its logo. Brand book version 3 written; Store, Brand and Klaviyo setup steps confirmed. No email sent, scheduled or pushed as a draft; write lock remains intact.
+- Migrations: `090098` verified applied; no later migration needed for these repairs.
+- Verification run: latest full local verify passed (4,649 tests, 23 existing skips, formatting/lint/typecheck/production build); 241 focused source tests and 30 independent review tests passed. Code CI passed. Schema-change Browser CI passed; latest broader Browser CI was still running at handoff. Live source runs 58/59 verified successful history/site persistence, not just HTTP success.
+- Known issues: source reads are partial. Catalog reached bounded event windows; history reached its run deadline; the website read shipping/returns pages while home had a model outage and three other pages returned unusable model answers. Saved facts were checked against their source; omitted pages are marked skipped. Colors and fonts were not detected. Owner has not provided a maximum discount or codes, so discounts remain unset and setup waits on that screen; rivals/final setup and the first plan/email test remain pending. The exact own-design upload stage remains on the separate approved build roadmap.
+- Next consumer: owner provides discount limit and existing codes; review missing brand styling, finish setup, then validate the first plan/email inside the same authorized AI allowance. Klaviyo draft writes require separate authorization.
 
 ### 2026-11-26 — GROS-OBS-001 — Observer Sheet is the human-curation authority
 

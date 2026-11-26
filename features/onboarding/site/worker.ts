@@ -2,7 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
-import type { Ask } from '@/features/intelligence/passes'
+import { TagError, type Ask } from '@/features/intelligence/passes'
 import { importable } from '@/features/klaviyo-push/html'
 import type { FindingInput, SitePageKind } from '../findings'
 import {
@@ -206,6 +206,7 @@ export async function readBrandSite(
   }
   // Each page's findings in page order, so a repeated fact cites the first.
   const byPage: (FindingInput & { pass: string; model: string | null })[][] = []
+  let modelFailure: TagError | null = null
   const skip = (url: string, kind: SitePageKind, reason: string) => {
     run.pages.push({
       url: url.slice(0, maxUrl),
@@ -222,11 +223,25 @@ export async function readBrandSite(
     if (page.url.length > maxUrl) return { reason: 'url_too_long' }
     if (!ask) return { reason: 'no_model' }
     if (now() + callMs > deadline) return { reason: 'time_up' }
-    const result = await readSitePage(
-      { brand: brand.data.brand_name, page },
-      ask,
-      `site-page:${page.kind}:${n}`
-    )
+    let result: Awaited<ReturnType<typeof readSitePage>>
+    try {
+      result = await readSitePage(
+        { brand: brand.data.brand_name, page },
+        ask,
+        `site-page:${page.kind}:${n}`
+      )
+    } catch (error) {
+      // Keep successful pages when a different page hits a temporary model
+      // failure. Rate limits, budget/setup failures and programming errors
+      // still stop the run through the existing runner.
+      if (
+        !(error instanceof TagError) ||
+        !['unavailable', 'timeout'].includes(error.code)
+      )
+        throw error
+      modelFailure ??= error
+      return { reason: 'model_unavailable' }
+    }
     if (!result.answered) return { reason: result.reason }
     run.dropped += result.dropped
     byPage[n] = result.findings.map((f) => ({
@@ -338,6 +353,9 @@ export async function readBrandSite(
         else skip(o.url, o.kind, o.reason)
     }
   }
+  // An outage that answered no page is retried, never recorded as an empty
+  // successful website. An answered page with no findings is still a read.
+  if (modelFailure && !byPage.some(Array.isArray)) throw modelFailure
   // A fact repeated on every page (a footer line) is kept once: the first
   // page it was read on.
   const seen = new Set<string>()

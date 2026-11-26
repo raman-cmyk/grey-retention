@@ -15,6 +15,9 @@ import { readBrandHistory, type HistoryRun } from './worker'
 
 type Db = SupabaseClient<Database>
 type Job = Database['public']['Tables']['job_runs']['Row']
+/** Expanded message reads can take longer than catalog calls. Still bounded
+ * by the history worker's 30-second run and its matching admission margin. */
+export const historyKlaviyoCallMs = 12_000
 
 export type HistoryReading =
   | ({ outcome: 'read' } & HistoryRun)
@@ -33,8 +36,12 @@ export async function runHistoryReadingJob(
   env: NodeJS.ProcessEnv = process.env
 ): Promise<HistoryReading> {
   const capped = cappedEnv(env)
-  const source = await catalogSourceFor(db, job, capped, () =>
-    recordedHistoryTransport()
+  const source = await catalogSourceFor(
+    db,
+    job,
+    capped,
+    () => recordedHistoryTransport(),
+    historyKlaviyoCallMs
   )
   if ('reason' in source) {
     logger.warn('History read not started', { reason: source.reason })
@@ -45,7 +52,8 @@ export async function runHistoryReadingJob(
       client: source.client,
       live: source.live,
       ask: siteAsk(db, job.tenant_id, capped)(source.live),
-      callMs: siteCallTimeoutMs
+      callMs: siteCallTimeoutMs,
+      klaviyoMs: historyKlaviyoCallMs
     })
     return { outcome: 'read', ...run }
   } catch (error) {

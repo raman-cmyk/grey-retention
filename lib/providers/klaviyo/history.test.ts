@@ -63,8 +63,34 @@ describe('the history reads, against recorded Klaviyo answers', () => {
       abTest: false
     })
     expect(transport.calls).toEqual([
-      'GET /api/campaign-messages?fields[campaign-message]=definition.name,definition.status,definition.send_options.send_time,definition.send_options.send_strategy,created&fields[campaign]=definition.name,definition.archived,definition.send_settings.send_strategy&filter=equals(status,"sent"),greater-than(created,2025-11-11T12:00:00Z)&include=campaign,campaign-variations&page[size]=100&sort=-created'
+      'GET /api/campaign-messages?fields[campaign-message]=definition.name,definition.status,definition.send_options.send_time,definition.send_options.send_strategy,created&fields[campaign]=definition.name,definition.archived,definition.send_settings.send_strategy&filter=equals(status,"sent"),greater-than(created,2025-11-11T12:00:00Z)&include=campaign,campaign-variations&page[size]=20&sort=-created'
     ])
+  })
+
+  it('bounds small message pages and reports an unfinished read honestly', async () => {
+    let calls = 0
+    const transport: KlaviyoTransport = async ({ url }) => {
+      expect(new URL(url).searchParams.get('page[size]')).toBe('20')
+      calls++
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({
+          data: [],
+          links: {
+            next: `https://a.klaviyo.com/api/campaign-messages?page[cursor]=page${calls}&page[size]=20`
+          }
+        })
+      }
+    }
+    const read = await readCampaignMessages(
+      client(transport),
+      'sent',
+      lastYear,
+      always
+    )
+    expect(calls).toBe(15)
+    expect(read).toMatchObject({ complete: false, records: [] })
   })
 
   it('keeps archived campaigns, and tells how each email was timed and tested', async () => {
