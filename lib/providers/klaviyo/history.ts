@@ -76,8 +76,10 @@ export type Audience = {
   starred: boolean
 }
 
-/** Pages of messages (100 a page), flows (50), lists and segments (10). */
-export const maxMessagePages = 3
+/** Use Klaviyo's default small batch: expanded message pages can be slow. */
+export const messagePageSize = 20
+/** Still at most 300 messages; the worker also checks its time budget. */
+export const maxMessagePages = 15
 export const maxFlowPages = 2
 export const maxAudiencePages = 6
 
@@ -91,7 +93,7 @@ export function messagesPath(status: 'sent' | 'scheduled', since: Date | null) {
   return (
     '/api/campaign-messages?fields[campaign-message]=definition.name,definition.status,definition.send_options.send_time,definition.send_options.send_strategy,created' +
     `&fields[campaign]=definition.name,definition.archived,definition.send_settings.send_strategy&filter=${filter}` +
-    '&include=campaign,campaign-variations&page[size]=100&sort=-created'
+    `&include=campaign,campaign-variations&page[size]=${messagePageSize}&sort=-created`
   )
 }
 
