@@ -1,6 +1,16 @@
 # Human-curated Observer source
 
-The Observer Sheet is authoritative for human email ratings. In selected-source mode GROS reads only exact **Exemplary** rows with a named reviewer. Good, unreviewed, duplicate-ID, malformed and confirmation rows are excluded. Models do not decide admission.
+The Observer Sheet is authoritative for human email ratings. In selected-source mode GROS reads only effective exact **Exemplary** approvals with a named reviewer. Good, explicitly unreviewed, duplicate-ID, malformed, identified confirmation and transactional rows are excluded. Models do not decide admission.
+
+## Brand defaults and individual overrides
+
+Owner decision, 27 November 2026: a named human brand rating applies to existing and future collected newsletter emails, unless an individual email has a nonblank rating. The new Brand ratings tab uses schema `observer-brand-review-v1`, with header row 6 and records from row 7: A Brand ID, B Domain, C Brand rating, D Reviewer, E Review notes, F Collected emails, G Open brand emails, H Data issue, I Schema version. C:E are human-owned. Observer appends stable brand identities without overwriting these cells.
+
+The server joins by both immutable Brand ID and exact domain, rejects duplicate IDs/domains and malformed schemas, and independently computes effective approval. A nonblank email rating always takes precedence, including Good, Unreviewed or an invalid legacy input. An explicit Exemplary override needs its own reviewer and may qualify even when the brand default is Good. A blank email rating inherits the brand rating and its reviewer; an unrelated email reviewer cell does not create an override. Missing brand tabs preserve the earlier explicit-email mode; a present but unreadable/malformed source fails closed. Source values are read fresh before/after Gmail retrieval and on display/reuse. Only grid bounds are reused per source instance to reduce API requests; email and brand values are batched and never cached across source reads.
+
+Downgrading/deleting a brand approval withdraws its inherited emails, while explicit human Exemplary exceptions remain eligible. Identified confirmation/transactional rows are excluded in either mode. Unclassified does not establish message type or quality; approving a brand delegates admission of otherwise eligible unclassified newsletter records. It is not a conversion-performance verdict.
+
+Observer v1.5.0 exports and repairs derived Effective rating, Rating source, Effective reviewer and Review issue in Email review W:Z and uses them for the Sheet's derived queue. Original A:V schema headers remain compatible. The server uses original inputs, never these formulas. Dropdowns and body formatting are restored after atomic appends, avoiding inherited header styling and missing validation. Existing invalid inputs are preserved and flagged, not silently mapped to ratings.
 
 ## Enable after review and deployment
 
