@@ -136,6 +136,23 @@ export async function pollInbox(
         try {
           raw = await session.fetchRaw(item.uid, maxMessageBytes)
         } catch (error) {
+          if (
+            error instanceof InboundTransportError &&
+            error.code === 'observer_identity_mismatch'
+          ) {
+            const moved = await db.rpc('advance_inbox_cursor', {
+              ...lease,
+              uid_validity: listing.uidValidity,
+              last_seen: item.uid
+            })
+            if (moved.error) throw moved.error
+            counts.skipped++
+            done.push(item.uid)
+            logger.warn('Observer email identity rejected', {
+              code: 'observer_identity_mismatch'
+            })
+            continue
+          }
           // The server reported a smaller size than it sent.
           if (
             !(error instanceof InboundTransportError) ||
@@ -173,6 +190,50 @@ export async function pollInbox(
               html: parsed.html
             })
           : null
+        let selectedAlias: string | null = null
+        const selectedDomain = session.captureDomain?.(item.uid)
+        if (selectedDomain) {
+          const existing = await db
+            .from('competitor_captures')
+            .select('id,alias_slug')
+            .eq('domain', selectedDomain)
+            .maybeSingle()
+          if (existing.error) throw existing.error
+          selectedAlias =
+            existing.data?.alias_slug ??
+            'observer-' + sha256(selectedDomain).slice(0, 24)
+          if (!existing.data) {
+            const added = await db.from('competitor_captures').upsert(
+              {
+                domain: selectedDomain,
+                alias_slug: selectedAlias,
+                synthetic: false,
+                brand_name: selectedDomain,
+                niche: 'unclassified'
+              },
+              { onConflict: 'domain', ignoreDuplicates: true }
+            )
+            if (added.error) throw added.error
+          } else if (!existing.data.alias_slug) {
+            const updated = await db
+              .from('competitor_captures')
+              .update({ alias_slug: selectedAlias })
+              .eq('id', existing.data.id)
+              .is('alias_slug', null)
+            if (updated.error) throw updated.error
+          }
+          const current = await db
+            .from('competitor_captures')
+            .select('alias_slug')
+            .eq('domain', selectedDomain)
+            .maybeSingle()
+          if (current.error || !current.data?.alias_slug)
+            throw new InboundTransportError(
+              'unavailable',
+              'observer_brand_unavailable'
+            )
+          selectedAlias = current.data.alias_slug
+        }
         msg = parsed
           ? {
               ...stored,
@@ -180,7 +241,8 @@ export async function pollInbox(
               htmlPath,
               fromAddress: parsed.fromAddress,
               fromDomain: senderDomain(parsed.fromAddress),
-              aliasSlug: aliasSlug(parsed.recipients, transport.base),
+              aliasSlug:
+                selectedAlias ?? aliasSlug(parsed.recipients, transport.base),
               subject: parsed.subject,
               text: parsed.text,
               preview: parsed.preview
@@ -245,9 +307,22 @@ export async function pollInbox(
       if (moved.error) throw moved.error
       done.push(item.uid)
     }
+    if (
+      done.length === listing.messages.length &&
+      listing.scannedThrough != null &&
+      listing.scannedThrough > (done.at(-1) ?? job.context.lastUid ?? 0)
+    ) {
+      const moved = await db.rpc('advance_inbox_cursor', {
+        ...lease,
+        uid_validity: listing.uidValidity,
+        last_seen: listing.scannedThrough
+      })
+      if (moved.error) throw moved.error
+    }
     const more =
-      done.length < listing.messages.length ||
-      listing.messages.length === limits.messagesPerPoll
+      listing.more ??
+      (done.length < listing.messages.length ||
+        listing.messages.length === limits.messagesPerPoll)
     const finished = await db.rpc('finish_platform_job', {
       ...lease,
       outcome: { ...counts, more }

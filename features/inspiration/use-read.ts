@@ -1,4 +1,5 @@
 import 'server-only'
+import { observerAllowed } from '@/features/inbox/observer-access'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { maxAgeDays } from '@/features/studio/reference'
 import { latestPlanRun } from '@/features/strategy/load'
@@ -27,7 +28,7 @@ export async function readUseEmail(
       ? db
           .from('competitor_emails')
           .select(
-            'id,capture_id,subject,safe_html,received_at,labels_state,inbox_message_id'
+            'id,capture_id,external_id,synthetic,subject,safe_html,received_at,labels_state,inbox_message_id'
           )
           .eq('id', reference)
           .maybeSingle()
@@ -38,6 +39,12 @@ export async function readUseEmail(
   const plan = planScreen(run.run, { owner: true })
   const row = found.data
   if (!row) return { ok: true, owner, email: null, plan }
+  try {
+    if (!(await observerAllowed([row])).length)
+      return { ok: true, owner, email: null, plan }
+  } catch {
+    return { ok: false }
+  }
   const [followed, hidden] = await Promise.all([
     db
       .from('competitor_subscriptions')

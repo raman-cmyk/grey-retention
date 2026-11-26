@@ -126,6 +126,84 @@ type Db = Parameters<typeof pollInbox>[0]
 const names = (db: ReturnType<typeof database>) => db.calls.map((c) => c.name)
 
 describe('pollInbox', () => {
+  it('maps an Observer alias beyond the legacy 40-character limit to its existing brand', async () => {
+    const db = database(),
+      raw = sampleNewsletter({
+        slug: 'northwind',
+        fromDomain: 'northwind.test',
+        subject: 'Newsletter',
+        day: 1
+      }).raw.replaceAll(
+        'capture+northwind@inbox.example',
+        'capture+greyobserver-12345678901234567890123456789012@gmail.com'
+      )
+    const from = vi.fn(() => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: { id: 'brand-1', alias_slug: 'northwind' },
+            error: null
+          })
+        })
+      })
+    }))
+    const transport: InboundCaptureTransport = {
+      kind: 'gmail_imap',
+      mailbox: 'gmail',
+      synthetic: false,
+      base: { local: 'capture', domain: 'gmail.com' },
+      open: async () => ({
+        list: async () => ({
+          uidValidity: 11,
+          messages: [
+            {
+              uid: 1,
+              size: raw.length,
+              transportId: 'observer:email-1',
+              internalDate: '2026-11-01T12:00:00Z'
+            }
+          ]
+        }),
+        fetchRaw: async () => new TextEncoder().encode(raw),
+        captureDomain: () => 'northwind.test',
+        markProcessed: async () => {},
+        close: async () => {}
+      })
+    }
+    const result = await pollInbox({ ...db, from } as unknown as Db, transport)
+    expect(result).toMatchObject({ state: 'done', recorded: 1 })
+    expect(
+      db.calls.find((c) => c.name === 'record_inbox_message')?.args.msg
+    ).toMatchObject({ aliasSlug: 'northwind' })
+    expect(from).toHaveBeenCalledWith('competitor_captures')
+  })
+  it('advances selected-source gaps without downloading missing originals', async () => {
+    const db = database(),
+      raw = vi.fn()
+    const transport: InboundCaptureTransport = {
+      kind: 'gmail_imap',
+      mailbox: 'gmail',
+      synthetic: false,
+      base: { local: 'capture', domain: 'gmail.com' },
+      open: async () => ({
+        list: async () => ({
+          uidValidity: 11,
+          messages: [],
+          scannedThrough: 50,
+          more: true
+        }),
+        fetchRaw: raw,
+        markProcessed: async () => {},
+        close: async () => {}
+      })
+    }
+    expect(await pollInbox(db as unknown as Db, transport)).toMatchObject({
+      state: 'done',
+      more: true
+    })
+    expect(db.cursor).toMatchObject({ uidValidity: 11, lastUid: 50 })
+    expect(raw).not.toHaveBeenCalled()
+  })
   it('stores, records and assigns every new sample message once, moving the cursor each time', async () => {
     const db = database()
     const transport = fakeInboundTransport()

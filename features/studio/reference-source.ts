@@ -1,4 +1,5 @@
 import 'server-only'
+import { observerAllowed } from '@/features/inbox/observer-access'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { layoutWinners } from '@/features/inbox/winners'
@@ -28,7 +29,7 @@ const maxHistory = 3000
 const dayMs = 86_400_000
 
 const emailColumns =
-  'id, capture_id, inbox_message_id, subject, received_at, industry, email_type, angle, synthetic, facts'
+  'id, capture_id, external_id, inbox_message_id, subject, received_at, industry, email_type, angle, synthetic, facts'
 
 export type ReferenceRows = {
   followed: readonly string[]
@@ -252,9 +253,9 @@ export async function readReferenceRows(
       (followed.includes(e.capture_id) || (sampleStore && e.synthetic))
   )
   const seen = new Set<string>()
-  const emails = [...own.data, ...samples.data, ...pickedShown].filter(
-    (e) => !seen.has(e.id) && !!seen.add(e.id)
-  )
+  const emails = (
+    await observerAllowed([...own.data, ...samples.data, ...pickedShown])
+  ).filter((e) => !seen.has(e.id) && !!seen.add(e.id))
   const messageIds = emails
     .map((e) => e.inbox_message_id)
     .filter((id): id is string => !!id)

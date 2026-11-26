@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const observer = vi.hoisted(() => ({
+  enabled: vi.fn(() => false),
+  read: vi.fn()
+}))
+vi.mock('@/features/inbox/observer-sheet', () => ({
+  observerEnabled: observer.enabled,
+  observerSelection: () => ({ read: observer.read })
+}))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 const auth = vi.hoisted(() => ({ requireRequestContext: vi.fn() }))
 const supabase = vi.hoisted(() => ({ createClient: vi.fn() }))
@@ -23,6 +31,7 @@ let tracked: { data: unknown; error: unknown }
 const signedInAs = (tenantRole: string) =>
   auth.requireRequestContext.mockResolvedValue({ tenantId: tenant, tenantRole })
 beforeEach(() => {
+  observer.enabled.mockReturnValue(false)
   signedInAs('owner')
   rpc = vi.fn(async (name: string) =>
     name === 'subscribe_competitor'
@@ -56,6 +65,23 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks())
 
 describe('trackDomain', () => {
+  it('follows only a currently Exemplary real Observer brand without launching another collector', async () => {
+    observer.enabled.mockReturnValue(true)
+    observer.read.mockResolvedValue([{ domain: 'curated.test' }])
+    expect(await trackDomain({}, form({ domain: 'curated.test' }))).toEqual({
+      message:
+        'Following curated.test. Only its human-rated Exemplary emails appear here.'
+    })
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledWith('subscribe_competitor', {
+      t: tenant,
+      domain: 'curated.test'
+    })
+    expect(
+      (await trackDomain({}, form({ domain: 'unreviewed.test' }))).error
+    ).toMatch(/no currently human-rated Exemplary/)
+  })
+
   it('tracks a sample domain and asks for its emails', async () => {
     expect(
       await trackDomain(

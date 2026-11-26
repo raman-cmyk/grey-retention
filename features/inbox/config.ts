@@ -2,6 +2,8 @@ import 'server-only'
 import type { InboundCaptureTransport } from '@/lib/providers/inbound-capture'
 import { fakeInboundTransport } from './fake-transport'
 import { gmailImapTransport } from './imap'
+import { observerEnabled, observerSelection } from './observer-sheet'
+import { observerGmailTransport } from './observer-transport'
 
 export type InboxConfig =
   | { ready: true; transport: InboundCaptureTransport }
@@ -44,6 +46,7 @@ export function inboxConfig(env: Env = process.env): InboxConfig {
   if (
     kind === 'fake' ||
     (kind === '' &&
+      !observerEnabled(env) &&
       ((!rawUser && !rawPassword.trim()) ||
         localDatabase(env.NEXT_PUBLIC_SUPABASE_URL)))
   )
@@ -63,5 +66,23 @@ export function inboxConfig(env: Env = process.env): InboxConfig {
       kind: 'gmail_imap',
       reason: 'INBOX_IMAP_APP_PASSWORD must be a 16-letter Google app password.'
     }
+  if (observerEnabled(env)) {
+    try {
+      return {
+        ready: true,
+        transport: observerGmailTransport(
+          { user, password },
+          observerSelection(env)
+        )
+      }
+    } catch {
+      return {
+        ready: false,
+        kind: 'gmail_imap',
+        reason:
+          'Observer source needs the private Sheet ID and service-account configuration.'
+      }
+    }
+  }
   return { ready: true, transport: gmailImapTransport({ user, password }) }
 }
