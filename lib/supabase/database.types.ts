@@ -4933,6 +4933,8 @@ export type Database = {
           complete: boolean
           context: Json
           created_at: string
+          design_changed: boolean
+          design_evidence: Json | null
           final: boolean
           lease_token: string | null
           lease_until: string | null
@@ -4945,6 +4947,8 @@ export type Database = {
           results_at: string | null
           run_id: string
           sample: boolean
+          scheduled_for: string | null
+          send_strategy: string | null
           sent_at: string | null
           slot: number
           status: string
@@ -4960,6 +4964,8 @@ export type Database = {
           complete?: boolean
           context?: Json
           created_at?: string
+          design_changed?: boolean
+          design_evidence?: Json | null
           final?: boolean
           lease_token?: string | null
           lease_until?: string | null
@@ -4972,6 +4978,8 @@ export type Database = {
           results_at?: string | null
           run_id: string
           sample: boolean
+          scheduled_for?: string | null
+          send_strategy?: string | null
           sent_at?: string | null
           slot: number
           status?: string
@@ -4987,6 +4995,8 @@ export type Database = {
           complete?: boolean
           context?: Json
           created_at?: string
+          design_changed?: boolean
+          design_evidence?: Json | null
           final?: boolean
           lease_token?: string | null
           lease_until?: string | null
@@ -4999,6 +5009,8 @@ export type Database = {
           results_at?: string | null
           run_id?: string
           sample?: boolean
+          scheduled_for?: string | null
+          send_strategy?: string | null
           sent_at?: string | null
           slot?: number
           status?: string
@@ -7627,8 +7639,8 @@ export type Database = {
           isSetofReturn: true
         }
       }
-      claim_klaviyo_results: {
-        Args: { lim?: number }
+      claim_klaviyo_result: {
+        Args: { build: string; fresh?: number; t: string }
         Returns: {
           build_id: string
           campaign_id: string
@@ -7638,6 +7650,8 @@ export type Database = {
           complete: boolean
           context: Json
           created_at: string
+          design_changed: boolean
+          design_evidence: Json | null
           final: boolean
           lease_token: string | null
           lease_until: string | null
@@ -7650,6 +7664,48 @@ export type Database = {
           results_at: string | null
           run_id: string
           sample: boolean
+          scheduled_for: string | null
+          send_strategy: string | null
+          sent_at: string | null
+          slot: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'klaviyo_email_results'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_klaviyo_results: {
+        Args: { lim?: number }
+        Returns: {
+          build_id: string
+          campaign_id: string
+          changed: boolean
+          checked_at: string | null
+          clicks: Json
+          complete: boolean
+          context: Json
+          created_at: string
+          design_changed: boolean
+          design_evidence: Json | null
+          final: boolean
+          lease_token: string | null
+          lease_until: string | null
+          message_id: string | null
+          next_check_at: string
+          paused: string | null
+          planned: Json
+          pulls: number
+          results: Json
+          results_at: string | null
+          run_id: string
+          sample: boolean
+          scheduled_for: string | null
+          send_strategy: string | null
           sent_at: string | null
           slot: number
           status: string
@@ -7763,6 +7819,10 @@ export type Database = {
         }[]
       }
       clean_email_copy: { Args: { build: string }; Returns: undefined }
+      clear_klaviyo_design_change: {
+        Args: { build: string; reason: string }
+        Returns: undefined
+      }
       complete_asset_import: {
         Args: { import_id: string; t: string }
         Returns: undefined

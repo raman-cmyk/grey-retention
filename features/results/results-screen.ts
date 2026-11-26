@@ -1,5 +1,6 @@
 import type { Numbers, ResultLine } from './read-model'
 import { minClicks, minRecipients } from './thresholds'
+import { stateLine } from './klaviyo-state'
 
 /**
  * UI-RES-a (the owner's request of 16 November: a basic working UI on
@@ -226,11 +227,27 @@ export function resultEmail(
     status: line.status,
     statusText: line.sample
       ? 'Sample: not sent'
-      : line.status === 'draft' && !line.statusText.includes('(')
+      : line.status === 'draft' && !line.edited
         ? today && line.plannedDay && line.plannedDay < today
           ? 'Draft in Klaviyo: its planned day has passed'
           : 'Draft in Klaviyo: ready for you to schedule'
-        : line.statusText,
+        : // PICK-99: when Klaviyo will send it, in store time.
+          line.status === 'scheduled' && line.scheduledFor
+          ? line.statusText.replace(
+              'Scheduled in Klaviyo',
+              stateLine(
+                {
+                  status: 'scheduled',
+                  edited: line.edited,
+                  scheduledFor: line.scheduledFor,
+                  sendStrategy: line.sendStrategy,
+                  sentAt: null,
+                  checkedAt: null
+                },
+                timezone
+              )
+            )
+          : line.statusText,
     numbers: line.totals ? wordsOf(line.totals, currency) : null,
     note: noteOf(line),
     ab: abWords(line, currency),

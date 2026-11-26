@@ -256,7 +256,10 @@ export function emailDetails(e: PlanEmail): string[] {
     ...(e.status.kind === 'sample_draft'
       ? ['Sample draft, not in Klaviyo']
       : []),
-    ...(e.status.kind === 'in_klaviyo' ? ['In Klaviyo as a draft'] : []),
+    // PICK-99: what he did with it in Klaviyo, once the sync read it.
+    ...(e.status.kind === 'in_klaviyo'
+      ? (e.status.words ?? ['In Klaviyo as a draft'])
+      : []),
     ...(e.status.kind === 'needs_you' ? [e.status.reason] : []),
     e.why
   ]

@@ -286,6 +286,7 @@ describe('the Plan screen (UI-PLAN-a)', () => {
       action: { kind: 'open', buildId: 'b1' }
     })
     expect(by(3)).toMatchObject({ status: { kind: 'in_klaviyo' } })
+    expect(by(3).status).not.toHaveProperty('words')
     expect(by(0)).toMatchObject({
       status: { kind: 'working', word: 'Designing' },
       action: { kind: 'open', buildId: 'b0' }

@@ -43,6 +43,11 @@ export type ResultLine = {
   emailType: string | null
   status: EmailStatus
   statusText: string
+  /** PICK-99: changed in Klaviyo since GROS pushed it (its words or design). */
+  edited: boolean
+  /** PICK-99: when Klaviyo will send it, while scheduled or sending. */
+  scheduledFor: string | null
+  sendStrategy: string | null
   sentAt: string | null
   /** Checks are over (three daily reads, or given up): the numbers will not change. */
   final: boolean
@@ -143,9 +148,13 @@ export function resultLine(email: EmailResult): ResultLine {
     plannedDay: text(email.planned.date),
     emailType: text(email.planned.emailType),
     status: email.status,
-    statusText: email.changed
-      ? `${statusWords[email.status]} (changed in Klaviyo)`
-      : statusWords[email.status],
+    statusText:
+      email.changed || email.designChanged
+        ? `${statusWords[email.status]} (edited in Klaviyo)`
+        : statusWords[email.status],
+    edited: email.changed || email.designChanged,
+    scheduledFor: email.scheduledFor,
+    sendStrategy: email.sendStrategy,
     sentAt: email.sentAt,
     final: email.final,
     complete: email.complete,
