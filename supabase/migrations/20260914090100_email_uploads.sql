@@ -198,8 +198,10 @@ begin
   end if;
   if u.state <> 'saving' then return u.state; end if;
   base := u.tenant_id || '/' || u.id || '/';
+  -- The original exactly as admitted (its size), and the prepared HTML.
   if not exists (select 1 from storage.objects s where s.bucket_id = 'email-uploads'
-                   and s.name = base || 'original.' || u.file_kind)
+                   and s.name = base || 'original.' || u.file_kind
+                   and coalesce((s.metadata->>'size')::bigint, -1) = u.byte_size)
      or not exists (select 1 from storage.objects s where s.bucket_id = 'email-uploads'
                    and s.name = base || 'email.html') then
     raise exception 'The upload''s files are not stored' using errcode = 'PT409', hint = 'upload_files_missing';

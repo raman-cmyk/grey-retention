@@ -1,5 +1,5 @@
 begin;
-select plan(56);
+select plan(57);
 
 -- DES-ENGINE-003a: "Add your own email". Workspace 101: owner ...01, staff
 -- ...05, admin ...06; another workspace (102): owner ...04. An upload is a
@@ -93,6 +93,15 @@ reset role;
 select is((select count(*)::int from public.platform_jobs where kind = 'design.upload' and subject_key = current_setting('test.u1')), 1, 'with one measuring job');
 set local role authenticated;
 
+-- The original must be the file as admitted (its size).
+select set_config('test.u13', pg_temp.add(13)::text, true);
+reset role;
+select pg_temp.store('00000000-0000-4000-8000-000000000101/' || current_setting('test.u13') || '/original.eml', 999);
+select pg_temp.store('00000000-0000-4000-8000-000000000101/' || current_setting('test.u13') || '/email.html', 900);
+set local role authenticated;
+select throws_ok($$select public.finish_email_upload('00000000-0000-4000-8000-000000000101', current_setting('test.u13')::uuid)$$,
+  'PT409', 'The upload''s files are not stored', 'the stored original must be the file as admitted');
+
 -- Bounds and the kind of upload.
 select throws_ok($$select pg_temp.add(2, 'other', pg_temp.pics(1))$$, '22023', 'Another brand''s pictures are not kept',
   'another brand''s pictures are never kept');
@@ -119,7 +128,7 @@ set local role authenticated;
 select throws_ok($$select pg_temp.add(11)$$, '42501', 'Access denied', 'staff cannot add an email');
 select throws_ok($$select public.delete_email_upload('00000000-0000-4000-8000-000000000101', current_setting('test.u1')::uuid)$$,
   '42501', 'Access denied', 'nor delete one');
-select is((select count(*)::int from public.email_uploads), 3, 'staff read the workspace''s own uploads');
+select is((select count(*)::int from public.email_uploads), 4, 'staff read the workspace''s own uploads');
 reset role;
 select pg_temp.as_user('00000000-0000-4000-8000-000000000004');
 set local role authenticated;

@@ -84,7 +84,11 @@ test('the owner adds his own design and another brand’s email; they are read a
     'One journey of the measuring job is enough; the page is checked on desktop.'
   )
   test.setTimeout(180_000)
-  await newOwner(page, { prefix: 'upload', name: 'Upload studio' })
+  const owner = await newOwner(page, {
+    prefix: 'upload',
+    name: 'Upload studio'
+  })
+  const tenant = (await owner.from('tenants').select('id').single()).data!.id
   await page.goto('/inspiration')
   await page.getByRole('link', { name: 'Add your own email' }).click()
   await expect(page).toHaveURL(/\/inspiration\/add$/)
@@ -113,13 +117,14 @@ test('the owner adds his own design and another brand’s email; they are read a
   const list = page.getByRole('list', { name: 'Your emails' })
   await expect(list.getByText('Autumn edit')).toBeVisible()
   await expect(list.getByText('Their sale')).toBeVisible()
-  await expect(list.getByText('Reading')).toHaveCount(2)
+  await expect(list.getByText('Reading', { exact: true })).toHaveCount(2)
 
   // The original file is kept exactly as uploaded.
   const db = admin()
   const rows = await db
     .from('email_uploads')
     .select('id,tenant_id,name,design,state,pictures')
+    .eq('tenant_id', tenant)
     .in('name', ['Autumn edit', 'Their sale'])
   expect(rows.error).toBeNull()
   const own = rows.data!.find((r) => r.name === 'Autumn edit')!
@@ -180,8 +185,15 @@ test('the owner adds his own design and another brand’s email; they are read a
   page.once('dialog', (d) => void d.accept())
   await list.getByRole('button', { name: 'Delete: Their sale' }).click()
   await expect(list.getByText('Their sale')).toHaveCount(0)
-  const files = await db.storage
-    .from('email-uploads')
-    .list(`${other.tenant_id}/${other.id}`)
-  expect(files.data ?? []).toEqual([])
+  await expect
+    .poll(
+      async () =>
+        (
+          await db.storage
+            .from('email-uploads')
+            .list(`${other.tenant_id}/${other.id}`)
+        ).data?.map((f) => f.name) ?? [],
+      { timeout: 15_000 }
+    )
+    .toEqual([])
 })

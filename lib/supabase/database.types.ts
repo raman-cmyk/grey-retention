@@ -7694,6 +7694,7 @@ export type Database = {
           design: string
           id: string
           lease_token: string
+          pictures: number
           subject_key: string
           tenant_id: string
         }[]
