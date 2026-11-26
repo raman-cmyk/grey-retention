@@ -1811,19 +1811,28 @@ describe('PICK-99: what the results sync reads of the push’s record', () => {
     }
   })
 
-  it('the owner’s edit in Klaviyo’s editor, or another template, is seen', async () => {
+  it('the owner’s edit in Klaviyo’s editor, or another template, is seen; a template gone is unknown', async () => {
     const { account, memory, pusher } = setup()
     await pusher.createDraft(input())
     const [variation] = variationsOf(account)
     const copy = account.templates.get(variation!.templateId!)!
     const html = copy.html
     copy.html = html.replace('<h1>A</h1>', '<h1>The owner wrote this</h1>')
-    expect(await edited(account, memory.row()!.shown)).toBe(true)
+    expect(await edited(account, memory.row()!.shown)).toMatchObject({
+      variation: expect.any(String),
+      current: expect.stringMatching(/^[a-f0-9]{16}$/)
+    })
     copy.html = html
     expect(await edited(account, memory.row()!.shown)).toBe(false)
     account.templates.set('TplMine', { ...copy, name: 'Mine' })
+    const ours = variation!.templateId
     variation!.templateId = 'TplMine'
-    expect(await edited(account, memory.row()!.shown)).toBe(true)
+    expect(await edited(account, memory.row()!.shown)).toMatchObject({
+      current: 'other_TplMine'
+    })
+    variation!.templateId = ours
+    account.templates.delete(ours!)
+    expect(await edited(account, memory.row()!.shown)).toBeNull()
   })
 
   it('nothing recorded is unknown, never “edited”', async () => {

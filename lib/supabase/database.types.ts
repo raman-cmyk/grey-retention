@@ -4934,6 +4934,7 @@ export type Database = {
           context: Json
           created_at: string
           design_changed: boolean
+          design_evidence: Json | null
           final: boolean
           lease_token: string | null
           lease_until: string | null
@@ -4964,6 +4965,7 @@ export type Database = {
           context?: Json
           created_at?: string
           design_changed?: boolean
+          design_evidence?: Json | null
           final?: boolean
           lease_token?: string | null
           lease_until?: string | null
@@ -4994,6 +4996,7 @@ export type Database = {
           context?: Json
           created_at?: string
           design_changed?: boolean
+          design_evidence?: Json | null
           final?: boolean
           lease_token?: string | null
           lease_until?: string | null
@@ -7648,6 +7651,7 @@ export type Database = {
           context: Json
           created_at: string
           design_changed: boolean
+          design_evidence: Json | null
           final: boolean
           lease_token: string | null
           lease_until: string | null
@@ -7687,6 +7691,7 @@ export type Database = {
           context: Json
           created_at: string
           design_changed: boolean
+          design_evidence: Json | null
           final: boolean
           lease_token: string | null
           lease_until: string | null
@@ -7814,6 +7819,10 @@ export type Database = {
         }[]
       }
       clean_email_copy: { Args: { build: string }; Returns: undefined }
+      clear_klaviyo_design_change: {
+        Args: { build: string; reason: string }
+        Returns: undefined
+      }
       complete_asset_import: {
         Args: { import_id: string; t: string }
         Returns: undefined

@@ -3,7 +3,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import { fingerprints } from '@/features/klaviyo-push/fingerprints'
-import { designEdited } from '@/features/klaviyo-push/shown'
+import {
+  designEdited,
+  type DesignMismatch
+} from '@/features/klaviyo-push/shown'
 import { findStoreMetrics } from '@/lib/providers/klaviyo/catalog'
 import {
   KlaviyoError,
@@ -75,8 +78,11 @@ const resultsReserve = 2
 /** The least time between two click questions (Klaviyo allows 3 a second). */
 export const clickGapMs = 350
 /**
- * PICK-99: the least time between two template reads (an edit check;
- * Klaviyo allows 10 a second and 150 a minute, shared with the push).
+ * PICK-99: the least time between two template reads (an edit check).
+ * Klaviyo's templates limit (10 a second, 150 a minute) is one per account,
+ * shared with the push's own template reads and writes and the history
+ * read: 400 ms keeps a run under 2.5 a second, and a 429 still pauses the
+ * whole account's checks (`stopsAccount`).
  */
 export const templateGapMs = 400
 
@@ -87,6 +93,8 @@ type Context = {
   written: string | null
   /** What the push left on each variation (PSH-001), for the edit check. */
   shown: string | null
+  /** The push's key, to read `shown` again after a check (PICK-99). */
+  pushKey: string | null
 }
 
 /** Each claimed email's built HTML and its push (our templates, what we last wrote). */
@@ -125,7 +133,8 @@ async function contexts(
         ? (push.templates as Context['templates'])
         : [],
       written: push?.written ?? null,
-      shown: push?.shown ?? null
+      shown: push?.shown ?? null,
+      pushKey: push ? push.push_key : null
     })
   }
   return found
@@ -167,32 +176,45 @@ const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
 type DraftRead = NonNullable<Awaited<ReturnType<typeof readDraft>>>
 
 /**
- * PICK-99: whether the draft's design was changed in Klaviyo since the
- * push (GET only; `before` paces each template read and may stop it with
+ * PICK-99: where the draft's design differs in Klaviyo from what the push
+ * left (GET only; `before` paces each template read and may stop it with
  * `TimeUp`). Looked at while it is a draft, scheduled or sending, and once
  * more when it is first seen sent; never again once seen changed. Null
- * when not looked at: out of time, nothing recorded by the push, or
- * Klaviyo could not answer for this email (the next check looks again). A
- * failure of the account (its pace, its key, Klaviyo down) is thrown: it
- * stops the account's checks as any read does.
+ * when not looked at or unknown: out of time, nothing recorded by the
+ * push, a write of ours under way, a template Klaviyo does not give, the
+ * push's record changed while we looked (a push ran meanwhile), or Klaviyo
+ * could not answer for this email (the next check looks again). A failure
+ * of the account (its pace, its key, Klaviyo down) is thrown: it stops the
+ * account's checks as any read does.
  */
 async function checkDesign(
+  db: Db,
   client: KlaviyoClient,
   row: ResultRow,
   draft: DraftRead,
-  shown: string | null,
+  ctx: Context,
   before: () => Promise<void>
-): Promise<boolean | null> {
+): Promise<DesignMismatch | false | null> {
   const seen = draft.status.toLowerCase()
   if (
     row.design_changed ||
-    !shown ||
+    !ctx.shown ||
     row.status === 'sent' ||
     !['draft', 'scheduled', 'sending', 'sent'].includes(seen)
   )
     return null
   try {
-    return await designEdited(client, draft, shown, before)
+    const found = await designEdited(client, draft, ctx.shown, before)
+    if (!found || !ctx.pushKey) return found
+    // A push may have changed the draft while we looked: then we know
+    // nothing (its own record says what it left).
+    const again = await db
+      .from('klaviyo_draft_pushes')
+      .select('shown')
+      .eq('tenant_id', row.tenant_id)
+      .eq('push_key', ctx.pushKey)
+      .maybeSingle()
+    return !again.error && again.data?.shown === ctx.shown ? found : null
   } catch (error) {
     if (error instanceof TimeUp) return null
     if (!(error instanceof KlaviyoError) || stopsAccount(error)) throw error
@@ -209,7 +231,7 @@ function statusRead(
   row: ResultRow,
   draft: DraftRead | null,
   ctx: Context,
-  designChanged: boolean | null
+  design: DesignMismatch | false | null
 ): StatusRead {
   return draft
     ? {
@@ -222,7 +244,7 @@ function statusRead(
           draft.campaignId !== row.campaign_id ||
           (ctx.written !== null &&
             fingerprints(draft.variations) !== ctx.written),
-        designChanged
+        design
       }
     : { found: false }
 }
@@ -432,10 +454,10 @@ export async function runEmailResults(
     const designCheck = (
       row: ResultRow,
       draft: DraftRead,
-      shown: string | null,
+      ctx: Context,
       dueCount: number
     ) =>
-      checkDesign(client, row, draft, shown, async () => {
+      checkDesign(db, client, row, draft, ctx, async () => {
         const gap = lastTemplate + templateGapMs - now()
         if (gap > 0) await wait(gap)
         // The results questions of the emails due keep their time.
@@ -486,10 +508,10 @@ export async function runEmailResults(
         }
         const ctx = context.get(row.build_id)!
         // PICK-99: its design, compared with what the push left on it.
-        const designChanged = draft
-          ? await designCheck(row, draft, ctx.shown, due.length)
+        const design = draft
+          ? await designCheck(row, draft, ctx, due.length)
           : null
-        const read = statusRead(row, draft, ctx, designChanged)
+        const read = statusRead(row, draft, ctx, design)
         const checked = afterStatus(row, read, now(), ctx.builtAt)
         const sentAt = checked.patch.sent_at ?? row.sent_at
         if (checked.pullDue && sentAt && read.found)
@@ -737,8 +759,13 @@ function sentAtFromOf(
       : 'first_seen'
 }
 
-/** How long a page's check may go (well inside a page load). */
+/** How long a page's check may go at most, all of it (it never holds the page). */
 export const pageCheckMs = 4_000
+/**
+ * The longest one Klaviyo request of a page's check may take: its client's
+ * own timeout (`checkEmailForPage`), and no request starts without it left.
+ */
+export const pageCallMs = 2_000
 /** An email checked this recently is not read again for its page. */
 export const pageFreshSeconds = 600
 
@@ -757,24 +784,52 @@ export type PageCheck =
  * the last `pageFreshSeconds` is read (`claim_klaviyo_result`, the
  * workspace from the session, leased like the hourly run's checks): its
  * message, then each template the push left (GET only, paced, within
- * `pageCheckMs`). No results are read here; a sent email's results stay
- * the hourly run's. Never throws.
+ * `pageCheckMs`, raced against a timer so a slow Klaviyo or database ends
+ * it as `skipped`; what was under way then may still save under its
+ * one-minute lease). No results are read here; a sent email's results stay
+ * the hourly run's. Never throws. The page runs it after its response
+ * (`checkEmailSoon`): the owner sees what was stored, never a wait.
  */
 export async function checkEmailNow(
   db: Db,
   tenantId: string,
   buildId: string,
-  deps: {
-    sourceFor: (tenantId: string) => Promise<ResultsSource>
-    now?: () => number
-    deadline?: number
-    callMs?: number
-    wait?: (ms: number) => Promise<void>
+  deps: CheckDeps
+): Promise<PageCheck> {
+  const budget = deps.budgetMs ?? pageCheckMs
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<PageCheck>((done) => {
+    timer = setTimeout(() => done('skipped'), budget)
+  })
+  try {
+    return await Promise.race([
+      checkEmailWork(db, tenantId, buildId, deps, budget),
+      late
+    ])
+  } finally {
+    clearTimeout(timer)
   }
+}
+
+type CheckDeps = {
+  sourceFor: (tenantId: string) => Promise<ResultsSource>
+  now?: () => number
+  /** The whole check's time (default `pageCheckMs`). */
+  budgetMs?: number
+  callMs?: number
+  wait?: (ms: number) => Promise<void>
+}
+
+async function checkEmailWork(
+  db: Db,
+  tenantId: string,
+  buildId: string,
+  deps: CheckDeps,
+  budget: number
 ): Promise<PageCheck> {
   const now = deps.now ?? Date.now
-  const deadline = deps.deadline ?? now() + pageCheckMs
-  const callMs = deps.callMs ?? 2_000
+  const deadline = now() + budget
+  const callMs = deps.callMs ?? pageCallMs
   const wait = deps.wait ?? sleep
   let row: ResultRow | undefined
   try {
@@ -815,8 +870,8 @@ export async function checkEmailNow(
         readDraft(source.client, row!.message_id!)
       )
       let last = 0
-      const designChanged = draft
-        ? await checkDesign(source.client, row, draft, ctx.shown, async () => {
+      const design = draft
+        ? await checkDesign(db, source.client, row, draft, ctx, async () => {
             const gap = last + templateGapMs - now()
             if (gap > 0) await wait(gap)
             if (now() + callMs > deadline) throw new TimeUp()
@@ -825,7 +880,7 @@ export async function checkEmailNow(
         : null
       const checked = afterStatus(
         row,
-        statusRead(row, draft, ctx, designChanged),
+        statusRead(row, draft, ctx, design),
         now(),
         ctx.builtAt
       )

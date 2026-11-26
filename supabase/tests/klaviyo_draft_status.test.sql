@@ -45,6 +45,13 @@ insert into public.klaviyo_email_results (tenant_id, build_id, run_id, slot, sam
   ('00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-00000000b302','00000000-0000-4000-8000-00000000e302',0,false,
    'CmpS02','MsgS02', '{"date":"2099-01-01"}');
 
+-- An earlier check already saw b301's design differ (090101: a design
+-- change needs that evidence first).
+update public.klaviyo_email_results set design_evidence = jsonb_build_object('variation', 'VarA01',
+  'recorded', repeat('a', 16), 'current', repeat('b', 16), 'firstSeenAt', '2026-11-20T10:00:00Z',
+  'lastSeenAt', '2026-11-20T10:00:00Z', 'checks', 1)
+  where build_id = '00000000-0000-4000-8000-00000000b301';
+
 create function pg_temp.as_worker() returns void language sql as $$
   select set_config('request.jwt.claims','{"role":"service_role"}',true)
 $$;

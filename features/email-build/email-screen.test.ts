@@ -416,8 +416,9 @@ describe('loading an email’s page (UI-EMAIL-a)', () => {
     }
     expect((await open(synced({})))?.inKlaviyo).toEqual({
       pill: 'in_klaviyo',
-      parts: ['Scheduled in Klaviyo for 14 Jan, 9:00 (store time)'],
+      parts: ['Scheduled in Klaviyo for 14 Jan 2027, 9:00 (store time)'],
       note: 'GROS will not change it now that it is scheduled.',
+      checked: '10 Jan 2027, 5:00',
       waiting: false
     })
     expect(

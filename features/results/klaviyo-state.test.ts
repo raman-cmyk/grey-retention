@@ -22,32 +22,63 @@ const state = (over: Partial<KlaviyoState> = {}): KlaviyoState => ({
 })
 
 describe('a draft’s state in Klaviyo, in plain words (PICK-99)', () => {
-  it('says when Klaviyo will send it, in the store’s time zone', () => {
+  it('says when Klaviyo will send it, in the store’s time zone, with the year when it is not this year', () => {
+    const jan = Date.parse('2027-01-02T12:00:00Z')
     const s = state({
       status: 'scheduled',
       scheduledFor: '2027-01-14T14:00:00Z',
       sendStrategy: 'static'
     })
-    expect(stateLine(s, 'America/New_York')).toBe(
+    expect(stateLine(s, 'America/New_York', jan)).toBe(
       'Scheduled in Klaviyo for 14 Jan, 9:00 (store time)'
     )
-    expect(stateLine(s, 'Asia/Kathmandu')).toBe(
+    expect(stateLine(s, 'Asia/Kathmandu', jan)).toBe(
       'Scheduled in Klaviyo for 14 Jan, 19:45 (store time)'
     )
-    expect(stateLine({ ...s, sendStrategy: 'local_timezone' }, 'UTC')).toBe(
-      'Scheduled in Klaviyo for 14 Jan, at each person’s own local time'
-    )
-    expect(stateLine({ ...s, sendStrategy: 'smart_send_time' }, 'UTC')).toBe(
+    expect(
+      stateLine(s, 'America/New_York', Date.parse('2026-11-26T12:00:00Z'))
+    ).toBe('Scheduled in Klaviyo for 14 Jan 2027, 9:00 (store time)')
+    expect(
+      stateLine({ ...s, sendStrategy: 'smart_send_time' }, 'UTC', jan)
+    ).toBe(
       'Scheduled in Klaviyo from 14 Jan, 14:00 (store time; Klaviyo picks each person’s time)'
     )
-    expect(stateLine({ ...s, scheduledFor: null }, 'UTC')).toBe(
+    expect(stateLine({ ...s, scheduledFor: null }, 'UTC', jan)).toBe(
       'Scheduled in Klaviyo'
     )
   })
 
+  it('a send at each person’s local time is wall-clock: never moved to the store’s zone, whatever the variant', () => {
+    const jan = Date.parse('2027-01-02T12:00:00Z')
+    // 23:30 local on the 14th: in New York's zone it would read the 14th
+    // at 18:30, in Kathmandu the 15th.
+    for (const sendStrategy of [
+      'local_timezone',
+      'content_variation_local_timezone'
+    ])
+      for (const zone of ['America/New_York', 'Asia/Kathmandu'])
+        expect(
+          stateLine(
+            state({
+              status: 'scheduled',
+              scheduledFor: '2027-01-14T23:30:00Z',
+              sendStrategy
+            }),
+            zone,
+            jan
+          )
+        ).toBe(
+          'Scheduled in Klaviyo for 14 Jan, 23:30, in each person’s own time zone'
+        )
+  })
+
   it('names every state, and an edit apart (never on a deleted draft)', () => {
     const words = (over: Partial<KlaviyoState>) =>
-      stateParts(state(over), 'Europe/London')
+      stateParts(
+        state(over),
+        'Europe/London',
+        Date.parse('2026-11-26T12:00:00Z')
+      )
     expect(words({})).toEqual(['Draft in Klaviyo'])
     expect(words({ edited: true })).toEqual([
       'Draft in Klaviyo',

@@ -53,34 +53,53 @@ export async function stillOurs(
   )
 }
 
+/** PICK-99: where a draft differs in Klaviyo from the push's record. */
+export type DesignMismatch = {
+  variation: string
+  /** The fingerprint the push recorded. */
+  recorded: string
+  /** What Klaviyo shows now: our template's new fingerprint, or `other_` and the template's id. */
+  current: string
+}
+
 /**
- * PICK-99: whether a draft's design was changed in Klaviyo since the push
- * left it, as the pusher judges it (GET only): a variation we recorded that
- * shows another template we were not putting on, or our template with other
- * HTML (or gone). A variation we never recorded says nothing (the
- * subject/preview fingerprints cover a new one). Null when nothing was
- * recorded (a draft from before PSH-001 kept it): unknown, never "edited".
- * Each template read goes through `before` (the caller's time and pace);
- * Klaviyo's errors are the caller's.
+ * PICK-99: whether a draft's design differs in Klaviyo from what the push
+ * left (GET only): a variation we recorded that shows another template, or
+ * our template with other HTML. `false`: as the push left it. Null:
+ * unknown, never "edited": nothing recorded (a draft from before PSH-001
+ * kept it), a write of ours under way on any variation (`:w`), a variation
+ * with no template, or a template Klaviyo does not give (404). A variation
+ * we never recorded says nothing (the subject/preview fingerprints cover a
+ * new one). Each template read goes through `before` (the caller's time
+ * and pace); Klaviyo's other errors are the caller's.
  */
 export async function designEdited(
   client: KlaviyoClient,
   draft: Pick<DraftRead, 'variations'>,
   shown: string | null,
   before: () => Promise<void> = async () => undefined
-): Promise<boolean | null> {
+): Promise<DesignMismatch | false | null> {
   const was = shownOf(shown)
-  if (!Object.keys(was).length) return null
+  const recorded = Object.values(was)
+  // Nothing recorded, or one of our writes may still be landing.
+  if (!recorded.length || recorded.some((w) => w.writing)) return null
   for (const v of draft.variations) {
     const w = was[v.id]
     if (!w) continue
-    if (v.templateId !== w.template) {
-      // Another template: ours only while we were putting it on.
-      if (!w.writing) return true
-      continue
-    }
+    if (!v.templateId) return null
+    if (v.templateId !== w.template)
+      return {
+        variation: v.id,
+        recorded: w.html,
+        current: `other_${v.templateId}`
+      }
     await before()
-    if (!(await stillOurs(client, w.template, w.html))) return true
+    const parts = await templateParts(client, w.template)
+    if (parts === null) return null
+    const html = htmlHash(parts.html).slice(0, 16)
+    const withText = designHash(parts.html, parts.text ?? '').slice(0, 16)
+    if (html !== w.html && withText !== w.html)
+      return { variation: v.id, recorded: w.html, current: html }
   }
   return false
 }

@@ -188,7 +188,11 @@ function Summary({ view }: { view: Extract<View, { kind: 'email' }> }) {
         </div>
         {view.inKlaviyo && (
           <div>
-            <dt className="type-label">In Klaviyo now</dt>
+            <dt className="type-label">
+              {view.inKlaviyo.checked
+                ? `What Klaviyo shows (checked ${view.inKlaviyo.checked}, store time)`
+                : 'What Klaviyo shows'}
+            </dt>
             <dd className="type-body-strong">
               {view.inKlaviyo.parts.join(' · ')}
             </dd>

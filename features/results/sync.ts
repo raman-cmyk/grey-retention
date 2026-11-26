@@ -5,6 +5,7 @@ import type {
   ResultStatistic,
   VariationResult
 } from '@/lib/providers/klaviyo/results'
+import type { DesignMismatch } from '@/features/klaviyo-push/shown'
 import { keptUrl, sectionOf, type EmailSection } from './sections'
 
 /**
@@ -50,8 +51,14 @@ export type ReadContext = {
 export type ResultPatch = {
   status?: EmailStatus
   changed?: boolean
-  /** PICK-99: its design was changed in Klaviyo (once seen it stays so). */
+  /**
+   * PICK-99: its design was changed in Klaviyo (once seen it stays so):
+   * only when a second, separate check sees the same difference as the
+   * stored `design_evidence` (the database refuses it otherwise).
+   */
   design_changed?: boolean
+  /** PICK-99: what a design check found different (null: clear it). */
+  design_evidence?: DesignEvidence | null
   /** PICK-99: when Klaviyo will send it, while scheduled or sending. */
   scheduled_for?: string | null
   /** PICK-99: how (`static`, `local_timezone`…), while scheduled or sending. */
@@ -184,10 +191,11 @@ export type StatusRead =
       /** Its variations no longer match what we last wrote. */
       changed: boolean
       /**
-       * PICK-99: its design no longer shows what the push left (another
-       * template, or other HTML in ours); null or absent when not looked at.
+       * PICK-99: where its design differs from what the push left (another
+       * template, or other HTML in ours); false when as left; null or
+       * absent when not looked at or unknown.
        */
-      designChanged?: boolean | null
+      design?: DesignMismatch | false | null
     }
 
 export type Checked = {
@@ -244,7 +252,7 @@ export function afterStatus(
   // Said only when seen (once seen it stays so).
   const changed = {
     ...(read.changed ? { changed: true } : {}),
-    ...(read.designChanged ? { design_changed: true } : {})
+    ...designPatch(row, read.design, now)
   }
   if (status === 'cancelled')
     return {
@@ -298,6 +306,70 @@ export function afterStatus(
   }
 }
 
+/** PICK-99: what a design check found, kept as evidence on the row. */
+export type DesignEvidence = DesignMismatch & {
+  firstSeenAt: string
+  lastSeenAt: string
+  /** Checks that saw this same difference. */
+  checks: number
+}
+
+/**
+ * The furthest ahead a scheduled send is kept (the database allows 550
+ * days: 10 days of margin).
+ */
+export const scheduledAheadDays = 540
+
+/**
+ * PICK-99: what a design check means for the row. A difference seen for
+ * the first time is only kept as evidence; the same difference (variation
+ * and what it shows now) seen again on a later, separate check marks the
+ * design changed. A check that finds it as the push left it clears the
+ * evidence (unless the change was already marked: that stays, with its
+ * evidence). Not looked at, or unknown: nothing.
+ */
+export function designPatch(
+  row: Pick<ResultRow, 'design_changed' | 'design_evidence'>,
+  design: DesignMismatch | false | null | undefined,
+  now: number
+): Pick<ResultPatch, 'design_changed' | 'design_evidence'> {
+  if (design === null || design === undefined || row.design_changed) return {}
+  const was = evidenceOf(row.design_evidence)
+  if (design === false) return was ? { design_evidence: null } : {}
+  const at = iso(now)
+  if (
+    was &&
+    was.variation === design.variation &&
+    was.current === design.current
+  )
+    return {
+      design_changed: true,
+      design_evidence: {
+        ...was,
+        lastSeenAt: at,
+        checks: Math.min(9_999, was.checks + 1)
+      }
+    }
+  return {
+    design_evidence: { ...design, firstSeenAt: at, lastSeenAt: at, checks: 1 }
+  }
+}
+
+/** Stored evidence as the app reads it; null when there is none or of another shape. */
+export function evidenceOf(v: unknown): DesignEvidence | null {
+  const e = v as Partial<DesignEvidence> | null
+  return e &&
+    typeof e === 'object' &&
+    typeof e.variation === 'string' &&
+    typeof e.recorded === 'string' &&
+    typeof e.current === 'string' &&
+    typeof e.firstSeenAt === 'string' &&
+    typeof e.lastSeenAt === 'string' &&
+    typeof e.checks === 'number'
+    ? (e as DesignEvidence)
+    : null
+}
+
 /**
  * PICK-99: when and how Klaviyo will send a scheduled (or sending) email,
  * as its status read says: its one send time, else the earliest of its
@@ -317,7 +389,9 @@ export function scheduledPatch(
       : null
   return {
     scheduled_for:
-      Number.isFinite(at) && at > now - dayMs && at < now + 540 * dayMs
+      Number.isFinite(at) &&
+      at > now - dayMs &&
+      at < now + scheduledAheadDays * dayMs
         ? iso(at)
         : null,
     send_strategy: strategy

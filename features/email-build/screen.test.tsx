@@ -102,7 +102,7 @@ describe('an email’s page (UI-EMAIL-b)', () => {
     )
     expect(
       screen.getByText(
-        'Scheduled in Klaviyo for 14 Jan, 9:00 (store time) · Edited in Klaviyo'
+        'Scheduled in Klaviyo for 14 Jan 2027, 9:00 (store time) · Edited in Klaviyo'
       )
     ).toBeInTheDocument()
     expect(screen.getByText('In Klaviyo')).toBeInTheDocument()

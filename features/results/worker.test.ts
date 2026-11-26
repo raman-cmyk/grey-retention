@@ -42,6 +42,7 @@ const row = (over: Partial<ResultRow> = {}): ResultRow => ({
   status: 'draft',
   changed: false,
   design_changed: false,
+  design_evidence: null,
   scheduled_for: null,
   send_strategy: null,
   sent_at: null,
@@ -71,14 +72,41 @@ function database(
     written?: Record<string, string | null>
     /** PICK-99: what the push left on each variation (`shown`), by build. */
     shown?: Record<string, string | null>
+    /** PICK-99: `shown` when read again after a check (a push ran meanwhile). */
+    shownAfter?: Record<string, string | null>
     refuse?: Record<string, string>
   } = {}
 ) {
   const all = batches.flat()
   const saved: { build: string; lease: string; patch: ResultPatch }[] = []
   const claims: number[] = []
-  const query = (data: unknown[]) => {
-    const q = { select: () => q, in: async () => ({ data, error: null }) }
+  const query = (table: string, data: Record<string, unknown>[]) => {
+    let rows = data
+    const q = {
+      select: () => q,
+      in: async () => ({ data, error: null }),
+      eq: (column: string, value: unknown) => {
+        rows = rows.filter((r) => r[column] === value)
+        return q
+      },
+      // The push's record read again after a design check (PICK-99).
+      maybeSingle: async () => {
+        const found = rows[0] ?? null
+        const build = String(found?.push_key ?? '').replace(/^push-/, '')
+        return {
+          data:
+            found && table === 'klaviyo_draft_pushes'
+              ? {
+                  shown:
+                    options.shownAfter && build in options.shownAfter
+                      ? options.shownAfter[build]
+                      : found.shown
+                }
+              : found,
+          error: null
+        }
+      }
+    }
     return q
   }
   const queue = [...batches]
@@ -105,6 +133,7 @@ function database(
     }),
     from: (table: string) =>
       query(
+        table,
         table === 'email_builds'
           ? all.map((r) => ({
               id: r.build_id,
@@ -1041,12 +1070,16 @@ describe('PICK-99: what the owner did with the draft in Klaviyo', () => {
     r: ResultRow = row(),
     options: {
       shown?: string | null
+      shownAfter?: string | null
       wait?: (ms: number) => Promise<void>
     } = {}
   ) => {
     const { db, saved } = database([[r]], {
       written: { [r.build_id]: written() },
-      shown: { [r.build_id]: 'shown' in options ? options.shown! : shown }
+      shown: { [r.build_id]: 'shown' in options ? options.shown! : shown },
+      ...('shownAfter' in options
+        ? { shownAfter: { [r.build_id]: options.shownAfter! } }
+        : {})
     })
     await run(db, live(recordedResultsTransport({ rest: a.transport })), {
       wait: options.wait
@@ -1065,35 +1098,90 @@ describe('PICK-99: what the owner did with the draft in Klaviyo', () => {
     expect(a.calls.every((c) => c.startsWith('GET '))).toBe(true)
   })
 
-  it('a design edited in Klaviyo (other HTML in our template) is recorded as edited', async () => {
+  it('a design edited in Klaviyo (other HTML in our template): evidence first, edited once a second check sees it too', async () => {
     const a = pushed()
-    a.templates.set('T2', {
-      name: 'B',
-      html: '<html><body>The owner’s own words</body></html>',
-      created: iso(now)
+    const mine = '<html><body>The owner’s own words</body></html>'
+    a.templates.set('T2', { name: 'B', html: mine, created: iso(now) })
+    const first = await check(a)
+    expect(first[0]!.patch.design_changed).toBeUndefined()
+    expect(first[0]!.patch.design_evidence).toEqual({
+      variation: 'VarB01',
+      recorded: mark(designB),
+      current: mark(mine),
+      firstSeenAt: iso(now),
+      lastSeenAt: iso(now),
+      checks: 1
     })
-    const saved = await check(a)
-    expect(saved[0]!.patch).toMatchObject({
+    const second = await check(
+      a,
+      row({ design_evidence: first[0]!.patch.design_evidence as never })
+    )
+    expect(second[0]!.patch).toMatchObject({
       status: 'draft',
-      design_changed: true
+      design_changed: true,
+      design_evidence: { variation: 'VarB01', checks: 2 }
     })
   })
 
-  it('another template put on a variation in Klaviyo is an edit', async () => {
+  it('a different difference on the next check starts its evidence again; the design as left clears it', async () => {
+    const a = pushed()
+    a.templates.set('T2', { name: 'B', html: '<p>one</p>', created: iso(now) })
+    const first = await check(a)
+    a.templates.set('T2', { name: 'B', html: '<p>two</p>', created: iso(now) })
+    const evidence = first[0]!.patch.design_evidence as never
+    const second = await check(a, row({ design_evidence: evidence }))
+    expect(second[0]!.patch.design_changed).toBeUndefined()
+    expect(second[0]!.patch.design_evidence).toMatchObject({ checks: 1 })
+    a.templates.set('T2', { name: 'B', html: designB, created: iso(now) })
+    const third = await check(a, row({ design_evidence: evidence }))
+    expect(third[0]!.patch).toEqual({
+      status: 'draft',
+      design_evidence: null,
+      next_check_at: iso(now + hourMs)
+    })
+  })
+
+  it('another template put on a variation in Klaviyo is a difference (not read)', async () => {
     const a = pushed()
     a.templates.set('T9', { name: 'Mine', html: designA, created: iso(now) })
     a.variations.get('VarA01')!.templateId = 'T9'
     const saved = await check(a)
-    expect(saved[0]!.patch).toMatchObject({ design_changed: true })
-    // Seen at once: the other template is not even read.
+    expect(saved[0]!.patch.design_evidence).toMatchObject({
+      variation: 'VarA01',
+      current: 'other_T9'
+    })
     expect(templateReads(a)).toHaveLength(0)
   })
 
-  it('our template deleted in Klaviyo (404) is an edit', async () => {
-    const a = pushed()
-    a.templates.delete('T1')
-    const saved = await check(a)
-    expect(saved[0]!.patch).toMatchObject({ design_changed: true })
+  it('never a false edit: a template Klaviyo does not give (404), no template, a write of ours under way, or a push meanwhile', async () => {
+    const unknown = (saved: { patch: ResultPatch }[]) => {
+      expect(saved[0]!.patch.design_changed).toBeUndefined()
+      expect(saved[0]!.patch.design_evidence).toBeUndefined()
+    }
+    const gone = pushed()
+    gone.templates.delete('T1')
+    unknown(await check(gone))
+    const none = pushed()
+    none.variations.get('VarA01')!.templateId = null
+    unknown(await check(none))
+    const writing = pushed()
+    writing.templates.set('T1', {
+      name: 'A',
+      html: '<p>x</p>',
+      created: iso(now)
+    })
+    unknown(await check(writing, row(), { shown: `${shown}:w` }))
+    const raced = pushed()
+    raced.templates.set('T1', {
+      name: 'A',
+      html: '<p>x</p>',
+      created: iso(now)
+    })
+    unknown(
+      await check(raced, row(), {
+        shownAfter: `VarA01:T1:${mark('<p>x</p>')},VarB01:T2:${mark(designB)}`
+      })
+    )
   })
 
   it('a subject changed in Klaviyo is still `changed` (the words), apart from the design', async () => {
@@ -1129,7 +1217,7 @@ describe('PICK-99: what the owner did with the draft in Klaviyo', () => {
       const saved = await check(a)
       expect(saved[0]!.patch).toMatchObject({
         status: status.toLowerCase(),
-        design_changed: true
+        design_evidence: { variation: 'VarA01', checks: 1 }
       })
     }
     const a = pushed('Sent', iso(now - dayMs - hourMs))
@@ -1231,7 +1319,12 @@ describe('PICK-99: the owner opens an email’s page', () => {
   const page = async (
     a: ReturnType<typeof pushed> | null,
     r: ResultRow = row(),
-    over: { tenant?: string; deadline?: number; off?: boolean } = {}
+    over: {
+      tenant?: string
+      budget?: number
+      off?: boolean
+      transport?: KlaviyoTransport
+    } = {}
   ) => {
     const { db, saved, claims } = database([[r]], {
       written: { [r.build_id]: written() },
@@ -1243,12 +1336,14 @@ describe('PICK-99: the owner opens an email’s page', () => {
             kind: 'off',
             reason: 'klaviyo_off'
           })
-        : live(recordedResultsTransport({ rest: a.transport }))
+        : live(
+            over.transport ?? recordedResultsTransport({ rest: a.transport })
+          )
     )
     const outcome = await checkEmailNow(db, over.tenant ?? 't1', r.build_id, {
       sourceFor,
       now: () => now,
-      deadline: over.deadline ?? now + 4_000,
+      budgetMs: over.budget ?? 4_000,
       callMs: 1_000,
       wait: async () => {}
     })
@@ -1273,7 +1368,7 @@ describe('PICK-99: the owner opens an email’s page', () => {
     const a = pushed()
     a.templates.set('T1', { name: 'A', html: '<p>mine</p>', created: iso(now) })
     const { saved } = await page(a)
-    expect(saved[0]!.patch).toMatchObject({ design_changed: true })
+    expect(saved[0]!.patch.design_evidence).toMatchObject({ checks: 1 })
   })
 
   it('reads nothing for another workspace’s email (the claim is the session’s workspace)', async () => {
@@ -1304,10 +1399,20 @@ describe('PICK-99: the owner opens an email’s page', () => {
 
   it('no time for a read: nothing read or saved (the hourly run looks)', async () => {
     const a = pushed()
-    const { outcome, saved } = await page(a, row(), { deadline: now + 500 })
+    const { outcome, saved } = await page(a, row(), { budget: 500 })
     expect(outcome).toBe('skipped')
     expect(saved).toEqual([])
     expect(a.calls).toEqual([])
+  })
+
+  it('a Klaviyo that never answers ends the check at its budget, whatever its client’s timeout', async () => {
+    const started = Date.now()
+    const { outcome } = await page(pushed(), row(), {
+      budget: 60,
+      transport: () => new Promise(() => {})
+    })
+    expect(outcome).toBe('skipped')
+    expect(Date.now() - started).toBeLessThan(1_000)
   })
 
   it('a synthetic brand’s sample draft is checked in code, with no Klaviyo', async () => {

@@ -21,50 +21,77 @@ export type KlaviyoState = {
   checkedAt: string | null
 }
 
-/** "14 Jan, 9:00" in the store's time zone; null for no time. */
-export function storeTime(iso: string | null, timeZone: string) {
+/**
+ * "14 Jan, 9:00" in a time zone ("14 Jan 2027, 9:00" when it is not this
+ * year there); null for no time or a zone the runtime does not know.
+ */
+export function storeTime(
+  iso: string | null,
+  timeZone: string,
+  now: number = Date.now()
+) {
   const t = iso ? Date.parse(iso) : NaN
   if (!Number.isFinite(t)) return null
-  let parts: Intl.DateTimeFormatPart[]
-  try {
-    parts = new Intl.DateTimeFormat('en-GB', {
+  const partsOf = (at: number) =>
+    new Intl.DateTimeFormat('en-GB', {
       day: 'numeric',
       month: 'short',
+      year: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
       hourCycle: 'h23',
       timeZone
-    }).formatToParts(new Date(t))
+    }).formatToParts(new Date(at))
+  let parts: Intl.DateTimeFormatPart[]
+  let thisYear: string | undefined
+  try {
+    parts = partsOf(t)
+    thisYear = partsOf(now).find((p) => p.type === 'year')?.value
   } catch {
     return null
   }
   const part = (type: string) => parts.find((p) => p.type === type)?.value
   const hour = String(Number(part('hour') ?? '0'))
-  return `${part('day')} ${part('month')}, ${hour}:${part('minute')}`
+  const year = part('year') !== thisYear ? ` ${part('year')}` : ''
+  return `${part('day')} ${part('month')}${year}, ${hour}:${part('minute')}`
 }
 
+/**
+ * Klaviyo sends at each person's own local time (`local_timezone`, and its
+ * variants such as `content_variation_local_timezone`): its send time is a
+ * wall-clock time, read as written (in UTC), never moved to the store's zone.
+ */
+export const localSend = (strategy: string | null) =>
+  !!strategy && /(^|_)local_timezone$/.test(strategy)
+
 /** When it sends, with how Klaviyo sends it. */
-function when(state: KlaviyoState, timeZone: string) {
-  const at = storeTime(state.scheduledFor, timeZone)
+function when(state: KlaviyoState, timeZone: string, now: number) {
+  if (localSend(state.sendStrategy)) {
+    const at = storeTime(state.scheduledFor, 'UTC', now)
+    return at ? ` for ${at}, in each person’s own time zone` : ''
+  }
+  const at = storeTime(state.scheduledFor, timeZone, now)
   if (!at) return ''
-  if (state.sendStrategy === 'local_timezone')
-    return ` for ${at.split(',')[0]}, at each person’s own local time`
   if (state.sendStrategy && state.sendStrategy !== 'static')
     return ` from ${at} (store time; Klaviyo picks each person’s time)`
   return ` for ${at} (store time)`
 }
 
 /** Klaviyo's status of it, in one line. */
-export function stateLine(state: KlaviyoState, timeZone: string): string {
+export function stateLine(
+  state: KlaviyoState,
+  timeZone: string,
+  now: number = Date.now()
+): string {
   switch (state.status) {
     case 'draft':
       return 'Draft in Klaviyo'
     case 'scheduled':
-      return `Scheduled in Klaviyo${when(state, timeZone)}`
+      return `Scheduled in Klaviyo${when(state, timeZone, now)}`
     case 'sending':
       return 'Sending from Klaviyo'
     case 'sent': {
-      const at = storeTime(state.sentAt, timeZone)
+      const at = storeTime(state.sentAt, timeZone, now)
       return at ? `Sent on ${at} (store time)` : 'Sent'
     }
     case 'cancelled':
@@ -80,9 +107,13 @@ export function stateLine(state: KlaviyoState, timeZone: string): string {
  * Its status, then "Edited in Klaviyo" when the owner changed it there
  * (a deleted one says only that it was deleted).
  */
-export function stateParts(state: KlaviyoState, timeZone: string): string[] {
+export function stateParts(
+  state: KlaviyoState,
+  timeZone: string,
+  now: number = Date.now()
+): string[] {
   return [
-    stateLine(state, timeZone),
+    stateLine(state, timeZone, now),
     ...(state.edited && state.status !== 'deleted' ? ['Edited in Klaviyo'] : [])
   ]
 }

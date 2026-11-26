@@ -11,6 +11,7 @@ import { allSteps } from './step-names'
 import type { StatusKind } from '@/components/gros/status'
 import {
   stateNote,
+  storeTime,
   stateParts,
   statePill,
   type KlaviyoState
@@ -61,6 +62,8 @@ export type KlaviyoStateView = {
   note: string | null
   /** Still a draft as GROS left it: he schedules it in Klaviyo. */
   waiting: boolean
+  /** When GROS last read it from Klaviyo ("26 Nov, 18:05", store time), or null. */
+  checked: string | null
 }
 
 /**
@@ -381,7 +384,8 @@ export function emailScreen(
           pill: statePill(state),
           parts: stateParts(state, row.timezone ?? 'UTC'),
           note: stateNote(state),
-          waiting: state.status === 'draft' && !state.edited
+          waiting: state.status === 'draft' && !state.edited,
+          checked: storeTime(state.checkedAt, row.timezone ?? 'UTC')
         }
       : null,
     status: drafted

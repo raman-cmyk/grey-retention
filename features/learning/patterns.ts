@@ -67,22 +67,21 @@ const designers = ['section-planner', 'art-director']
 const per100 = (part: number, whole: number) =>
   whole ? Math.round((part / whole) * 1000) / 10 : 0
 const words = (s: string) => s.replace(/[_-]+/g, ' ').trim()
-/** PICK-99: how many of a rule's sends the owner edited in Klaviyo, said with the rule. */
-const editedNote = (emails: readonly SentEmail[]) => {
-  const n = emails.filter((e) => e.edited).length
-  return n
-    ? ` ${n} of these ${n === 1 ? 'was' : 'were'} edited in Klaviyo by the owner, so not all of the words were GROS’s.`
-    : ''
-}
 /** Surer with more sends: 0.55 at the minimum, at most 0.9. */
 export const confidenceFor = (sends: number) =>
   Math.min(0.9, Math.round((0.55 + 0.05 * (sends - minSends)) * 100) / 100)
 
-/** The emails the analyst may learn from, in the window. */
+/**
+ * The emails the analyst may learn from, in the window. PICK-99: never one
+ * the owner edited in Klaviyo before it went out: its results are his
+ * rewrite's, so it is neither evidence nor counted toward the three sends
+ * of any rule (nor toward retiring one).
+ */
 export function usable(emails: readonly SentEmail[], now: number) {
   const since = now - windowDays * 86_400_000
   return emails.filter(
     (e) =>
+      !e.edited &&
       e.recipients >= minPeople &&
       e.clicks >= 0 &&
       Date.parse(e.sentAt) >= since &&
@@ -131,7 +130,7 @@ export function findPatterns(
         value: type,
         kind: 'dont',
         rule: `Send fewer ${words(type)} emails: they make more people unsubscribe than this brand's other emails.`,
-        why: `${words(type)} emails: ${per100(lost, people)} unsubscribes per 100 people over ${mine.length} sends, against ${per100(lostRest, peopleRest)} for the other ${rest.length}.${editedNote(mine)}`,
+        why: `${words(type)} emails: ${per100(lost, people)} unsubscribes per 100 people over ${mine.length} sends, against ${per100(lostRest, peopleRest)} for the other ${rest.length}.`,
         appliesTo: planners,
         evidence: mine.map((e) => ({ buildId: e.buildId })),
         confidence: confidenceFor(mine.length)
@@ -155,7 +154,7 @@ export function findPatterns(
         kind === 'do'
           ? `Plan more ${words(type)} emails: they get more clicks than this brand's other emails.`
           : `Plan fewer ${words(type)} emails: they get fewer clicks than this brand's other emails.`,
-      why: `${words(type)} emails: ${per100(mine.clicks, mine.people)} clicks per 100 people over ${mine.emails.length} sends, against ${per100(rest.clicks, rest.people)} for the other ${rest.emails.length}.${editedNote(mine.emails)}`,
+      why: `${words(type)} emails: ${per100(mine.clicks, mine.people)} clicks per 100 people over ${mine.emails.length} sends, against ${per100(rest.clicks, rest.people)} for the other ${rest.emails.length}.`,
       appliesTo: planners,
       evidence: mine.emails.map((e) => ({ buildId: e.buildId })),
       confidence: confidenceFor(mine.emails.length)
