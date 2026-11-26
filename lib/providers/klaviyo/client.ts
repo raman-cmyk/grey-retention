@@ -1,5 +1,6 @@
 import 'server-only'
 import { klaviyoWritesUnlocked } from '@/lib/env/server'
+import { klaviyoPrivateKeyPattern } from './key-shape'
 
 /**
  * The live Klaviyo client (KLV-001): JSON:API requests to Klaviyo's one
@@ -207,8 +208,6 @@ async function capped(response: Response, limit: number) {
 
 /** Waits at most this long inside one call for a short rate limit. */
 const shortWaitSeconds = 10
-/** A private API key, and nothing else, ever goes into the header. */
-const keyShape = /^pk_[A-Za-z0-9]{20,64}$/
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 export type KlaviyoWriteMethod = 'POST' | 'PATCH' | 'DELETE'
@@ -305,7 +304,8 @@ export function klaviyoClient(
     // KLV-LOCK-001: the lock, from the address as sent, before any transport.
     lockGuard(method, url.toString())
     const endpoint = url.pathname
-    if (!keyShape.test(apiKey)) throw new KlaviyoError('bad_key', { endpoint })
+    if (!klaviyoPrivateKeyPattern.test(apiKey))
+      throw new KlaviyoError('bad_key', { endpoint })
     for (let tries = 0; ; tries++) {
       let response: KlaviyoResponse
       try {

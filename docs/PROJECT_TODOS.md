@@ -1,12 +1,14 @@
 # Project to-dos and owner decisions
 
-Updated: 25 November 2026. Canonical owner follow-up record for future project discussions. Technical implementation and verification history stays in [BUILD_LEDGER.md](BUILD_LEDGER.md).
+Updated: 26 November 2026. Canonical owner follow-up record for future project discussions. Technical implementation and verification history stays in [BUILD_LEDGER.md](BUILD_LEDGER.md).
 
 ## How to use
 
 After each discussion, capture explicit owner to-dos here, deduplicate, and preserve unresolved questions. Label proposed details as proposals. Add an issue/PR link when work is assigned; record verification before marking done. Do not claim live provider health from a conversational decision.
 
 ## Confirmed direction
+
+- 26 Nov 2026: owner authorized onboarding one real brand in the existing founder workspace, a dedicated full-access Klaviyo key, and at most $30 for setup and AI testing. Billing was reopened; the Gemini project's monthly cap is $30 with auto-reload off (the provider warns enforcement can lag). Full-access credentials do not authorize releasing the separate Klaviyo write lock. Verified live switches: Gemini, website and Klaviyo reads, owner-started planning/email agents, library Copy. First live onboarding found a key-format rejection; KLV-KEY-001 fixes the form, HTTP client and Vault admission command. Provider health and onboarding output still need verification.
 
 - Grow toward 2,000+ useful reusable email blocks. The first 20 types are the seed.
 - Gmail plus-addresses are the agreed initial competitor collection approach. The owner considers that choice done; ingestion health is a separate check.

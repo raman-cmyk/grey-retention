@@ -350,11 +350,15 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 ## Build takeover tasks
 
+KLV-KEY-001 — review, Codex live onboarding: accept internal underscore separators in provider-issued private keys at the connection form, HTTP client and Vault admission command. Preserve the database's masked hint format, read-only verification, write lock and secret redaction. Owns the key-shape helper, both consumers, migration `090098` and credential tests; no new dependency or function-signature change.
+
 | ID           | Workstream                                                                                 | Depends on        | Status | Owner/task     | Verification                             | Notes                                                                       |
 | ------------ | ------------------------------------------------------------------------------------------ | ----------------- | ------ | -------------- | ---------------------------------------- | --------------------------------------------------------------------------- |
 | STR-LIVE-001 | Connect existing strategy agents to owner-started planning behind an off-by-default switch | STR-003, ONB-057b | review | Codex takeover | Full verify: 4,118 tests; reviewer ready | No live switch or provider change. Keep cron and sample planning code-only. |
 
 ## Global decisions
+
+- KLV-KEY-001 (26 Nov 2026): the connection form and HTTP client share `klaviyoPrivateKeyPattern`. A private key keeps its `pk_` prefix and 20–64 following characters; internal underscores are accepted, while the first five and last four remain alphanumeric to preserve existing database hint constraints. The Vault admission command uses the identical rule. Keys are never normalized or stripped: Klaviyo checks the original key and required read scopes before it is stored unchanged in Vault. The live-check guard, owner authorization, tenant lock, grants, and default Klaviyo write lock remain intact. Migration `090098` replaces only the latest command's key predicate, with no signature or generated-type change.
 
 - STR-LIVE-001 (22 Nov 2026): owner-started planning may inject the existing metered strategy agents only behind exact `STRATEGY_AGENTS=on` with ready plan/review models. The switch defaults off, independently of the email-agent flag. Sample/fallback stores and the ordinary cron sweep remain code-only. The leased tenant supplies identity; memory/logs and runAi tenant reservations remain authoritative. Both Home and Plan allow 120 seconds; action budget is 100 seconds, provider calls 10 seconds, with 5 seconds reserved before another call. No live setting, credential or cap was changed.
 
@@ -4735,3 +4739,14 @@ Append entries using this exact shape:
 - Known issues and limits: (1) An email waits up to 1.5 hours for its copy (3 waits of 30 minutes; the job runs every 10 minutes, but GitHub may run it late, SCHED-LATE-001), then is drawn with coded blocks with the reason; its page shows it as being made meanwhile. (2) Photos load only from Shopify's CDN, Klaviyo's image host and our own storage; a store's photos elsewhere build their sections from library blocks with the reason (the sample store's do). (3) A Brand kit without a logo picture builds the header from the library's Logo header block. (4) The centre cut may cut an off-centre product (no smart crop). (5) The journey runs on desktop only (one run of the browser job is enough). (6) Turning the switch off while an email waits draws it with coded blocks, with no log line for the copy. (7) The email's page shows its cut photos for 30 days (their links' life), then they are removed; Klaviyo keeps its own imported copies. (8) A deleted build's photos stay in the private bucket (builds are not deleted today). (9) Both reviewers ran from the coordinator (this session cannot start subagents).
 - Review fixes (25 Nov, code-reviewer and rls-migration-reviewer on #664 at `03f8999`), as new commits: see the Global decision's review round. pgTAP 66 (tenant-first locks, the composite key, the role check, paused workspaces, photos pinned per claim, a final failure, release with a wrong lease or another kind's job, the lease-expiry sweep's fourth failure firing the trigger past a job with a bad key, the studio claim before and after a copy or blueprint, operator read). Unit tests for the allow-listed tags (the reviewer's four), the server's own leak check, pinned photos, retries, the switch, the budgets and the cleanup. The journey now uploads real cut photos (a stand-in cutter, as the sample store's photos are on a host the job never fetches from) and checks them pinned and signed. Gates after them: `pnpm verify`; `supabase:reset` + `test:db` (79 files, 3,896 checks); real cut 19 of 20, fake cropper 19 of 20, no cut 9 of 20, 0 leaks, step-1 40 of 40, hard checks 19 of 20; Playwright 21 passed, 3 skipped.
 - Next consumer: step 3 (upload 1:1, DES-ENGINE-003).
+
+### 2026-11-26 — KLV-KEY-001 — accept private-key separators
+
+- Status: review
+- Branch/worktree: `codex/klaviyo-key-separators`
+- Commit(s): this change
+- Changed contracts: shared key predicate at form, HTTP client and Vault admission; original key preserved; masked hints and provider verification unchanged.
+- Migrations: `20260914090098_klaviyo_key_separators.sql`; next after main's `090097`, recheck before merge (D24). Latest command replaced with only its key predicate changed; no signature, grants or generated-type changes.
+- Verification run: full `pnpm verify` with `NODE_USE_ENV_PROXY=0`: formatting, lint, typecheck, 4,634 tests (23 skipped), production build passed. Code and database reviewers ready; focused reviewer tests 54 passed. Database reset/pgTAP must pass in CI; local Docker unavailable.
+- Known issues: production connection remains pending deployment; the separate live website reader returned validation failure and is being investigated. Klaviyo write lock remains enabled.
+- Next consumer: database CI, production deployment, then live onboarding verification.
