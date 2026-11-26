@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import { fingerprints } from '@/features/klaviyo-push/fingerprints'
+import { designEdited } from '@/features/klaviyo-push/shown'
 import { findStoreMetrics } from '@/lib/providers/klaviyo/catalog'
 import {
   KlaviyoError,
@@ -73,12 +74,19 @@ export const resultsBudgetMs = 35_000
 const resultsReserve = 2
 /** The least time between two click questions (Klaviyo allows 3 a second). */
 export const clickGapMs = 350
+/**
+ * PICK-99: the least time between two template reads (an edit check;
+ * Klaviyo allows 10 a second and 150 a minute, shared with the push).
+ */
+export const templateGapMs = 400
 
 type Context = {
   html: string
   builtAt: number
   templates: { approach?: unknown; variation?: unknown; deleted?: unknown }[]
   written: string | null
+  /** What the push left on each variation (PSH-001), for the edit check. */
+  shown: string | null
 }
 
 /** Each claimed email's built HTML and its push (our templates, what we last wrote). */
@@ -98,7 +106,7 @@ async function contexts(
   const pushes = keys.length
     ? await db
         .from('klaviyo_draft_pushes')
-        .select('tenant_id,push_key,templates,written')
+        .select('tenant_id,push_key,templates,written,shown')
         .in('push_key', keys)
     : { data: [], error: null }
   if (pushes.error) throw pushes.error
@@ -116,7 +124,8 @@ async function contexts(
       templates: Array.isArray(push?.templates)
         ? (push.templates as Context['templates'])
         : [],
-      written: push?.written ?? null
+      written: push?.written ?? null,
+      shown: push?.shown ?? null
     })
   }
   return found
@@ -154,6 +163,69 @@ class TimeUp extends Error {
 }
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
+
+type DraftRead = NonNullable<Awaited<ReturnType<typeof readDraft>>>
+
+/**
+ * PICK-99: whether the draft's design was changed in Klaviyo since the
+ * push (GET only; `before` paces each template read and may stop it with
+ * `TimeUp`). Looked at while it is a draft, scheduled or sending, and once
+ * more when it is first seen sent; never again once seen changed. Null
+ * when not looked at: out of time, nothing recorded by the push, or
+ * Klaviyo could not answer for this email (the next check looks again). A
+ * failure of the account (its pace, its key, Klaviyo down) is thrown: it
+ * stops the account's checks as any read does.
+ */
+async function checkDesign(
+  client: KlaviyoClient,
+  row: ResultRow,
+  draft: DraftRead,
+  shown: string | null,
+  before: () => Promise<void>
+): Promise<boolean | null> {
+  const seen = draft.status.toLowerCase()
+  if (
+    row.design_changed ||
+    !shown ||
+    row.status === 'sent' ||
+    !['draft', 'scheduled', 'sending', 'sent'].includes(seen)
+  )
+    return null
+  try {
+    return await designEdited(client, draft, shown, before)
+  } catch (error) {
+    if (error instanceof TimeUp) return null
+    if (!(error instanceof KlaviyoError) || stopsAccount(error)) throw error
+    logger.warn('Email design unreadable', {
+      endpoint: error.details.endpoint,
+      status: error.details.status ?? 0
+    })
+    return null
+  }
+}
+
+/** A draft's status read, as the checks compare it with what we left. */
+function statusRead(
+  row: ResultRow,
+  draft: DraftRead | null,
+  ctx: Context,
+  designChanged: boolean | null
+): StatusRead {
+  return draft
+    ? {
+        found: true,
+        status: draft.status,
+        sendTime: draft.sendTime,
+        firstSendTime: draft.firstSendTime,
+        sendStrategy: draft.sendStrategy,
+        changed:
+          draft.campaignId !== row.campaign_id ||
+          (ctx.written !== null &&
+            fingerprints(draft.variations) !== ctx.written),
+        designChanged
+      }
+    : { found: false }
+}
 
 /**
  * The hourly results run: claims due checks (again while time is left),
@@ -356,6 +428,24 @@ export async function runEmailResults(
         )
       })
     }
+    let lastTemplate = 0
+    const designCheck = (
+      row: ResultRow,
+      draft: DraftRead,
+      shown: string | null,
+      dueCount: number
+    ) =>
+      checkDesign(client, row, draft, shown, async () => {
+        const gap = lastTemplate + templateGapMs - now()
+        if (gap > 0) await wait(gap)
+        // The results questions of the emails due keep their time.
+        if (
+          now() + callMs * (1 + (dueCount ? resultsReserve : 0)) >
+          deps.deadline
+        )
+          throw new TimeUp()
+        lastTemplate = now()
+      })
     // Sent emails first: their results are what is due.
     const ordered = [...live].sort(
       (a, b) => Number(b.status === 'sent') - Number(a.status === 'sent')
@@ -395,19 +485,11 @@ export async function runEmailResults(
           continue
         }
         const ctx = context.get(row.build_id)!
-        const read: StatusRead = draft
-          ? {
-              found: true,
-              status: draft.status,
-              sendTime: draft.sendTime,
-              firstSendTime: draft.firstSendTime,
-              sendStrategy: draft.sendStrategy,
-              changed:
-                draft.campaignId !== row.campaign_id ||
-                (ctx.written !== null &&
-                  fingerprints(draft.variations) !== ctx.written)
-            }
-          : { found: false }
+        // PICK-99: its design, compared with what the push left on it.
+        const designChanged = draft
+          ? await designCheck(row, draft, ctx.shown, due.length)
+          : null
+        const read = statusRead(row, draft, ctx, designChanged)
         const checked = afterStatus(row, read, now(), ctx.builtAt)
         const sentAt = checked.patch.sent_at ?? row.sent_at
         if (checked.pullDue && sentAt && read.found)
@@ -653,4 +735,114 @@ function sentAtFromOf(
     : same(read.firstSendTime)
       ? 'send_times'
       : 'first_seen'
+}
+
+/** How long a page's check may go (well inside a page load). */
+export const pageCheckMs = 4_000
+/** An email checked this recently is not read again for its page. */
+export const pageFreshSeconds = 600
+
+export type PageCheck =
+  | 'checked'
+  /** Checked lately, final, sent, or held by the hourly run: nothing read. */
+  | 'fresh'
+  /** Klaviyo could not be read (or is off): put back for later, why kept. */
+  | 'paused'
+  /** Out of time, or the outcome could not be saved: the hourly run looks. */
+  | 'skipped'
+
+/**
+ * PICK-99: the owner opened one email's page: its status in Klaviyo now,
+ * cheap and cached. Only a draft, scheduled or sending email not checked in
+ * the last `pageFreshSeconds` is read (`claim_klaviyo_result`, the
+ * workspace from the session, leased like the hourly run's checks): its
+ * message, then each template the push left (GET only, paced, within
+ * `pageCheckMs`). No results are read here; a sent email's results stay
+ * the hourly run's. Never throws.
+ */
+export async function checkEmailNow(
+  db: Db,
+  tenantId: string,
+  buildId: string,
+  deps: {
+    sourceFor: (tenantId: string) => Promise<ResultsSource>
+    now?: () => number
+    deadline?: number
+    callMs?: number
+    wait?: (ms: number) => Promise<void>
+  }
+): Promise<PageCheck> {
+  const now = deps.now ?? Date.now
+  const deadline = deps.deadline ?? now() + pageCheckMs
+  const callMs = deps.callMs ?? 2_000
+  const wait = deps.wait ?? sleep
+  let row: ResultRow | undefined
+  try {
+    const claimed = await db.rpc('claim_klaviyo_result', {
+      t: tenantId,
+      build: buildId,
+      fresh: pageFreshSeconds
+    })
+    if (claimed.error) throw claimed.error
+    row = ((claimed.data ?? []) as ResultRow[])[0]
+    if (!row || row.tenant_id !== tenantId) return 'fresh'
+    const ctx = (await contexts(db, [row])).get(row.build_id)!
+    const save = async (patch: ResultPatch) => {
+      const saved = await db.rpc('save_klaviyo_result', {
+        build: row!.build_id,
+        lease: row!.lease_token!,
+        patch: patch as unknown as Json
+      })
+      if (saved.error) throw saved.error
+    }
+    if (row.sample) {
+      await save(
+        afterStatus(row, sampleStatus(row, now()), now(), ctx.builtAt).patch
+      )
+      return 'checked'
+    }
+    const source = await deps.sourceFor(tenantId)
+    if (source.kind === 'off') {
+      await save(pausedPatch(row, source.reason, now(), waitFor(source.reason)))
+      return 'paused'
+    }
+    const timed = <T>(call: () => Promise<T>) => {
+      if (now() + callMs > deadline) throw new TimeUp()
+      return call()
+    }
+    try {
+      const draft = await timed(() =>
+        readDraft(source.client, row!.message_id!)
+      )
+      let last = 0
+      const designChanged = draft
+        ? await checkDesign(source.client, row, draft, ctx.shown, async () => {
+            const gap = last + templateGapMs - now()
+            if (gap > 0) await wait(gap)
+            if (now() + callMs > deadline) throw new TimeUp()
+            last = now()
+          })
+        : null
+      const checked = afterStatus(
+        row,
+        statusRead(row, draft, ctx, designChanged),
+        now(),
+        ctx.builtAt
+      )
+      await save(checked.patch)
+      return 'checked'
+    } catch (error) {
+      if (!(error instanceof KlaviyoError)) throw error
+      const reason = pauseOf(error)
+      await save(pausedPatch(row, reason, now(), waitFor(reason, error)))
+      return 'paused'
+    }
+  } catch (error) {
+    // Left leased for a minute: the hourly run looks at it after that.
+    if (!(error instanceof TimeUp))
+      logger.warn('Email status not checked for its page', {
+        code: (error as { code?: string })?.code ?? 'page_check_failed'
+      })
+    return 'skipped'
+  }
 }

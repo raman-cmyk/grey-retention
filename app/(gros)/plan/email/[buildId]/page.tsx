@@ -7,7 +7,10 @@ import { ErrorState } from '@/components/gros/states'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { loadEmailScreen } from '@/features/email-build/email-screen-load'
 import { EmailScreen } from '@/features/email-build/screen'
+import { checkEmailForPage } from '@/features/results/live'
+import { validTimezone } from '@/lib/brand-time'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 
 export const metadata: Metadata = { title: 'Your email' }
 
@@ -20,9 +23,18 @@ export default async function PlannedEmailPage({
   const { buildId } = await params
   if (!z.uuid().safeParse(buildId).success) notFound()
   const context = await requireRequestContext('client')
+  // PICK-99: how its draft is in Klaviyo now (GET only, at most once in ten
+  // minutes an email, a few seconds at most; the session's workspace only).
+  const service = createServiceClient()
+  if (service) await checkEmailForPage(service, context.tenantId, buildId)
   const db = await createClient()
   const loaded = db
-    ? await loadEmailScreen(db, context.tenantId, buildId)
+    ? await loadEmailScreen(
+        db,
+        context.tenantId,
+        buildId,
+        validTimezone(context.timezone)
+      )
     : ({ ok: false } as const)
   if (loaded.ok && !loaded.screen) notFound()
   if (!loaded.ok || !loaded.screen)

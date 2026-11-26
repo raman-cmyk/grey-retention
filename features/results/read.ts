@@ -15,8 +15,14 @@ export type EmailResult = {
   /** What was planned and built: type, angle, offer, send time, audience, products. */
   planned: Record<string, unknown>
   status: EmailStatus
-  /** Changed in Klaviyo outside the app (never overwritten). */
+  /** Changed in Klaviyo outside the app (never overwritten): its words or campaign. */
   changed: boolean
+  /** PICK-99: its design was changed in Klaviyo since the push. */
+  designChanged: boolean
+  /** PICK-99: when Klaviyo will send it, while scheduled or sending. */
+  scheduledFor: string | null
+  /** PICK-99: how Klaviyo sends it, while scheduled or sending. */
+  sendStrategy: string | null
   sentAt: string | null
   /** Results reads done (three once the email is final). */
   pulls: number
@@ -55,6 +61,9 @@ export async function listEmailResults(
     planned: r.planned as Record<string, unknown>,
     status: r.status as EmailStatus,
     changed: r.changed,
+    designChanged: r.design_changed ?? false,
+    scheduledFor: r.scheduled_for ?? null,
+    sendStrategy: r.send_strategy ?? null,
     sentAt: r.sent_at,
     pulls: r.pulls,
     results: r.results as unknown as StoredResult[],

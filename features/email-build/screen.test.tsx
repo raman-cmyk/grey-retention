@@ -83,6 +83,51 @@ describe('an email’s page (UI-EMAIL-b)', () => {
     ).toBeInTheDocument()
   })
 
+  it('says in plain words what the owner did with the draft in Klaviyo (PICK-99)', () => {
+    const state = (over: Record<string, unknown>) => ({
+      status: 'scheduled' as const,
+      edited: false,
+      scheduledFor: '2027-01-14T09:00:00Z',
+      sendStrategy: 'static',
+      sentAt: null,
+      checkedAt: null,
+      ...over
+    })
+    const { unmount } = render(
+      <EmailScreen
+        view={emailScreen(
+          row({ klaviyoState: state({ edited: true }), timezone: 'UTC' })
+        )}
+      />
+    )
+    expect(
+      screen.getByText(
+        'Scheduled in Klaviyo for 14 Jan, 9:00 (store time) · Edited in Klaviyo'
+      )
+    ).toBeInTheDocument()
+    expect(screen.getByText('In Klaviyo')).toBeInTheDocument()
+    expect(
+      screen.getByText(/GROS will not replace your changes/)
+    ).toBeInTheDocument()
+    // No longer a draft waiting for him.
+    expect(screen.queryByText(/you schedule it in Klaviyo/)).toBeNull()
+    unmount()
+    render(
+      <EmailScreen
+        view={emailScreen(
+          row({
+            klaviyoState: state({ status: 'deleted', scheduledFor: null }),
+            timezone: 'UTC'
+          })
+        )}
+      />
+    )
+    expect(screen.getByText('Deleted in Klaviyo')).toBeInTheDocument()
+    // None of BRAND.md's four statuses is true for a deleted draft.
+    expect(screen.queryByText('In Klaviyo')).toBeNull()
+    expect(screen.getByText(/GROS will not put it back/)).toBeInTheDocument()
+  })
+
   it('shows an email being put into Klaviyo as working, with the way back', () => {
     render(
       <EmailScreen

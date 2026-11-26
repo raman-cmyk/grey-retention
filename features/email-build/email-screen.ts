@@ -8,6 +8,13 @@ import { builtEmail, type BuiltEmail } from './build'
 import { changeWords, type ChangeKey } from './content'
 import { copiedLines } from './library-copy'
 import { allSteps } from './step-names'
+import type { StatusKind } from '@/components/gros/status'
+import {
+  stateNote,
+  stateParts,
+  statePill,
+  type KlaviyoState
+} from '@/features/results/klaviyo-state'
 
 /**
  * UI-EMAIL-a (the owner's request of 16 November: a basic working UI on
@@ -36,6 +43,24 @@ export type EmailRow = {
    * built before it.
    */
   referenceReason?: string | null
+  /**
+   * PICK-99: what the owner did with its draft in Klaviyo, as the results
+   * sync last read it (null: not read yet), and the store's time zone.
+   */
+  klaviyoState?: KlaviyoState | null
+  timezone?: string
+}
+
+/** PICK-99: its draft in Klaviyo, in plain words (store time). */
+export type KlaviyoStateView = {
+  /** BRAND.md's Status (In Klaviyo), or none when none of the four is true. */
+  pill: StatusKind | null
+  /** "Scheduled in Klaviyo for 14 Jan, 9:00 (store time)", "Edited in Klaviyo". */
+  parts: string[]
+  /** What it means for him, in a sentence, or null. */
+  note: string | null
+  /** Still a draft as GROS left it: he schedules it in Klaviyo. */
+  waiting: boolean
 }
 
 /**
@@ -118,6 +143,8 @@ export type EmailScreen =
       status: 'in_klaviyo' | 'sample_draft' | 'working'
       /** Open in Klaviyo: only for a real draft in Klaviyo. */
       klaviyo: KlaviyoLink | null
+      /** PICK-99: what happened to its draft in Klaviyo (null: not read yet). */
+      inKlaviyo: KlaviyoStateView | null
       steps: RunStep[]
       notes: string[]
     })
@@ -345,9 +372,18 @@ export function emailScreen(
       notes
     }
   if (!view) return { kind: 'working', format, steps, notes }
+  const state = drafted && !row.sampleDraft && klaviyo ? row.klaviyoState : null
   return {
     kind: 'email',
     ...view,
+    inKlaviyo: state
+      ? {
+          pill: statePill(state),
+          parts: stateParts(state, row.timezone ?? 'UTC'),
+          note: stateNote(state),
+          waiting: state.status === 'draft' && !state.edited
+        }
+      : null,
     status: drafted
       ? row.sampleDraft
         ? 'sample_draft'

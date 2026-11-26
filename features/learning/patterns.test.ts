@@ -56,6 +56,19 @@ describe('the Performance analyst (LRN-002, D22)', () => {
     expect(launch.evidence).toHaveLength(3)
   })
 
+  it('says with the rule how many of its sends the owner edited in Klaviyo (PICK-99)', () => {
+    const emails = [
+      sent({ emailType: 'launch', clicks: 40, edited: true }),
+      ...many(2, { emailType: 'launch', clicks: 40 }),
+      ...many(3, { emailType: 'story', clicks: 22 }),
+      ...many(3, { emailType: 'education', clicks: 10 })
+    ]
+    const launch = findPatterns(emails, now).find((p) => p.value === 'launch')!
+    expect(launch.why).toBe(
+      'launch emails: 4 clicks per 100 people over 3 sends, against 1.6 for the other 6. 1 of these was edited in Klaviyo by the owner, so not all of the words were GROS’s.'
+    )
+  })
+
   it('needs three sends on each side, enough people, and recent, real sends', () => {
     const two = [
       ...many(minSends - 1, { emailType: 'launch', clicks: 80 }),

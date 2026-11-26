@@ -376,12 +376,66 @@ describe('loading an email’s page (UI-EMAIL-a)', () => {
       ['strategy_runs', 'eq', ['tenant_id', tenant]],
       ['strategy_runs', 'eq', ['id', runId]],
       ['agent_fallbacks', 'eq', ['tenant_id', tenant]],
-      ['agent_fallbacks', 'eq', ['tenant_id', tenant]]
+      ['agent_fallbacks', 'eq', ['tenant_id', tenant]],
+      // PICK-99: what the results sync read of its draft, this workspace's.
+      ['klaviyo_email_results', 'eq', ['tenant_id', tenant]],
+      ['klaviyo_email_results', 'eq', ['build_id', buildId]]
     ])
     expect(calls.filter(([, n]) => n === 'like')).toEqual([
       ['agent_fallbacks', 'like', ['dedupe_key', `%email-build-${buildId}%`]],
       ['agent_fallbacks', 'like', ['dedupe_key', `ab-test:${pushKey}:%`]]
     ])
+  })
+
+  it('says what the owner did with its draft in Klaviyo, in store time (PICK-99)', async () => {
+    const synced = (over: Record<string, unknown>) => ({
+      data: {
+        status: 'scheduled',
+        changed: false,
+        design_changed: false,
+        scheduled_for: '2027-01-14T14:00:00Z',
+        send_strategy: 'static',
+        sent_at: null,
+        checked_at: '2027-01-10T10:00:00Z',
+        ...over
+      },
+      error: null
+    })
+    const open = async (row: ReturnType<typeof synced>) => {
+      const { db } = fakeDb({
+        email_builds: [{ data: buildRow(), error: null }],
+        strategy_runs: [plan],
+        agent_fallbacks: [
+          { data: [], error: null },
+          { data: [], error: null }
+        ],
+        klaviyo_email_results: [row]
+      })
+      const out = await loadEmailScreen(db, tenant, buildId, 'America/New_York')
+      return out.ok && out.screen?.kind === 'email' ? out.screen : null
+    }
+    expect((await open(synced({})))?.inKlaviyo).toEqual({
+      pill: 'in_klaviyo',
+      parts: ['Scheduled in Klaviyo for 14 Jan, 9:00 (store time)'],
+      note: 'GROS will not change it now that it is scheduled.',
+      waiting: false
+    })
+    expect(
+      (await open(synced({ status: 'draft', design_changed: true })))?.inKlaviyo
+    ).toMatchObject({
+      pill: 'in_klaviyo',
+      parts: ['Draft in Klaviyo', 'Edited in Klaviyo'],
+      waiting: false
+    })
+    // Deleted: none of the four statuses is true, so no pill.
+    expect(
+      (await open(synced({ status: 'deleted', scheduled_for: null })))
+        ?.inKlaviyo
+    ).toMatchObject({ pill: null, parts: ['Deleted in Klaviyo'] })
+    // Not read yet (or unreadable): the page says what it knew before.
+    expect(
+      (await open({ data: null, error: null } as never))?.inKlaviyo
+    ).toBeNull()
   })
 
   it('says first which inspiration email it follows (DST-002b)', async () => {

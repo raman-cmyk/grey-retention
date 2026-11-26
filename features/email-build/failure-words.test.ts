@@ -58,8 +58,25 @@ describe('the words for a push refusal (REL-084c)', () => {
 
   it('gives fixed plain words, never a code, a key or Klaviyo’s own message', () => {
     expect(buildReason('klaviyo_refused_externally_modified')).toBe(
-      'Its draft was changed or deleted in Klaviyo, so it was left as it is.'
+      'You changed or deleted this email’s draft in Klaviyo, so GROS will not replace it. Plan next 15 days to make a new email instead.'
     )
+    // PICK-99: what the owner did in Klaviyo, and that GROS leaves it.
+    expect(buildReason('klaviyo_refused_edited_in_klaviyo')).toBe(
+      'You changed this email in Klaviyo, so GROS will not replace it. Plan next 15 days to make a new email instead.'
+    )
+    for (const reason of [
+      'edited_in_klaviyo',
+      'scheduled_in_klaviyo',
+      'sent_in_klaviyo',
+      'deleted_in_klaviyo',
+      'cancelled_in_klaviyo',
+      'not_a_draft',
+      'externally_modified'
+    ] as const) {
+      expect(buildCode(refusedCode(reason))).toBe(`klaviyo_refused_${reason}`)
+      expect(pushRefusalWords[reason]).toMatch(/GROS will not (replace|put)/)
+      expect(pushRefusalWords[reason]).toMatch(/make a new email instead\.$/)
+    }
     for (const words of Object.values(pushRefusalWords)) {
       expect(words).toMatch(/^[A-Z].*\.$/)
       expect(words).not.toMatch(/[a-z]+_[a-z]+/)

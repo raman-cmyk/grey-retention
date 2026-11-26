@@ -14,6 +14,9 @@ import { sampleBrand } from '@/features/blocks/samples'
 import { letterSchema } from '@/features/letter/letter'
 import { plainFooterTags, renderLetter } from '@/features/letter/render'
 import { textFooterProblems, textUnsubscribeTag } from './html'
+import { designEdited } from './shown'
+import { readDraft } from '@/lib/providers/klaviyo/drafts'
+import { pushRefusalWords } from '@/features/email-build/failure-words'
 import {
   liveDraftPusher,
   pushMark,
@@ -1782,5 +1785,65 @@ describe('the fake pusher', () => {
     expect(await fakeDraftPusher().createDraft(input())).not.toHaveProperty(
       'designs'
     )
+  })
+})
+
+describe('PICK-99: what the results sync reads of the push’s record', () => {
+  unlocked()
+  const client = (account: FakeDraftAccount) =>
+    klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
+      transport: account.transport,
+      maxWaits: 0
+    })
+  const edited = async (account: FakeDraftAccount, shown: string | null) => {
+    const draft = await readDraft(client(account), only(account.messages)[0])
+    return designEdited(client(account), draft!, shown)
+  }
+
+  it('a draft as the push left it is not edited, one design or an A/B test', async () => {
+    for (const make of [input, ab]) {
+      const { account, memory, pusher } = setup()
+      expect((await pusher.createDraft(make())).ok).toBe(true)
+      const before = writes(account).length
+      expect(await edited(account, memory.row()!.shown)).toBe(false)
+      // Reading it changes nothing in Klaviyo.
+      expect(writes(account)).toHaveLength(before)
+    }
+  })
+
+  it('the owner’s edit in Klaviyo’s editor, or another template, is seen', async () => {
+    const { account, memory, pusher } = setup()
+    await pusher.createDraft(input())
+    const [variation] = variationsOf(account)
+    const copy = account.templates.get(variation!.templateId!)!
+    const html = copy.html
+    copy.html = html.replace('<h1>A</h1>', '<h1>The owner wrote this</h1>')
+    expect(await edited(account, memory.row()!.shown)).toBe(true)
+    copy.html = html
+    expect(await edited(account, memory.row()!.shown)).toBe(false)
+    account.templates.set('TplMine', { ...copy, name: 'Mine' })
+    variation!.templateId = 'TplMine'
+    expect(await edited(account, memory.row()!.shown)).toBe(true)
+  })
+
+  it('nothing recorded is unknown, never “edited”', async () => {
+    const { account, pusher } = setup()
+    await pusher.createDraft(input())
+    expect(await edited(account, null)).toBeNull()
+  })
+
+  it('refuses in plain words over a draft sent or cancelled in Klaviyo, writing nothing', async () => {
+    for (const status of ['sent', 'sending', 'cancelled']) {
+      const { account, pusher } = setup()
+      await pusher.createDraft(input())
+      only(account.messages)[1].status = status
+      const before = writes(account).length
+      expect(await pusher.createDraft(input())).toMatchObject({
+        ok: false,
+        reason: 'not_a_draft'
+      })
+      expect(writes(account)).toHaveLength(before)
+    }
+    expect(pushRefusalWords.not_a_draft).toMatch(/GROS will not replace it/)
   })
 })

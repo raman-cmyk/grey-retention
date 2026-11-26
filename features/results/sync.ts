@@ -50,6 +50,12 @@ export type ReadContext = {
 export type ResultPatch = {
   status?: EmailStatus
   changed?: boolean
+  /** PICK-99: its design was changed in Klaviyo (once seen it stays so). */
+  design_changed?: boolean
+  /** PICK-99: when Klaviyo will send it, while scheduled or sending. */
+  scheduled_for?: string | null
+  /** PICK-99: how (`static`, `local_timezone`…), while scheduled or sending. */
+  send_strategy?: string | null
   sent_at?: string
   pulls?: number
   results?: StoredResult[]
@@ -177,6 +183,11 @@ export type StatusRead =
       sendStrategy?: string | null
       /** Its variations no longer match what we last wrote. */
       changed: boolean
+      /**
+       * PICK-99: its design no longer shows what the push left (another
+       * template, or other HTML in ours); null or absent when not looked at.
+       */
+      designChanged?: boolean | null
     }
 
 export type Checked = {
@@ -231,7 +242,10 @@ export function afterStatus(
   const status: EmailStatus =
     was === 'sent' || was === 'cancelled' ? was : (seen ?? was)
   // Said only when seen (once seen it stays so).
-  const changed = read.changed ? { changed: true } : {}
+  const changed = {
+    ...(read.changed ? { changed: true } : {}),
+    ...(read.designChanged ? { design_changed: true } : {})
+  }
   if (status === 'cancelled')
     return {
       patch: { status, ...changed, final: true, next_check_at: iso(now) },
@@ -273,9 +287,40 @@ export function afterStatus(
       dueAt: now
     }
   return {
-    patch: { status, ...changed, next_check_at: iso(now + hourMs) },
+    patch: {
+      status,
+      ...changed,
+      ...scheduledPatch(status, read, now),
+      next_check_at: iso(now + hourMs)
+    },
     pullDue: false,
     dueAt: now
+  }
+}
+
+/**
+ * PICK-99: when and how Klaviyo will send a scheduled (or sending) email,
+ * as its status read says: its one send time, else the earliest of its
+ * per-variation times (send-time optimization), never one long past. Not
+ * scheduled: nothing (the database clears both).
+ */
+export function scheduledPatch(
+  status: EmailStatus,
+  read: Extract<StatusRead, { found: true }>,
+  now: number
+): Pick<ResultPatch, 'scheduled_for' | 'send_strategy'> {
+  if (status !== 'scheduled' && status !== 'sending') return {}
+  const at = Date.parse(read.sendTime ?? read.firstSendTime ?? '')
+  const strategy =
+    read.sendStrategy && /^[a-z_]{1,40}$/.test(read.sendStrategy)
+      ? read.sendStrategy
+      : null
+  return {
+    scheduled_for:
+      Number.isFinite(at) && at > now - dayMs && at < now + 540 * dayMs
+        ? iso(at)
+        : null,
+    send_strategy: strategy
   }
 }
 

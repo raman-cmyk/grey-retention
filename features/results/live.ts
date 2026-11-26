@@ -5,8 +5,10 @@ import { klaviyoMode, revisionOk } from '@/features/connections/live-klaviyo'
 import { klaviyoClient } from '@/lib/providers/klaviyo/client'
 import { klaviyoCallMs } from '@/features/onboarding/catalog/worker'
 import {
+  checkEmailNow,
   resultsBudgetMs,
   runEmailResults,
+  type PageCheck,
   type ResultsRun,
   type ResultsSource
 } from './worker'
@@ -60,5 +62,22 @@ export function runResultsSync(
     now,
     deadline: now() + resultsBudgetMs,
     callMs: klaviyoCallMs
+  })
+}
+
+/**
+ * PICK-99: an email's page asks Klaviyo how its draft is now (cached: at
+ * most once in ten minutes an email, GET only, a few seconds at most). The
+ * workspace is the signed-in member's own (from the session); only the
+ * service role writes what it finds. Never throws.
+ */
+export async function checkEmailForPage(
+  db: Db,
+  tenantId: string,
+  buildId: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<PageCheck> {
+  return checkEmailNow(db, tenantId, buildId, {
+    sourceFor: (t) => resultsSourceFor(db, t, env)
   })
 }

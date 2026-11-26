@@ -79,7 +79,12 @@ export type EmailStatus =
   | { kind: 'planned' }
   /** Agents are on it: the word is the step. */
   | { kind: 'working'; word: string }
-  | { kind: 'in_klaviyo' }
+  /**
+   * PICK-99: `words` is what the owner did with it in Klaviyo, as last read
+   * ("Scheduled in Klaviyo for 14 Jan, 9:00 (store time)", "Edited in
+   * Klaviyo"); absent until the sync has read it.
+   */
+  | { kind: 'in_klaviyo'; words?: string[] }
   /** Made by the fake pusher: nothing was sent to Klaviyo. */
   | { kind: 'sample_draft' }
   /** The owner must act: what happened and what to do, in his words. */
@@ -233,7 +238,11 @@ function emailState(
   }
   if (build.state === 'drafted')
     return {
-      status: { kind: build.sampleDraft ? 'sample_draft' : 'in_klaviyo' },
+      status: build.sampleDraft
+        ? { kind: 'sample_draft' }
+        : build.klaviyo
+          ? { kind: 'in_klaviyo', words: build.klaviyo }
+          : { kind: 'in_klaviyo' },
       action: { kind: 'open', buildId: build.id }
     }
   return {
