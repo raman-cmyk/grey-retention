@@ -17,7 +17,14 @@ import {
   readMapperInput,
   runCompetitorMapper
 } from './competitors'
-import { planFifteenDays, samplePlan, unusedOffersNote } from './plan'
+import {
+  goalLines,
+  planFifteenDays,
+  samplePlan,
+  unusedOffersNote,
+  type PlanGuidance
+} from './plan'
+import { planGuidance } from './guidance'
 import { sampleStrategyData, type StrategyData } from './data'
 import { storedPulse } from './stored'
 import { SupabaseOfferSource } from '@/features/offers/source'
@@ -85,9 +92,24 @@ export async function runStrategyRuns(
     /** Stop claiming after this time (ms since epoch). */
     deadline?: number
     now?: () => number
+    /**
+     * PICK-WIRE (#33, #37, #48, #49): the plan's goal, mix and competitor
+     * facts. Default: read from `db` for the run's workspace
+     * (`planGuidance`); it never throws, and a part it cannot read is left
+     * out.
+     */
+    guidance?: (input: {
+      tenantId: string
+      start: string
+      timezone: string
+      sendsPerWeek: number
+      offers: number
+      now: number
+    }) => Promise<PlanGuidance>
   } = {}
 ) {
   const data = deps.data ?? sampleStrategyData
+  const guidanceOf = deps.guidance ?? ((input) => planGuidance(db, input))
   const saved = deps.saved ?? new SupabaseOfferSource(db)
   const fallbacks =
     deps.fallbacks ??
@@ -242,12 +264,26 @@ export async function runStrategyRuns(
         const moves = agentCtx
           ? (await runCompetitorMapper(mapper, agentCtx)).moves
           : codeMoves(mapPatterns(mapper))
+        // PICK-WIRE: the goal, the brand's mix and the followed brands'
+        // timing and offers; a plan is never stopped for want of them.
+        const guidance = await guidanceOf({
+          tenantId: run.tenant_id,
+          start: run.start_on,
+          timezone,
+          sendsPerWeek: store.plan.sendsPerWeek,
+          offers: usable.length,
+          now: now()
+        }).catch((error: unknown) => {
+          logger.warn('Plan guidance not read', { code: stepCode(error) })
+          return {}
+        })
         const planInput = {
           ...store.plan,
           start: run.start_on,
           pulse,
           offers: usable,
-          moves
+          moves,
+          ...(Object.keys(guidance).length ? { guidance } : {})
         }
         const made = agentCtx
           ? await planFifteenDays(planInput, agentCtx)
@@ -298,6 +334,8 @@ export async function runStrategyRuns(
         const plan = {
           ...made,
           slots: checked.slots,
+          // #33: what the plan does toward the goal, after the guards.
+          ...(made.goal ? { goal: goalLines(planInput, checked.slots) } : {}),
           notes: [
             ...(note ? [note] : []),
             ...made.notes,

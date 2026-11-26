@@ -149,6 +149,26 @@ function Plan({ view }: { view: Extract<View, { kind: 'plan' }> }) {
   ].join(' · ')
   return (
     <>
+      {view.goal.length > 0 && (
+        // #33: the owner's revenue goal, as this plan worked back from it.
+        <Card label="Revenue goal" size="small">
+          <h2 className="type-heading">Revenue goal</h2>
+          <ul className="mt-[var(--space-5)] flex flex-col gap-[var(--space-3)]">
+            {view.goal.map((g) => (
+              <li key={g.label} className="flex flex-col gap-[var(--space-1)]">
+                <span className="type-label text-[var(--stone)]">
+                  {g.label}
+                </span>
+                <span className="type-body">{g.sentence}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="type-caption mt-[var(--space-3)] text-[var(--stone)]">
+            As of when this plan was made, from the emails GROS made. Change the
+            goal in Settings.
+          </p>
+        </Card>
+      )}
       <Card label="Your next 15 days">
         <div className="flex flex-wrap items-start justify-between gap-[var(--space-4)]">
           <div>

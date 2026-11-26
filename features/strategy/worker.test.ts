@@ -155,6 +155,74 @@ describe('running plan steps (the code-only path)', () => {
     ])
   })
 
+  it('plans toward the run’s workspace’s goal, mix and followed brands (PICK-WIRE)', async () => {
+    const { db, calls } = fakeDb([
+      run({ state: 'plan_queued', pulse, offer_pick: { mode: 'auto' } })
+    ])
+    const guidance = vi.fn(async () => ({
+      goals: [
+        {
+          month: '2026-11-01',
+          label: 'November 2026',
+          sentence: '$12,400 still needed by 30 November.',
+          emailsNeeded: 5,
+          emailsPossible: 6,
+          needsStrongerEmails: false,
+          pace: 'behind' as const
+        }
+      ],
+      mix: {
+        counts: { offer: 1, story: 0, education: 3, product: 2 },
+        basis: 'learned' as const
+      },
+      competitors: [
+        {
+          id: 'competitor-times:0',
+          fact: 'Glow Co sent 30 emails in the 90 days to 15 Nov 2026.'
+        }
+      ]
+    }))
+    expect(await runStrategyRuns(db, { guidance, now: () => 1_000 })).toEqual({
+      ran: 1
+    })
+    expect(guidance).toHaveBeenCalledWith({
+      tenantId: tenant,
+      start,
+      timezone: 'Australia/Melbourne',
+      sendsPerWeek: 3,
+      offers: 2,
+      now: 1_000
+    })
+    const plan = calls.find((c) => c.fn === 'finish_strategy_plan')!.args
+      .result as StoredPlan
+    expect(storedPlan.safeParse(plan).success).toBe(true)
+    expect(plan.goal).toEqual([
+      expect.objectContaining({
+        label: 'November 2026',
+        sentence: '$12,400 still needed by 30 November.',
+        plan: expect.stringMatching(/^This plan has /)
+      })
+    ])
+    expect(plan.notes.join(' ')).toContain(
+      'What the brands you follow do: Glow Co sent 30 emails'
+    )
+    expect(plan.notes.length).toBeLessThanOrEqual(10)
+  })
+
+  it('plans without the guidance when it cannot be read', async () => {
+    const { db, calls } = fakeDb([
+      run({ state: 'plan_queued', pulse, offer_pick: { mode: 'auto' } })
+    ])
+    const guidance = vi.fn(async () => {
+      throw Object.assign(new Error('down'), { code: 'PGRST000' })
+    })
+    expect(await runStrategyRuns(db, { guidance })).toEqual({ ran: 1 })
+    const plan = calls.find((c) => c.fn === 'finish_strategy_plan')!.args
+      .result as StoredPlan
+    expect(plan.goal).toBeUndefined()
+    expect(plan.slots.length).toBeGreaterThan(0)
+  })
+
   it('runs the owner’s own plan when asked, and only that one, once', async () => {
     const { db, calls } = fakeDb([run(), run({ id: 'run-2' })])
     expect(await runStrategyRuns(db, { run: 'run-1' })).toEqual({ ran: 1 })
