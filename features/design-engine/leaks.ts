@@ -18,7 +18,13 @@ import { partsOf, textOf, type Blueprint, type Item } from './blueprint'
  * - and every **word** the copy shows (its words, alt texts, titles,
  *   `<title>`, comments, subject and preview line, the library blocks'
  *   too) is one of the brand's own: in the words, facts and catalog the
- *   swap was given (`vocabulary`).
+ *   swap was given (`vocabulary`);
+ * - DES-ENGINE-003: no **hidden mark** in the copy: a named character the
+ *   engine never writes (`Ac&zz;me` reads as "Ac me" to the word check but
+ *   may show as anything), or an invisible character (zero-width space,
+ *   joiner and non-joiner, word joiner, byte-order mark, soft hyphen), as
+ *   a character or written as `&#…;`, which could split a source word so
+ *   the word check misses it.
  * It refuses to run (throws `LeakCheckError`) without the source's own
  * HTML: a stored blueprint has no pictures or links, so a check from it
  * alone could pass a copy that is not clean. Code only.
@@ -50,10 +56,18 @@ const named: Record<string, string> = {
   yen: '¥',
   cent: '¢',
   times: '×',
-  zwnj: '',
-  zwj: '',
-  shy: ''
+  // The library blocks' "Shop now →".
+  rarr: '→'
 }
+
+/**
+ * DES-ENGINE-003: characters a reader cannot see that could split a word
+ * so the word check misses it: zero-width space, non-joiner and joiner
+ * (U+200B–U+200D), word joiner (U+2060), byte-order mark (U+FEFF) and the
+ * soft hyphen (U+00AD).
+ */
+const invisible = /[\u200B-\u200D\u2060\uFEFF\u00AD]/u
+const invisibleNames = new Set(['zwsp', 'zwnj', 'zwj', 'nobreak', 'shy'])
 
 export const decode = (s: string) =>
   s
@@ -61,8 +75,8 @@ export const decode = (s: string) =>
     .replace(/&#x([0-9a-f]+);/gi, (_, n: string) =>
       String.fromCodePoint(parseInt(n, 16))
     )
-    // A named character this table lacks (&rarr;, &hearts;) is a sign, never
-    // a word a reader sees: read as a space, not as its name.
+    // A named character this table lacks (&hearts;) is read as a space, never
+    // as its name; `hiddenMarks` reports it in a copy (DES-ENGINE-003).
     .replace(
       /&([a-z]+[0-9]*);/gi,
       (_, n: string) => named[n.toLowerCase()] ?? ' '
@@ -143,6 +157,31 @@ export function klaviyoCode(html: string): string[] {
   return [
     ...withoutOwnTags(html).matchAll(/\{\{[\s\S]{0,60}|\{%[\s\S]{0,60}/g)
   ].map((m) => m[0].slice(0, 80))
+}
+
+/**
+ * DES-ENGINE-003: what a copy hides from the word check: every named
+ * character the engine does not write (`&zz;`) and every invisible
+ * character (as itself or written as a number), in short excerpts. The
+ * engine's own Klaviyo tags are left out first, as everywhere.
+ */
+export function hiddenMarks(email: string): string[] {
+  const html = withoutOwnTags(email)
+  const out: string[] = []
+  for (const m of html.matchAll(/&([a-z]+[0-9]*);/gi)) {
+    const name = m[1]!.toLowerCase()
+    if (!(name in named) || invisibleNames.has(name)) out.push(m[0])
+  }
+  for (const m of html.matchAll(/&#(\d{1,7});|&#x([0-9a-f]{1,6});/gi)) {
+    const code = m[1] ? Number(m[1]) : parseInt(m[2]!, 16)
+    if (code <= 0x10ffff && invisible.test(String.fromCodePoint(code)))
+      out.push(m[0])
+  }
+  for (const m of html.matchAll(/[\u200B-\u200D\u2060\uFEFF\u00AD]/gu))
+    out.push(
+      `U+${m[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`
+    )
+  return [...new Set(out)]
 }
 
 /** Everything a reader may see of an email, and every address it reaches. */
@@ -244,6 +283,8 @@ export type Leak =
   | { kind: 'phrase'; value: string }
   | { kind: 'number'; value: string }
   | { kind: 'word'; value: string }
+  /** DES-ENGINE-003: an unknown named character or an invisible one. */
+  | { kind: 'hidden'; value: string }
 
 /** Everything of the source a drawn brand copy shows; empty when none. */
 export function leaksOf(input: {
@@ -307,6 +348,8 @@ export function leaksOf(input: {
   const files = new Set(sourceAddresses.flatMap((a) => fileName(a) ?? []))
   const ours = readEmail(input.html)
   for (const code of klaviyoCode(input.html)) add({ kind: 'word', value: code })
+  for (const mark of hiddenMarks(input.html))
+    add({ kind: 'hidden', value: mark })
   for (const a of ours.addresses) {
     const kind = /\.(?:png|jpe?g|gif|webp|svg|avif)$|^data:image/i.test(
       addressKey(a)

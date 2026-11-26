@@ -31,6 +31,8 @@ const serverEnvironmentSchema = z.object({
   DESIGN_STUDIO: z.string().optional(),
   /** `on` lets Copy in "Use this design" copy the chosen email's design 1:1 for the brand (DES-ENGINE-002b2); off by default. */
   DESIGN_LIBRARY_COPY: z.string().optional(),
+  /** `on` turns on "Add your own email" and copying an uploaded design (DES-ENGINE-003); off by default. */
+  DESIGN_UPLOAD_COPY: z.string().optional(),
   /** `live` reads real brand websites (ONB-101); the owner's switch, off by default. */
   SITE_READER_MODE: z.string().optional(),
   AI_DEFAULT_PROVIDER: z.string().default('fake'),

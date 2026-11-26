@@ -353,3 +353,88 @@ export async function parseEmailFile(
     notes
   })
 }
+
+/** DES-ENGINE-003: the largest HTML a design upload keeps (the measuring browser's own limit). */
+export const designHtmlChars = 2_000_000
+
+export type DesignFile =
+  | {
+      ok: true
+      html: string
+      /** The file's own title: the email's subject or its `<title>`, if any. */
+      title: string
+      /** Pictures inside an .eml file, by their `cid:` name (lower case). */
+      related: { contentId: string; type: string; bytes: Uint8Array }[]
+    }
+  | { ok: false; code: ImportFailure | 'no_html' }
+
+/**
+ * DES-ENGINE-003: an email file uploaded as a **design** (`.html` or
+ * `.eml`), read with the same intake rules as `parseEmailFile` (no
+ * container or binary, no mailbox, every charset decodable, PostalMime's
+ * limits, a message misnamed `.html` refused), but kept whole up to
+ * `designHtmlChars` (a design carries its pictures inline) and HTML only:
+ * a text email has no design to copy. An .eml's related pictures come
+ * with it (`cid:`), never fetched. Nothing is fetched or run.
+ */
+export async function readDesignFile(
+  bytes: Uint8Array,
+  kind: 'html' | 'eml'
+): Promise<DesignFile> {
+  if (bytes.length === 0) return { ok: false, code: 'no_content' }
+  if (bytes.length > fileLimits.rawBytes)
+    return { ok: false, code: 'too_large' }
+  if (binarySignature(bytes)) return { ok: false, code: 'unsupported_type' }
+  let html: string
+  let title = ''
+  const related: { contentId: string; type: string; bytes: Uint8Array }[] = []
+  if (kind === 'html') {
+    const decoded = decodeText(bytes, 'html')
+    if (!decoded.ok) return decoded
+    if (looksLikeMessage(decoded.text))
+      return { ok: false, code: 'rename_to_eml' }
+    html = decoded.text
+  } else {
+    const raw = latin1.decode(bytes)
+    if (/^(?:ï»¿)?From [^\r\n]*\r?\n/.test(raw.slice(0, 1000)))
+      return { ok: false, code: 'mbox_unsupported' }
+    if (bytes.includes(0)) return { ok: false, code: 'unsupported_type' }
+    if (undecodableCharset(raw))
+      return { ok: false, code: 'unsupported_charset' }
+    let email: Awaited<ReturnType<typeof PostalMime.parse>>
+    try {
+      email = await PostalMime.parse(bytes, {
+        ...mimeLimits,
+        attachmentEncoding: 'arraybuffer'
+      })
+    } catch (error) {
+      const code = String((error as { code?: unknown })?.code ?? '')
+      return {
+        ok: false,
+        code: code.startsWith('EMAX') ? 'limits_exceeded' : 'malformed'
+      }
+    }
+    if (!email.headers.length) return { ok: false, code: 'not_an_email' }
+    if (!email.html?.trim())
+      return { ok: false, code: email.text?.trim() ? 'no_html' : 'no_content' }
+    html = email.html
+    title = email.subject
+      ? cleanText(email.subject, fileLimits.title).value
+      : ''
+    for (const a of email.attachments) {
+      const id = (a.contentId ?? '').replace(/^<|>$/g, '').trim().toLowerCase()
+      if (!id || !(a.content instanceof ArrayBuffer)) continue
+      related.push({
+        contentId: id,
+        type: (a.mimeType ?? '').toLowerCase(),
+        bytes: new Uint8Array(a.content)
+      })
+    }
+  }
+  if (!html.trim()) return { ok: false, code: 'no_content' }
+  if (!/<[a-z][^>]*>/i.test(html)) return { ok: false, code: 'no_html' }
+  if (html.length > designHtmlChars)
+    return { ok: false, code: 'content_too_large' }
+  if (!title) title = htmlTitle(html)
+  return { ok: true, html, title, related }
+}
