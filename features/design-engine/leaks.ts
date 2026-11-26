@@ -72,9 +72,14 @@ const knownName = (name: string) => Object.hasOwn(named, name)
  * DES-ENGINE-003: characters a reader cannot see: every format character
  * (zero-width space, non-joiner and joiner, word joiner, byte-order mark,
  * soft hyphen, direction marks…) and the other blank ones (the combining
- * grapheme joiner, the Hangul fillers).
+ * grapheme joiner, the Hangul fillers, the variation selectors and the
+ * Mongolian free variation selectors).
  */
-const invisible = /[\p{Cf}\u034F\u115F\u1160\u3164\uFFA0]/gu
+const invisible =
+  /[\p{Cf}\u034F\u115F\u1160\u3164\uFFA0\uFE00-\uFE0F\u180B-\u180D\u{E0100}-\u{E01EF}]/gu
+/** One of them (no `g`: safe for `test`). */
+const invisibleOne =
+  /[\p{Cf}\u034F\u115F\u1160\u3164\uFFA0\uFE00-\uFE0F\u180B-\u180D\u{E0100}-\u{E01EF}]/u
 /** The named ones, as a browser reads them. */
 const invisibleByName: Record<string, string> = {
   shy: '\u00AD',
@@ -101,7 +106,11 @@ export const decode = (s: string) =>
     // A named character this table lacks (&hearts;) is read as a space, never
     // as its name; `hiddenMarks` reports it in a copy (DES-ENGINE-003).
     .replace(/&([a-z][a-z0-9]*);/gi, (_, n: string) =>
-      knownName(n.toLowerCase()) ? named[n.toLowerCase()]! : ' '
+      knownName(n.toLowerCase())
+        ? named[n.toLowerCase()]!
+        : Object.hasOwn(invisibleByName, n.toLowerCase())
+          ? ''
+          : ' '
     )
     // A browser reads `&shy` without its semicolon too.
     .replace(/&shy(?!;)/gi, '')
@@ -208,9 +217,12 @@ export function hiddenMarks(
 ): string[] {
   const html = withoutOwnTags(email)
   const out: string[] = []
+  // A name of no character the engine writes. The invisible ones by name
+  // are judged below, as the characters themselves.
   for (const m of html.matchAll(/&([a-z][a-z0-9]*);/gi)) {
     const name = m[1]!.toLowerCase()
-    if (!knownName(name) || Object.hasOwn(invisibleByName, name)) out.push(m[0])
+    if (!knownName(name) && !Object.hasOwn(invisibleByName, name))
+      out.push(m[0])
   }
   // The text as a browser shows it, invisible characters kept.
   const shown = html
@@ -223,34 +235,37 @@ export function hiddenMarks(
       (_, n: string | undefined, legacy: string | undefined) =>
         invisibleByName[(n ?? legacy ?? 'shy').toLowerCase()]!
     )
+  const chars = [...shown]
   const letter = /[\p{L}\p{N}]/u
-  for (const m of shown.matchAll(invisible)) {
-    const at = m.index!
+  const wordChar = /[\p{L}\p{N}'’]/u
+  const hidden = (c: string | undefined) => !!c && invisibleOne.test(c)
+  for (let at = 0; at < chars.length; at++) {
+    if (!hidden(chars[at])) continue
     // The nearest visible characters on each side.
     let before = at - 1
-    while (before >= 0 && /[\p{Cf}\u034F]/u.test(shown[before]!)) before--
-    let after = at + m[0].length
-    while (after < shown.length && /[\p{Cf}\u034F]/u.test(shown[after]!))
-      after++
-    if (!letter.test(shown[before] ?? '') || !letter.test(shown[after] ?? ''))
+    while (before >= 0 && hidden(chars[before])) before--
+    let after = at + 1
+    while (after < chars.length && hidden(chars[after])) after++
+    if (!letter.test(chars[before] ?? '') || !letter.test(chars[after] ?? ''))
       continue
-    // The word it splits, read whole.
+    // The word it splits, read whole (an apostrophe is part of it, as in
+    // the word check): left alone when every word in it is the brand's.
     let from = before
-    while (from > 0 && /[\p{L}\p{N}\p{Cf}\u034F]/u.test(shown[from - 1]!))
+    while (
+      from > 0 &&
+      (wordChar.test(chars[from - 1]!) || hidden(chars[from - 1]))
+    )
       from--
     let to = after
     while (
-      to + 1 < shown.length &&
-      /[\p{L}\p{N}\p{Cf}\u034F]/u.test(shown[to + 1]!)
+      to + 1 < chars.length &&
+      (wordChar.test(chars[to + 1]!) || hidden(chars[to + 1]))
     )
       to++
-    const word = shown
-      .slice(from, to + 1)
-      .replace(invisible, '')
-      .toLowerCase()
-    if (vocabulary.has(word)) continue
+    const words = wordsIn(chars.slice(from, to + 1).join(''))
+    if (words.length && words.every((w) => vocabulary.has(w))) continue
     out.push(
-      `U+${m[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`
+      `U+${chars[at]!.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`
     )
   }
   return [...new Set(out)]

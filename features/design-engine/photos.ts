@@ -305,7 +305,8 @@ export async function loadPicture(
   const allowed = new Set(options.origins ?? photoOrigins())
   const open = options.open ?? httpsOpener()
   const maxBytes = options.maxBytes ?? photoLimits.bytes
-  const big = maxBytes === photoLimits.bytes ? photoWords.big : 'it is larger than 3 MB'
+  const big =
+    maxBytes === photoLimits.bytes ? photoWords.big : 'it is larger than 3 MB'
   const inline = /^data:(image\/[a-z]+);base64,([a-z0-9+/]+={0,2})$/i.exec(src)
   if (inline) {
     const bytes = Buffer.from(inline[2]!, 'base64')

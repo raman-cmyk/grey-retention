@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto'
 import { browserLimits, markedHtml } from '@/features/design-engine/browser'
 import {
   loadPicture,
   photoWords,
+  sniffType,
   uploadPhotoOrigins,
   type PhotoOpener
 } from '@/features/design-engine/photos'
@@ -59,6 +61,8 @@ export type PreparedPicture = {
   width: number
   height: number
   bytes: Buffer
+  /** Its bytes' SHA-256, so a retry knows it is the same picture. */
+  sha256: string
   from: 'file' | 'web'
 }
 
@@ -89,7 +93,9 @@ type Read =
   | {
       ok: true
       type: string
-      bytes: Buffer
+      /** Kept only for an own design (another brand's are never kept). */
+      bytes: Buffer | null
+      sha256: string
       width: number
       height: number
       from: 'file' | 'web'
@@ -97,13 +103,23 @@ type Read =
   | { ok: false; host: string; why: string }
 
 function hostOf(src: string) {
-  if (/^cid:/i.test(src)) return 'the file'
+  if (/^(?:cid|data):/i.test(src)) return 'the file'
   try {
     return new URL(src).hostname.replace(/^www\./, '') || 'an unknown site'
   } catch {
     return 'an unknown site'
   }
 }
+
+const over3 = 'it is larger than 3 MB'
+/** Why a picture inside the file cannot be used, in the file's own words. */
+const fileWords = (why: string) =>
+  why === photoWords.type || why === photoWords.pixels || why === over3
+    ? why
+    : 'it could not be read from the file'
+
+const tooMany = 'the email has more pictures than GROS keeps (40)'
+const tooHeavy = 'the email’s pictures are larger than 24 MB in all'
 
 export async function prepareUpload(
   html: string,
@@ -117,13 +133,25 @@ export async function prepareUpload(
 ): Promise<Prepared> {
   const origins = options.origins ?? uploadPhotoOrigins
   const byCid = new Map(related.map((r) => [r.contentId, r]))
-  const sources: string[] = []
-  for (const tag of html.match(imgTag) ?? []) {
-    const m = srcAttr.exec(tag)
-    const src = decodeAttr(m?.[1] ?? m?.[2] ?? m?.[3] ?? '')
-    if (src && !sources.includes(src)) sources.push(src)
+  // Each picture once, and no more than are ever read: the scan stops at
+  // the cap (an email of 60,000 tags is read in one pass).
+  const cap = uploadLimits.pictures * 2
+  const seen = new Set<string>()
+  let more = false
+  for (const m of html.matchAll(imgTag)) {
+    const a = srcAttr.exec(m[0])
+    const src = decodeAttr(a?.[1] ?? a?.[2] ?? a?.[3] ?? '')
+    if (!src || seen.has(src)) continue
+    if (seen.size >= cap) {
+      more = true
+      break
+    }
+    seen.add(src)
   }
+  const sources = [...seen]
   const until = Date.now() + (options.budgetMs ?? uploadLimits.fetchBudgetMs)
+  // Every byte read counts against the budget, kept or not.
+  let budget = uploadLimits.picturesBytes
   const read = async (src: string): Promise<Read> => {
     let inline = src
     let from: 'file' | 'web' = 'file'
@@ -137,19 +165,52 @@ export async function prepareUpload(
       const part = byCid.get(id.replace(/^<|>$/g, '').toLowerCase())
       if (!part)
         return { ok: false, host: 'the file', why: 'it is not inside the file' }
-      inline = `data:${part.type || 'image/png'};base64,${Buffer.from(part.bytes).toString('base64')}`
-    } else if (!/^data:/i.test(src)) {
+      // Its type from its first bytes, never what the part says it is.
+      const type = sniffType(part.bytes)
+      if (!type) return { ok: false, host: 'the file', why: photoWords.type }
+      if (part.bytes.byteLength > uploadLimits.pictureBytes)
+        return { ok: false, host: 'the file', why: over3 }
+      inline = `data:${type};base64,${Buffer.from(part.bytes).toString('base64')}`
+    } else if (/^data:/i.test(src)) {
+      const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/i.exec(src)
+      if (!m || !m[2])
+        return { ok: false, host: 'the file', why: photoWords.type }
+      const body = m[3]!.replace(/\s+/g, '')
+      if (body.length > (uploadLimits.pictureBytes * 4) / 3 + 4)
+        return { ok: false, host: 'the file', why: over3 }
+      const type = sniffType(Buffer.from(body.slice(0, 64), 'base64'))
+      if (!type) return { ok: false, host: 'the file', why: photoWords.type }
+      inline = `data:${type};base64,${body}`
+    } else {
       from = 'web'
       if (Date.now() > until)
         return { ok: false, host: hostOf(src), why: photoWords.fetch }
     }
-    const got = await loadPicture(inline, { origins, open: options.open })
+    if (budget <= 0) return { ok: false, host: hostOf(src), why: tooHeavy }
+    const left = budget
+    const got = await loadPicture(inline, {
+      origins,
+      open: options.open,
+      maxBytes: Math.min(uploadLimits.pictureBytes, left)
+    })
     if ('failed' in got)
-      return { ok: false, host: hostOf(src), why: got.failed }
+      return {
+        ok: false,
+        host: hostOf(src),
+        why:
+          from === 'file'
+            ? fileWords(got.failed)
+            : got.failed === over3 && left < uploadLimits.pictureBytes
+              ? tooHeavy
+              : got.failed
+      }
+    budget -= got.bytes.byteLength
     return {
       ok: true,
       type: got.type,
-      bytes: got.bytes,
+      // Another brand's picture: only its size is kept (rule 8).
+      bytes: design === 'own' ? got.bytes : null,
+      sha256: createHash('sha256').update(got.bytes).digest('hex'),
       width: got.size.width,
       height: got.size.height,
       from
@@ -157,13 +218,7 @@ export async function prepareUpload(
   }
   // A few at a time: the fetches are bounded, each and in all.
   const results = new Map<string, Read>()
-  const queue = sources.slice(0, uploadLimits.pictures * 2)
-  for (const src of sources.slice(queue.length))
-    results.set(src, {
-      ok: false,
-      host: hostOf(src),
-      why: 'the email has too many pictures'
-    })
+  const queue = [...sources]
   await Promise.all(
     Array.from({ length: 4 }, async () => {
       for (let src = queue.shift(); src !== undefined; src = queue.shift())
@@ -176,40 +231,32 @@ export async function prepareUpload(
     { n: number; type: string; width: number; height: number }
   >()
   const missing = new Map<string, MissingPicture>()
+  const miss = (host: string, why: string) => {
+    const key = `${host}\u0000${why}`
+    const m = missing.get(key) ?? { host, count: 0, why }
+    m.count++
+    missing.set(key, m)
+  }
+  if (more) miss('the file', tooMany)
   let measured = 0
-  let keptBytes = 0
   for (const src of sources) {
     const r = results.get(src)!
     if (!r.ok) {
-      const key = `${r.host}\u0000${r.why}`
-      const m = missing.get(key) ?? { host: r.host, count: 0, why: r.why }
-      m.count++
-      missing.set(key, m)
+      miss(r.host, r.why)
       continue
     }
-    if (design === 'own') {
-      if (
-        pictures.length >= uploadLimits.pictures ||
-        r.bytes.byteLength > uploadLimits.pictureBytes ||
-        keptBytes + r.bytes.byteLength > uploadLimits.picturesBytes
-      ) {
-        const why =
-          r.bytes.byteLength > uploadLimits.pictureBytes
-            ? 'it is larger than 3 MB'
-            : 'the email has too many pictures'
-        const key = `${hostOf(src)}\u0000${why}`
-        const m = missing.get(key) ?? { host: hostOf(src), count: 0, why }
-        m.count++
-        missing.set(key, m)
+    if (design === 'own' && r.bytes) {
+      if (pictures.length >= uploadLimits.pictures) {
+        miss(hostOf(src), tooMany)
         continue
       }
-      keptBytes += r.bytes.byteLength
       pictures.push({
         index: pictures.length,
         type: r.type,
         width: r.width,
         height: r.height,
         bytes: r.bytes,
+        sha256: r.sha256,
         from: r.from
       })
       index.set(src, {

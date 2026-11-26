@@ -28,6 +28,8 @@ describe('the upload measuring browser (DES-ENGINE-003)', () => {
             posts.push(JSON.parse(String(init.body)))
             return new Response('{"ok":true}')
           }
+          if (url.includes('sweep=1'))
+            return new Response('{"removed":2,"leftovers":1}')
           return new Response(JSON.stringify({ jobs: queue.shift() ?? [] }))
         }
         expect(init?.redirect).toBe('error')
@@ -70,9 +72,15 @@ describe('the upload measuring browser (DES-ENGINE-003)', () => {
       { job: 'j3', lease: 'l3', retry: 'timeout' },
       { job: 'j4', lease: 'l4', retry: 'html_unreadable' }
     ])
-    expect(counts).toEqual({ measured: 1, failed: 1, retry: 2, skew: false })
+    expect(counts).toEqual({
+      measured: 1,
+      failed: 1,
+      retry: 2,
+      skew: false,
+      cleaned: 3
+    })
     expect(lines).toEqual([
-      'Uploads measured: 1. Cannot be measured: 1. To try again: 2.'
+      'Uploads measured: 1. Cannot be measured: 1. To try again: 2. Cleaned: 3.'
     ])
     expect(lines.join(' ')).not.toMatch(/https?:|s{40}/)
   })
@@ -93,6 +101,7 @@ describe('the upload measuring browser (DES-ENGINE-003)', () => {
       }
     })
     expect(counts.skew).toBe(true)
-    expect(fetch).toHaveBeenCalledTimes(1)
+    // One claim, then the sweep.
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 })

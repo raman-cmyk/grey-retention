@@ -26,6 +26,8 @@ function fakeDb(answers: {
   errors?: Record<string, { code: string; message?: string }>
   rows?: Record<string, unknown>
   signed?: string | null
+  /** The prepared HTML's tag as stored now. */
+  etag?: string
 }) {
   const calls: { fn: string; args: Record<string, unknown> }[] = []
   const db = {
@@ -53,6 +55,12 @@ function fakeDb(answers: {
     },
     storage: {
       from: () => ({
+        list: async () => ({
+          data: [
+            { name: 'email.html', metadata: { eTag: answers.etag ?? '"e1"' } }
+          ],
+          error: null
+        }),
         createSignedUrl: async (path: string) => {
           calls.push({ fn: 'sign', args: { path } })
           return answers.signed === null
@@ -163,9 +171,11 @@ describe('the upload measuring job (DES-ENGINE-003)', () => {
             lease_token: lease,
             tenant_id: tenant,
             design: 'own',
-            pictures: 2
+            pictures: 2,
+            html_etag: '"e1"'
           }
-        ]
+        ],
+        email_upload_jobs_waiting: 3
       }
     })
     expect(await uploadJobs(db, ENGINE_VERSION, on)).toEqual({
@@ -184,6 +194,31 @@ describe('the upload measuring job (DES-ENGINE-003)', () => {
     expect(await uploadsWaiting(db, on)).toBe(3)
   })
 
+  it('never measures a prepared HTML that changed since it was pinned', async () => {
+    const { db, calls } = fakeDb({
+      etag: '"other"',
+      rpc: {
+        claim_email_upload: [
+          {
+            id: job,
+            subject_key: upload,
+            lease_token: lease,
+            tenant_id: tenant,
+            design: 'own',
+            pictures: 0,
+            html_etag: '"e1"'
+          }
+        ]
+      }
+    })
+    expect((await uploadJobs(db, ENGINE_VERSION, on)).jobs).toEqual([])
+    expect(calls.at(-1)).toEqual({
+      fn: 'record_email_upload',
+      args: { job, lease, failure: 'file_changed' }
+    })
+    expect(calls.map((c) => c.fn)).not.toContain('sign')
+  })
+
   it('gives a job back as a retry when its link cannot be signed', async () => {
     const { db, calls } = fakeDb({
       signed: null,
@@ -195,7 +230,8 @@ describe('the upload measuring job (DES-ENGINE-003)', () => {
             lease_token: lease,
             tenant_id: tenant,
             design: 'other',
-            pictures: 0
+            pictures: 0,
+            html_etag: '"e1"'
           }
         ]
       }

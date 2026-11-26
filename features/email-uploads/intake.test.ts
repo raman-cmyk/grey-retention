@@ -44,6 +44,8 @@ function fakes(answers: {
   deleted?: string
   /** The pictures the row was saved with (a retry); else the ones added. */
   saved?: unknown
+  /** What the limits answer before anything is read (default ok). */
+  room?: string
 }) {
   const calls: string[] = []
   const stored: { path: string; type: string; size: number }[] = []
@@ -62,6 +64,8 @@ function fakes(answers: {
     },
     rpc: async (fn: string, args: Record<string, unknown>) => {
       calls.push(fn)
+      if (fn === 'email_upload_room')
+        return { data: answers.room ?? 'ok', error: null }
       if (fn === 'add_email_upload') added = args.pictures
       if (fn === 'add_email_upload')
         return answers.addError
@@ -80,7 +84,12 @@ function fakes(answers: {
       return { data: null, error: null }
     }
   }
+  const tried = new Set<string>()
   const service = {
+    rpc: async (fn: string) => {
+      calls.push(fn)
+      return { data: true, error: null }
+    },
     storage: {
       from: (bucket: string) => ({
         upload: async (
@@ -91,7 +100,11 @@ function fakes(answers: {
           calls.push(`upload:${bucket}`)
           expect(o.upsert).toBe(false)
           stored.push({ path, type: o.contentType, size: body.byteLength })
-          return answers.storedError
+          // A stored file answers "exists" once (an earlier try of it).
+          const again = tried.has(path)
+          tried.add(path)
+          return answers.storedError &&
+            !(again && /exists/.test(answers.storedError))
             ? { data: null, error: { message: answers.storedError } }
             : { data: {}, error: null }
         },
@@ -133,6 +146,7 @@ describe('adding an email file (DES-ENGINE-003)', () => {
       missing: 0
     })
     expect(f.calls).toEqual([
+      'email_upload_room',
       'add_email_upload',
       'upload:email-uploads',
       'upload:email-uploads',
@@ -163,7 +177,7 @@ describe('adding an email file (DES-ENGINE-003)', () => {
         bytes: enc(`<html><body>${designHtml}</body></html>`)
       })
     ).toEqual({ ok: true, id: upload, state: 'ready', missing: 1 })
-    expect(f.calls).toEqual(['add_email_upload'])
+    expect(f.calls).toEqual(['email_upload_room', 'add_email_upload'])
   })
 
   it('refuses a retry whose pictures are not the ones the row was saved with', async () => {
@@ -171,7 +185,7 @@ describe('adding an email file (DES-ENGINE-003)', () => {
     const got = await add(f, { name: 'autumn.eml', bytes: eml(designHtml) })
     expect(got.ok).toBe(false)
     expect(!got.ok && got.error).toContain('its pictures have changed')
-    expect(f.calls).toEqual(['add_email_upload'])
+    expect(f.calls).toEqual(['email_upload_room', 'add_email_upload'])
   })
 
   it('removes the files it wrote when the upload was deleted meanwhile', async () => {
@@ -236,7 +250,19 @@ describe('adding an email file (DES-ENGINE-003)', () => {
     const got = await add(f, file)
     expect(got.ok).toBe(false)
     expect(!got.ok && got.error).toContain(words)
-    expect(f.calls).toEqual([])
+    expect(f.calls.filter((c) => c !== 'email_upload_room')).toEqual([])
+    expect(f.stored).toEqual([])
+  })
+
+  it('refuses an add the limits refuse before reading or fetching anything', async () => {
+    const f = fakes({ room: 'upload_hourly_limit' })
+    expect(
+      await add(f, { name: 'autumn.eml', bytes: eml(designHtml) })
+    ).toEqual({
+      ok: false,
+      error: 'You added many emails in the last hour. Try again later.'
+    })
+    expect(f.calls).toEqual(['email_upload_room'])
   })
 
   it('says why the database refused it, in plain words', async () => {
@@ -278,7 +304,8 @@ describe('adding an email file (DES-ENGINE-003)', () => {
     ).toEqual({ ok: true })
     expect(f.calls).toEqual([
       'delete_email_upload',
-      `remove:${tenant}/${upload}/original.eml,${tenant}/${upload}/email.html`
+      `remove:${tenant}/${upload}/original.eml,${tenant}/${upload}/email.html`,
+      'purge_email_upload'
     ])
   })
 

@@ -65,6 +65,8 @@ export async function readUploads(
     .from('email_uploads')
     .select('id,name,design,state,failure,pictures,missing,created_at')
     .eq('tenant_id', context.tenantId)
+    // A deleted upload waits only for its files to be removed.
+    .neq('state', 'deleting')
     .order('created_at', { ascending: false })
     .limit(100)
   if (rows.error) return { ok: false, on }

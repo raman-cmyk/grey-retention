@@ -78,9 +78,9 @@ describe('hidden marks in a copy (DES-ENGINE-003)', () => {
     ['a word joiner', '<p>Ac\u2060me</p>', 'U+2060'],
     ['a byte-order mark', '<p>Ac\uFEFFme</p>', 'U+FEFF'],
     ['a soft hyphen', '<p>Ac\u00ADme</p>', 'U+00AD'],
-    ['a soft hyphen by name', '<p>Ac&shy;me</p>', '&shy;'],
-    ['a zero-width joiner by name', '<p>Ac&zwj;me</p>', '&zwj;'],
-    ['a zero-width non-joiner by name', '<p>Ac&zwnj;me</p>', '&zwnj;'],
+    ['a soft hyphen by name', '<p>Ac&shy;me</p>', 'U+00AD'],
+    ['a zero-width joiner by name', '<p>Ac&zwj;me</p>', 'U+200D'],
+    ['a zero-width non-joiner by name', '<p>Ac&zwnj;me</p>', 'U+200C'],
     ['a zero-width space by number', '<p>Ac&#8203;me</p>', 'U+200B'],
     ['a soft hyphen by hex number', '<p>Ac&#xAD;me</p>', 'U+00AD'],
     ['a byte-order mark by hex number', '<p>Ac&#xfeff;me</p>', 'U+FEFF'],
@@ -143,6 +143,51 @@ describe('hidden marks in a copy (DES-ENGINE-003)', () => {
     expect(readEmail('<p>Ac&constructor;me</p>').texts.join(' ')).not.toMatch(
       /function|native/
     )
+  })
+
+  it.each([
+    ['a text variation selector', '<p>Fern\uFE0Ehill Deals</p>', 'U+FE0E'],
+    [
+      'a supplementary variation selector',
+      '<p>Fern\u{E0100}hill</p>',
+      'U+E0100'
+    ],
+    ['a Mongolian free variation selector', '<p>Fern\u180Bhill</p>', 'U+180B'],
+    ['a zero-width space by name', '<p>Ac&zwsp;me</p>', 'U+200B'],
+    ['a word joiner by name', '<p>Ac&nobreak;me</p>', 'U+2060'],
+    ['a direction mark by name', '<p>Ac&lrm;me</p>', 'U+200E']
+  ])('flags %s that splits a word', (_, html, mark) => {
+    expect(hiddenMarks(html)).toEqual([mark])
+  })
+
+  it('catches a name split by a variation selector', () => {
+    expect(
+      leaksOf({
+        sourceHtml: '<p>Fernhill Deals: new</p>',
+        html: '<p>Tea picked this spring Fern\uFE0Ehill Deals</p>',
+        sourceNames: ['Fernhill Deals'],
+        vocabulary
+      })
+    ).toContainEqual({ kind: 'name', value: 'Fernhill Deals' })
+  })
+
+  it('judges the invisible ones by name as the characters: the brand’s own word passes', () => {
+    expect(
+      hiddenMarks('<p>Sommer&shy;schluss</p>', new Set(['sommerschluss']))
+    ).toEqual([])
+    expect(hiddenMarks('<p>Sommer&shy;schluss</p>')).toEqual(['U+00AD'])
+    // An apostrophe is part of the word, as in the word check.
+    expect(
+      hiddenMarks("<p>Ma\u00ADry's shop</p>", new Set(["mary's"]))
+    ).toEqual([])
+  })
+
+  it('lets the blocks’ own preheader padding through', () => {
+    expect(
+      hiddenMarks(
+        `<div>New this week${'&#847;&zwnj;&nbsp;'.repeat(40)}</div><p>Hello</p>`
+      )
+    ).toEqual([])
   })
 
   it('lets the characters the engine writes through', () => {

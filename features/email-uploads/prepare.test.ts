@@ -181,6 +181,79 @@ describe('an uploaded email made ready (DES-ENGINE-003)', () => {
     expect(open).toHaveBeenCalledTimes(1)
   })
 
+  it('reads a picture inside the file by its own first bytes, whatever it says it is', async () => {
+    const b64 = png(20, 10).toString('base64')
+    const spaced = b64.replace(/(.{40})/g, '$1\n ')
+    const got = await prepareUpload(
+      email(
+        `<img src="cid:a@x"><img src="data:image/jpg;base64,${spaced}" width="20" height="10">`
+      ),
+      [
+        {
+          contentId: 'a@x',
+          type: 'application/octet-stream',
+          bytes: png(30, 15)
+        }
+      ],
+      'own'
+    )
+    expect(
+      got.ok && got.pictures.map((p) => [p.type, p.width, p.from])
+    ).toEqual([
+      ['image/png', 30, 'file'],
+      ['image/png', 20, 'file']
+    ])
+    expect(got.ok && got.missing).toEqual([])
+  })
+
+  it('says why a picture inside the file cannot be used in the file’s own words', async () => {
+    const big = Buffer.concat([png(10, 10), Buffer.alloc(3 * 1024 * 1024)])
+    const got = await prepareUpload(
+      email(`<img src="cid:big"><img src="data:image/png;base64,AAAA">`),
+      [{ contentId: 'big', type: 'image/png', bytes: big }],
+      'own'
+    )
+    expect(got.ok && got.missing).toEqual([
+      { host: 'the file', count: 1, why: 'it is larger than 3 MB' },
+      {
+        host: 'the file',
+        count: 1,
+        why: 'it is not a PNG, JPEG, WebP or GIF picture'
+      }
+    ])
+    expect(JSON.stringify(got)).not.toContain('doesn’t load photos')
+  })
+
+  it('never fetches a picture over 3 MB from the web, nor more than 24 MB in all', async () => {
+    const huge = Buffer.concat([png(10, 10), Buffer.alloc(3 * 1024 * 1024)])
+    const { open } = web({ 'https://cdn.shopify.com/huge.png': huge })
+    const got = await prepareUpload(
+      email('<img src="https://cdn.shopify.com/huge.png">'),
+      [],
+      'own',
+      { open }
+    )
+    expect(got.ok && got.missing).toEqual([
+      { host: 'cdn.shopify.com', count: 1, why: 'it is larger than 3 MB' }
+    ])
+  })
+
+  it('reads each picture once and stops at the cap, in one pass', async () => {
+    const tags = Array.from(
+      { length: 30_000 },
+      (_, i) =>
+        `<img src="https://images.example/${i % 100}.png" width="1" height="1">`
+    ).join('')
+    const started = Date.now()
+    const got = await prepareUpload(email(tags), [], 'own')
+    expect(Date.now() - started).toBeLessThan(5_000)
+    expect(got.ok && got.missing).toContainEqual({
+      host: 'the file',
+      count: 1,
+      why: 'the email has more pictures than GROS keeps (40)'
+    })
+  })
+
   it('refuses an email too large to measure', async () => {
     const got = await prepareUpload(email('x'.repeat(2_100_000)), [], 'own')
     expect(got).toEqual({ ok: false, code: 'too_large_to_measure' })

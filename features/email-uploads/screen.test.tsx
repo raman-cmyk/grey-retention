@@ -169,6 +169,7 @@ describe('Add your own email (DES-ENGINE-003)', () => {
     const q = {
       select: () => q,
       eq: () => q,
+      neq: () => q,
       order: () => q,
       limit: async () => ({
         data: [
