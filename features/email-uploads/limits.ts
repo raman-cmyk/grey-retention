@@ -79,6 +79,12 @@ export function uploadRefusal(code: string | null | undefined): string {
       return 'You have 100 emails of your own, the most. Delete one to add another.'
     case 'upload_hourly_limit':
       return 'You added many emails in the last hour. Try again later.'
+    case 'upload_changed':
+      return 'This upload did not finish, and its pictures have changed since. Open the page again and add the file.'
+    case 'upload_gone':
+      return 'This email was deleted while it was added. Add it again.'
+    case 'upload_files_missing':
+      return 'The email’s files were not all saved. Open the page again and add the file.'
     case 'upload_request_used':
       return 'This form was used for another file. Open the page again and choose the file.'
     case 'not_allowed':

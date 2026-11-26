@@ -42,12 +42,27 @@ function fakes(answers: {
   finishError?: { code: string; hint?: string }
   storedError?: string
   deleted?: string
+  /** The pictures the row was saved with (a retry); else the ones added. */
+  saved?: unknown
 }) {
   const calls: string[] = []
   const stored: { path: string; type: string; size: number }[] = []
+  let added: unknown = []
   const db = {
+    from: () => {
+      const q = {
+        select: () => q,
+        eq: () => q,
+        maybeSingle: async () => ({
+          data: { pictures: answers.saved ?? added },
+          error: null
+        })
+      }
+      return q
+    },
     rpc: async (fn: string, args: Record<string, unknown>) => {
       calls.push(fn)
+      if (fn === 'add_email_upload') added = args.pictures
       if (fn === 'add_email_upload')
         return answers.addError
           ? { data: null, error: answers.addError }
@@ -149,6 +164,23 @@ describe('adding an email file (DES-ENGINE-003)', () => {
       })
     ).toEqual({ ok: true, id: upload, state: 'ready', missing: 1 })
     expect(f.calls).toEqual(['add_email_upload'])
+  })
+
+  it('refuses a retry whose pictures are not the ones the row was saved with', async () => {
+    const f = fakes({ saved: [] })
+    const got = await add(f, { name: 'autumn.eml', bytes: eml(designHtml) })
+    expect(got.ok).toBe(false)
+    expect(!got.ok && got.error).toContain('its pictures have changed')
+    expect(f.calls).toEqual(['add_email_upload'])
+  })
+
+  it('removes the files it wrote when the upload was deleted meanwhile', async () => {
+    const f = fakes({ finishError: { code: 'PT409', hint: 'upload_gone' } })
+    const got = await add(f, { name: 'autumn.eml', bytes: eml(designHtml) })
+    expect(!got.ok && got.error).toContain('deleted while it was added')
+    expect(f.calls.at(-1)).toBe(
+      `remove:${tenant}/${upload}/original.eml,${tenant}/${upload}/email.html,${tenant}/${upload}/picture-0.png`
+    )
   })
 
   it('treats a file already stored by the same request as stored', async () => {
@@ -257,6 +289,7 @@ describe('adding an email file (DES-ENGINE-003)', () => {
     expect(uploadName('', 'Our autumn edit', 'f.html')).toBe('Our autumn edit')
     expect(uploadName('', '', 'spring-sale.eml')).toBe('spring-sale')
     expect(uploadName('x'.repeat(200), '', 'f.html')).toHaveLength(80)
+    expect(uploadName('', 'Sale\u0085 now', 'f.html')).toBe('Sale now')
   })
 })
 

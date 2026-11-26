@@ -81,9 +81,20 @@ describe('hidden marks in a copy (DES-ENGINE-003)', () => {
     ['a soft hyphen by name', '<p>Ac&shy;me</p>', '&shy;'],
     ['a zero-width joiner by name', '<p>Ac&zwj;me</p>', '&zwj;'],
     ['a zero-width non-joiner by name', '<p>Ac&zwnj;me</p>', '&zwnj;'],
-    ['a zero-width space by number', '<p>Ac&#8203;me</p>', '&#8203;'],
-    ['a soft hyphen by hex number', '<p>Ac&#xAD;me</p>', '&#xAD;'],
-    ['a byte-order mark by hex number', '<p>Ac&#xfeff;me</p>', '&#xfeff;'],
+    ['a zero-width space by number', '<p>Ac&#8203;me</p>', 'U+200B'],
+    ['a soft hyphen by hex number', '<p>Ac&#xAD;me</p>', 'U+00AD'],
+    ['a byte-order mark by hex number', '<p>Ac&#xfeff;me</p>', 'U+FEFF'],
+    ['a number with leading zeros', '<p>Ac&#00008203;me</p>', 'U+200B'],
+    ['a hex number with leading zeros', '<p>Ac&#x000200B;me</p>', 'U+200B'],
+    ['a number without its semicolon', '<p>Ac&#8203me</p>', 'U+200B'],
+    [
+      'a soft hyphen by name without its semicolon',
+      '<p>Ac&shyme</p>',
+      'U+00AD'
+    ],
+    ['a direction mark', '<p>Ac\u200Eme</p>', 'U+200E'],
+    ['a combining grapheme joiner', '<p>Ac\u034Fme</p>', 'U+034F'],
+    ['an object’s own name', '<p>Ac&constructor;me</p>', '&constructor;'],
     [
       'one in an alt text',
       '<img alt="Ac\u200Bme" src="https://fernhill.example/a.png">',
@@ -95,6 +106,43 @@ describe('hidden marks in a copy (DES-ENGINE-003)', () => {
       kind: 'hidden',
       value: mark
     })
+  })
+
+  it('reads a word an invisible character splits whole, in the copy and the source', () => {
+    // The word check sees "acme" (not "ac" and "me") as well.
+    expect(leaks('<p>Tea picked this spring Ac\u200Bme</p>')).toContainEqual({
+      kind: 'word',
+      value: 'acme'
+    })
+    expect(
+      leaksOf({
+        sourceHtml: '<p>Ac&shy;me Deals: new</p>',
+        html: '<p>Acme Deals</p>',
+        sourceNames: ['Acme Deals'],
+        vocabulary: ['Acme Deals']
+      })
+    ).toContainEqual({ kind: 'name', value: 'Acme Deals' })
+  })
+
+  it('never flags an emoji’s own joiner, nor the brand’s own word with a soft hyphen', () => {
+    expect(
+      hiddenMarks('<p>Pride week 🏳️\u200D🌈 and 👩\u200D👩\u200D👧</p>')
+    ).toEqual([])
+    const brandWord = 'Sommer\u00ADschluss'
+    expect(
+      leaksOf({
+        sourceHtml: source,
+        html: `<p>Tea picked this spring ${brandWord}</p>`,
+        sourceNames: ['Acme Deals'],
+        vocabulary: [...vocabulary, brandWord]
+      })
+    ).toEqual([])
+  })
+
+  it('reads an object’s own name as a space, never as its code', () => {
+    expect(readEmail('<p>Ac&constructor;me</p>').texts.join(' ')).not.toMatch(
+      /function|native/
+    )
   })
 
   it('lets the characters the engine writes through', () => {

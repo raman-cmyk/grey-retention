@@ -29,7 +29,12 @@ type Db = SupabaseClient<Database>
 
 export const uploadJobLimits = {
   linkSeconds: 600,
-  bodyBytes: 600_000
+  /**
+   * A report's largest body: a kept blueprint is at most 500,000 bytes
+   * (`storedLimit`), and a larger one is refused here as too large to
+   * keep, never as an unreadable report the job would try again.
+   */
+  bodyBytes: 2_000_000
 }
 
 export type UploadJob = {

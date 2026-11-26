@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Metadata } from 'next'
+import { connection } from 'next/server'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { readUploads } from '@/features/email-uploads/data'
 import { UploadsScreen } from '@/features/email-uploads/screen'
@@ -15,6 +16,8 @@ export const maxDuration = 120
  * new request key, so an email added twice from one page is saved once.
  */
 export default async function AddOwnEmailPage() {
+  // Rendered for each request: the request key and the switch are read now.
+  await connection()
   const context = await requireRequestContext('client')
   return (
     <UploadsScreen

@@ -58,7 +58,7 @@ export function uploadName(typed: string, title: string, fileName: string) {
   const clean = (s: string) =>
     s
       .replace(
-        /[\u0000-\u001f\u007f\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff]/g,
+        /[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff]/g,
         ''
       )
       .replace(/\s+/g, ' ')
@@ -69,6 +69,22 @@ export function uploadName(typed: string, title: string, fileName: string) {
     clean(fileName.replace(/\.[a-z0-9]{1,8}$/i, '')) ||
     'My email'
   return [...name].slice(0, uploadLimits.name).join('').trim()
+}
+
+/** The pictures a row was saved with are these, one for one. */
+function samePictures(saved: unknown, pictures: readonly PreparedPicture[]) {
+  if (!Array.isArray(saved) || saved.length !== pictures.length) return false
+  return pictures.every((p, i) => {
+    const s = saved[i] as Record<string, unknown> | null
+    return (
+      !!s &&
+      s.index === p.index &&
+      s.type === p.type &&
+      s.width === p.width &&
+      s.height === p.height &&
+      s.bytes === p.bytes.byteLength
+    )
+  })
 }
 
 export type IntakeResult =
@@ -125,6 +141,17 @@ export async function addUploadFile(input: {
     return refused(added.error?.hint)
   }
   if (row.state === 'saving') {
+    // A retry of the same request: its pictures must be the ones the row
+    // was saved with (a web picture may answer differently the second
+    // time), or the stored files would not match it.
+    const saved = await db
+      .from('email_uploads')
+      .select('pictures')
+      .eq('id', row.id)
+      .maybeSingle()
+    if (saved.error || !saved.data) return refused('storage')
+    if (!samePictures(saved.data.pictures, prepared.pictures))
+      return refused('upload_changed')
     const base = `${tenantId}/${row.id}`
     const files: { path: string; body: Uint8Array | Buffer; type: string }[] = [
       {
@@ -156,7 +183,14 @@ export async function addUploadFile(input: {
       t: tenantId,
       upload: row.id
     })
-    if (finished.error) return refused(finished.error.hint)
+    if (finished.error) {
+      // Deleted while its files were written: nothing may stay behind.
+      if (finished.error.hint === 'upload_gone')
+        await service.storage
+          .from(uploadBucket)
+          .remove(files.map((f) => f.path))
+      return refused(finished.error.hint)
+    }
     return {
       ok: true,
       id: row.id,

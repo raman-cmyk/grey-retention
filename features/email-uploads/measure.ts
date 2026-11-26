@@ -59,18 +59,27 @@ export function checkOwn(value: unknown, stored: number): StoredMeasure {
       items: keepPictures(s.items, stored)
     }))
   }
-  if (JSON.stringify(bp).length > storedLimit)
+  if (tooLarge(bp))
     return { ok: false, failure: 'stored_too_large', retry: false }
   return { ok: true, blueprint: bp }
 }
 
+/** Larger than is kept, in bytes (the table counts bytes, not characters). */
+const tooLarge = (bp: Blueprint) =>
+  Buffer.byteLength(JSON.stringify(bp)) > storedLimit
+
 /** The blueprint as kept for this upload's kind. */
-export const checkUpload = (
+export function checkUpload(
   value: unknown,
   design: UploadDesign,
   stored: number
-): StoredMeasure =>
-  design === 'other' ? checkStored(value) : checkOwn(value, stored)
+): StoredMeasure {
+  if (design === 'own') return checkOwn(value, stored)
+  const got = checkStored(value)
+  return got.ok && tooLarge(got.blueprint)
+    ? { ok: false, failure: 'stored_too_large', retry: false }
+    : got
+}
 
 export async function measureUpload(
   browser: Browser,

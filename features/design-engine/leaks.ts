@@ -57,36 +57,68 @@ const named: Record<string, string> = {
   cent: '¢',
   times: '×',
   // The library blocks' "Shop now →".
-  rarr: '→'
+  rarr: '→',
+  // Invisible: read as nothing, so a word they split is read whole
+  // (`hiddenMarks` reports them in a copy, DES-ENGINE-003).
+  zwnj: '',
+  zwj: '',
+  shy: ''
 }
 
+/** A name of the table (never an object's own, `constructor`). */
+const knownName = (name: string) => Object.hasOwn(named, name)
+
 /**
- * DES-ENGINE-003: characters a reader cannot see that could split a word
- * so the word check misses it: zero-width space, non-joiner and joiner
- * (U+200B–U+200D), word joiner (U+2060), byte-order mark (U+FEFF) and the
- * soft hyphen (U+00AD).
+ * DES-ENGINE-003: characters a reader cannot see: every format character
+ * (zero-width space, non-joiner and joiner, word joiner, byte-order mark,
+ * soft hyphen, direction marks…) and the other blank ones (the combining
+ * grapheme joiner, the Hangul fillers).
  */
-const invisible = /[\u200B-\u200D\u2060\uFEFF\u00AD]/u
-const invisibleNames = new Set(['zwsp', 'zwnj', 'zwj', 'nobreak', 'shy'])
+const invisible = /[\p{Cf}\u034F\u115F\u1160\u3164\uFFA0]/gu
+/** The named ones, as a browser reads them. */
+const invisibleByName: Record<string, string> = {
+  shy: '\u00AD',
+  zwnj: '\u200C',
+  zwj: '\u200D',
+  zwsp: '\u200B',
+  nobreak: '\u2060',
+  lrm: '\u200E',
+  rlm: '\u200F'
+}
+
+const codePoint = (n: number) =>
+  n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff)
+    ? String.fromCodePoint(n)
+    : ' '
 
 export const decode = (s: string) =>
   s
-    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n: string) =>
-      String.fromCodePoint(parseInt(n, 16))
+    // As a browser reads them: leading zeros, and the semicolon optional.
+    .replace(/&#0*(\d{1,8});?/g, (_, n: string) => codePoint(Number(n)))
+    .replace(/&#x0*([0-9a-f]{1,7});?/gi, (_, n: string) =>
+      codePoint(parseInt(n, 16))
     )
     // A named character this table lacks (&hearts;) is read as a space, never
     // as its name; `hiddenMarks` reports it in a copy (DES-ENGINE-003).
-    .replace(
-      /&([a-z]+[0-9]*);/gi,
-      (_, n: string) => named[n.toLowerCase()] ?? ' '
+    .replace(/&([a-z][a-z0-9]*);/gi, (_, n: string) =>
+      knownName(n.toLowerCase()) ? named[n.toLowerCase()]! : ' '
     )
+    // A browser reads `&shy` without its semicolon too.
+    .replace(/&shy(?!;)/gi, '')
+    // Invisible characters are read as nothing: a word they split is one.
+    .replace(invisible, '')
 
-/** The words of a text, lower case, letters and digits only. */
+/**
+ * The words of a text, lower case, letters and digits only; an invisible
+ * character inside a word does not split it (DES-ENGINE-003).
+ */
 export const wordsIn = (text: string) =>
-  (text.toLowerCase().match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)?/gu) ?? []).map(
-    (w) => w.replace(/’/g, "'")
-  )
+  (
+    text
+      .replace(invisible, '')
+      .toLowerCase()
+      .match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)?/gu) ?? []
+  ).map((w) => w.replace(/’/g, "'"))
 
 /** Numbers as shown: "$48.00", "40%", "1234" (spaces aside). */
 /**
@@ -160,27 +192,67 @@ export function klaviyoCode(html: string): string[] {
 }
 
 /**
- * DES-ENGINE-003: what a copy hides from the word check: every named
- * character the engine does not write (`&zz;`) and every invisible
- * character (as itself or written as a number), in short excerpts. The
- * engine's own Klaviyo tags are left out first, as everywhere.
+ * DES-ENGINE-003: what a copy hides from the word check, in short
+ * excerpts: every named character the engine does not write (`&zz;`,
+ * `&hearts;`; it escapes every `&` of the words it draws, so an unknown
+ * name can only be put there to hide something), and every invisible
+ * character that splits a word (a letter or digit on both sides), as
+ * itself, as a number (`&#8203;`, `&#00008203`) or by its name (`&shy;`,
+ * `&shy`), unless the whole word is one of the brand's own (`vocabulary`,
+ * read without them). An invisible joiner inside an emoji (🏳️‍🌈) splits no
+ * word. The engine's own Klaviyo tags are left out first, as everywhere.
  */
-export function hiddenMarks(email: string): string[] {
+export function hiddenMarks(
+  email: string,
+  vocabulary: ReadonlySet<string> = new Set()
+): string[] {
   const html = withoutOwnTags(email)
   const out: string[] = []
-  for (const m of html.matchAll(/&([a-z]+[0-9]*);/gi)) {
+  for (const m of html.matchAll(/&([a-z][a-z0-9]*);/gi)) {
     const name = m[1]!.toLowerCase()
-    if (!(name in named) || invisibleNames.has(name)) out.push(m[0])
+    if (!knownName(name) || Object.hasOwn(invisibleByName, name)) out.push(m[0])
   }
-  for (const m of html.matchAll(/&#(\d{1,7});|&#x([0-9a-f]{1,6});/gi)) {
-    const code = m[1] ? Number(m[1]) : parseInt(m[2]!, 16)
-    if (code <= 0x10ffff && invisible.test(String.fromCodePoint(code)))
-      out.push(m[0])
-  }
-  for (const m of html.matchAll(/[\u200B-\u200D\u2060\uFEFF\u00AD]/gu))
+  // The text as a browser shows it, invisible characters kept.
+  const shown = html
+    .replace(/&#0*(\d{1,8});?/g, (_, n: string) => codePoint(Number(n)))
+    .replace(/&#x0*([0-9a-f]{1,7});?/gi, (_, n: string) =>
+      codePoint(parseInt(n, 16))
+    )
+    .replace(
+      /&(?:(shy|zwnj|zwj|zwsp|nobreak|lrm|rlm);|(shy)(?!;))/gi,
+      (_, n: string | undefined, legacy: string | undefined) =>
+        invisibleByName[(n ?? legacy ?? 'shy').toLowerCase()]!
+    )
+  const letter = /[\p{L}\p{N}]/u
+  for (const m of shown.matchAll(invisible)) {
+    const at = m.index!
+    // The nearest visible characters on each side.
+    let before = at - 1
+    while (before >= 0 && /[\p{Cf}\u034F]/u.test(shown[before]!)) before--
+    let after = at + m[0].length
+    while (after < shown.length && /[\p{Cf}\u034F]/u.test(shown[after]!))
+      after++
+    if (!letter.test(shown[before] ?? '') || !letter.test(shown[after] ?? ''))
+      continue
+    // The word it splits, read whole.
+    let from = before
+    while (from > 0 && /[\p{L}\p{N}\p{Cf}\u034F]/u.test(shown[from - 1]!))
+      from--
+    let to = after
+    while (
+      to + 1 < shown.length &&
+      /[\p{L}\p{N}\p{Cf}\u034F]/u.test(shown[to + 1]!)
+    )
+      to++
+    const word = shown
+      .slice(from, to + 1)
+      .replace(invisible, '')
+      .toLowerCase()
+    if (vocabulary.has(word)) continue
     out.push(
       `U+${m[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`
     )
+  }
   return [...new Set(out)]
 }
 
@@ -348,7 +420,10 @@ export function leaksOf(input: {
   const files = new Set(sourceAddresses.flatMap((a) => fileName(a) ?? []))
   const ours = readEmail(input.html)
   for (const code of klaviyoCode(input.html)) add({ kind: 'word', value: code })
-  for (const mark of hiddenMarks(input.html))
+  for (const mark of hiddenMarks(
+    input.html,
+    new Set(input.vocabulary.flatMap(wordsIn))
+  ))
     add({ kind: 'hidden', value: mark })
   for (const a of ours.addresses) {
     const kind = /\.(?:png|jpe?g|gif|webp|svg|avif)$|^data:image/i.test(

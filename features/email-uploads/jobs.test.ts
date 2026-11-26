@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import { blueprint, image, section } from '@/features/design-engine/fixtures'
+import {
+  blueprint,
+  image,
+  section,
+  text
+} from '@/features/design-engine/fixtures'
 import { ENGINE_VERSION, forStorage } from '@/features/design-engine/stored'
 import { checkOwn, checkUpload } from './measure'
 import { picturePlaceholder } from './prepare'
@@ -99,6 +104,31 @@ describe('an uploaded email’s blueprint as kept (DES-ENGINE-003)', () => {
     expect(JSON.stringify(got.blueprint)).toContain(
       '"href":"https://example.com/"'
     )
+  })
+
+  it('refuses a blueprint too large to keep, counted in bytes', () => {
+    const big = blueprint({
+      sections: [
+        section({
+          items: [
+            text({
+              runs: Array.from({ length: 70 }, () => ({
+                text: 'é'.repeat(4_000)
+              }))
+            })
+          ]
+        })
+      ]
+    })
+    expect(JSON.stringify(big).length).toBeLessThan(500_000)
+    expect(checkUpload(big, 'own', 0)).toMatchObject({
+      ok: false,
+      failure: 'stored_too_large'
+    })
+    expect(checkUpload(big, 'other', 0)).toMatchObject({
+      ok: false,
+      failure: 'stored_too_large'
+    })
   })
 
   it('refuses what is not a blueprint', () => {
