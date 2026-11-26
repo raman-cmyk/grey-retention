@@ -350,6 +350,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 ## Build takeover tasks
 
+ONB-RESILIENCE-001 — review, Codex live onboarding: preserve successfully checked site pages when another page has a temporary model outage, retry a wholly unanswered site, and match the history request timeout to its admission margin. No SQL or persisted finding/history shape changes.
+
 HISTORY-BATCH-001 — review, Codex live onboarding: read expanded campaign messages in the provider default batches of 20, keeping the 300-message ceiling and worker time bound. Owns Klaviyo history paths and tests; no database or saved history shape change.
 
 SITE-SCHEMA-001 — review, Codex live onboarding: reduce the Site reader response grammar with required nullable topic values; keep the existing strict fact and evidence checks. Owns reader.ts and reader/founder tests; no SQL or saved finding contract change.
@@ -4800,3 +4802,14 @@ Append entries using this exact shape:
 - Verification run: focused history suites and full verify in progress. Regression coverage checks bounded pagination and explicit incomplete state at the page limit.
 - Known issues: catalog import succeeded with 16 real products (15 featurable), partial at its window limits. Paid catalog analysis succeeded. Site-v3 is deployed but two live attempts returned provider HTTP 503, using the existing bounded retries. History has exhausted its four transient tries and will be restarted after this change. Discounts still await the owner's limit and codes.
 - Next consumer: live history import verification.
+
+### 2026-11-26 — ONB-RESILIENCE-001 — preserve partial source reads
+
+- Status: review
+- Branch/worktree: `codex/onboarding-resilience`
+- Commit(s): this change
+- Changed contracts: a temporary unavailable/timeout Site model call skips that page; successfully answered and checked pages are kept. If no model call answered, the run still retries. Budget, rate-limit, setup, programming and database errors retain their previous behavior. History alone gets a 12-second Klaviyo request cap and the same 12-second worker admission margin inside its unchanged 30-second run; catalog requests stay at 6 seconds. No new dependency or saved-source shape change.
+- Migrations: none.
+- Verification run: focused source tests and full verify in progress; code review requested. Tests cover mixed page failures, whole-site outage, budget/rate-limit failure, history timeout forwarding and unchanged catalog timeout.
+- Known issues: paid Site-v3 calls now return valid parsed responses on some pages, but a concurrent 503 discarded the run under the previous worker. History still timed out with smaller batches at its old 6-second cap. Changes are verified live after deployment within the existing allowance.
+- Next consumer: live source import retry and owner review.

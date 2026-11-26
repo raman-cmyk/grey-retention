@@ -70,7 +70,8 @@ describe('runHistoryReadingJob', () => {
     expect(worker.readBrandHistory.mock.calls[0]![2]).toMatchObject({
       live: false,
       ask: sampleAsk,
-      callMs: 10_000
+      callMs: 10_000,
+      klaviyoMs: 12_000
     })
   })
 

@@ -46,7 +46,8 @@ export async function catalogSourceFor(
   env: NodeJS.ProcessEnv,
   /** The recorded sample account this read uses (the catalog's by default). */
   sample: (domain: string) => KlaviyoTransport = (domain) =>
-    recordedCatalogTransport({ store: 'shopify', domain })
+    recordedCatalogTransport({ store: 'shopify', domain }),
+  requestMs = klaviyoCallMs
 ): Promise<CatalogSource> {
   const mode = (job.input as { mode?: unknown } | null)?.mode
   const connection = await db
@@ -71,7 +72,7 @@ export async function catalogSourceFor(
     return {
       client: klaviyoClient(key.data, {
         maxWaits: 0,
-        timeoutMs: klaviyoCallMs
+        timeoutMs: requestMs
       }),
       live: true
     }

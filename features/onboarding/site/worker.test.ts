@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
-import { sampleAsk, type Ask } from '@/features/intelligence/passes'
+import { sampleAsk, TagError, type Ask } from '@/features/intelligence/passes'
 import { sampleSiteFetcher, type SiteFetcher } from './fetch'
 import { readBrandSite, siteRunMs } from './worker'
 
@@ -47,6 +47,47 @@ const recorded = (calls: ReturnType<typeof database>['calls']) =>
   }
 
 describe('readBrandSite', () => {
+  it.each(['unavailable', 'timeout'])(
+    'keeps other verified pages after one model %s',
+    async (code) => {
+      const { db, calls } = database()
+      const ask: Ask = async (def, input, call) =>
+        (input as { page: { kind: string } }).page.kind === 'about'
+          ? { ok: false, code }
+          : sampleAsk(def, input, call)
+      await readBrandSite(db, job, {
+        fetcher: sampleSiteFetcher,
+        askFor: () => ask
+      })
+      const saved = recorded(calls)
+      expect(saved.findings.length).toBeGreaterThan(0)
+      expect(saved.pages).toContainEqual(
+        expect.objectContaining({
+          kind: 'about',
+          state: 'skipped',
+          reason: 'model_unavailable'
+        })
+      )
+      expect(
+        saved.findings.some((f) => f.evidence.url.endsWith('/pages/about'))
+      ).toBe(false)
+    }
+  )
+
+  it.each(['unavailable', 'rate_limited', 'cap_reached'])(
+    'does not save an empty success when all model calls fail with %s',
+    async (code) => {
+      const { db, calls } = database()
+      await expect(
+        readBrandSite(db, job, {
+          fetcher: sampleSiteFetcher,
+          askFor: () => async () => ({ ok: false, code })
+        })
+      ).rejects.toBeInstanceOf(TagError)
+      expect(calls).toEqual([])
+    }
+  )
+
   it('reads the sample site and stores its facts once each, with the pages read, and finishes the job', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {})
     const { db, calls } = database()
