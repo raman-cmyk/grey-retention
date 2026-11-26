@@ -1,6 +1,6 @@
 # Project to-dos and owner decisions
 
-Updated: 25 November 2026. Canonical owner follow-up record for future project discussions. Technical implementation and verification history stays in [BUILD_LEDGER.md](BUILD_LEDGER.md).
+Updated: 26 November 2026. Canonical owner follow-up record for future project discussions. Technical implementation and verification history stays in [BUILD_LEDGER.md](BUILD_LEDGER.md).
 
 ## How to use
 
@@ -8,6 +8,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 
 ## Confirmed direction
 
+- 26 Nov 2026: owner authorized onboarding one real brand in the existing founder workspace, a dedicated full-access Klaviyo key, and at most $30 for setup and AI testing. Billing was reopened; the Gemini project's monthly cap is $30 with auto-reload off (the provider warns enforcement can lag). Full-access credentials do not authorize releasing the separate Klaviyo write lock. Verified live switches: Gemini, website and Klaviyo reads, owner-started planning/email agents, library Copy. First live onboarding found a key-format rejection; KLV-KEY-001 fixes the form, HTTP client and Vault admission command. Provider health and onboarding output still need verification.
 - 26 Nov 2026 (approved, GROS-OBS-001): Grey Observer collects newsletter emails. Humans rate each email in its Sheet. GROS uses that Sheet as its selection database and fetches originals directly from Gmail; only Exemplary is admitted. Human rating overrides any model suggestion. GROS must withdraw downgraded items from Inspiration and reference selection. Implementation and live activation are separate checks.
 
 - Grow toward 2,000+ useful reusable email blocks. The first 20 types are the seed.

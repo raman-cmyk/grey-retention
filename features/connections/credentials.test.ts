@@ -19,6 +19,17 @@ describe('maskSecret', () => {
 })
 
 describe('checkKlaviyoKey', () => {
+  it('accepts internal separators without changing the key or its stored hint', () => {
+    const separated = 'pk_SAMPLE_0123456789abcdefghij'
+    const result = checkKlaviyoKey(separated)
+    expect(result).toEqual({
+      ok: true,
+      value: { hint: 'pk_SAMPL••••••••ghij' }
+    })
+    expect(result.ok && result.value.hint).toMatch(storedHint)
+    expect(JSON.stringify(result)).not.toContain(separated)
+  })
+
   it('accepts a private key and returns only a masked hint', () => {
     const result = checkKlaviyoKey(`  ${klaviyoKey}\n`)
     expect(result).toEqual({
