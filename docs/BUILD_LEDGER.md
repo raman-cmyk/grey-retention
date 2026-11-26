@@ -356,6 +356,10 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 ## Build takeover tasks
 
+GROS-OBS-003 — review, Codex brand rating defaults: named human brand ratings apply to current/future emails; explicit email ratings override them. Owns Observer selection and tests, source docs, and the separate Observer export package. No SQL changes.
+
+GROS-OBS-002 — review, Codex Observer activation: normalize legacy display-name sender cells with the existing mailbox helper before original-message identity checks. Owns observer-sheet.ts and regression tests; no migrations or mailbox mutation.
+
 ONB-RESILIENCE-001 — complete, Codex live onboarding: preserve successfully checked site pages when another page has a temporary model outage, retry a wholly unanswered site, and match the history request timeout to its admission margin. No SQL or persisted finding/history shape changes.
 
 HISTORY-BATCH-001 — complete, Codex live onboarding: read expanded campaign messages in the provider default batches of 20, keeping the 300-message ceiling and worker time bound. Owns Klaviyo history paths and tests; no database or saved history shape change.
@@ -371,6 +375,10 @@ KLV-KEY-001 — complete, Codex live onboarding: accept internal underscore sepa
 | STR-LIVE-001 | Connect existing strategy agents to owner-started planning behind an off-by-default switch | STR-003, ONB-057b | review | Codex takeover | Full verify: 4,118 tests; reviewer ready | No live switch or provider change. Keep cron and sample planning code-only. |
 
 ## Global decisions
+
+- GROS-OBS-003 (27 Nov 2026, owner confirmed): named human brand ratings default existing/future newsletter emails; any nonblank individual rating overrides the brand and requires its own reviewer. Missing/invalid/duplicate identities never approve an import. Brand and email inputs remain in the existing Sheet, read independently of derived formulas. No new credential or SQL contract.
+
+- GROS-OBS-002 (26 Nov 2026): legacy Observer rows may store the From cell as a display-name mailbox. Normalize that cell using the existing `bareAddress` helper and reject unusable values before Gmail lookup. Original sender, recipient and Message-ID checks remain required; human ratings and original archive records are unchanged.
 
 - KLV-KEY-001 (26 Nov 2026): the connection form and HTTP client share `klaviyoPrivateKeyPattern`. A private key keeps its `pk_` prefix and 20–64 following characters; internal underscores are accepted, while the first five and last four remain alphanumeric to preserve existing database hint constraints. The Vault admission command uses the identical rule. Keys are never normalized or stripped: Klaviyo checks the original key and required read scopes before it is stored unchanged in Vault. The live-check guard, owner authorization, tenant lock, grants, and default Klaviyo write lock remain intact. Migration `090098` replaces only the latest command's key predicate, with no signature or generated-type change.
 - GROS-OBS-001 (26 Nov 2026, owner instruction): Observer is the only signup collector. Its Sheet is authoritative for human email ratings; only exact Exemplary plus reviewer is eligible for GROS. Good and unreviewed are excluded. GROS reads selected originals directly from the existing receiving Gmail. This human curation is distinct from autonomous client email creation. GROS processing/storage are derived caches, not rating authorities. Source mode is opt-in through server configuration and fails closed if configured but unready. No live environment was changed.
@@ -4839,3 +4847,25 @@ Owner instruction: Observer is the only subscribing/collecting system; humans ra
 Real brands already admitted through the selected source can be followed by the workspace owner: the server action rechecks the live selection and the additive provisional migration allows only brands with Observer original provenance, keeping owner authority, ten-brand limit and subscription history. It launches no second capture job. Existing client follow/hide rules and RLS remain. Shared contract extension: selected sessions may expose a verified capture domain and scanned-gap cursor/more information. Source is opt-in with OBSERVER_SOURCE=sheet and private Sheet configuration; incomplete configured mode never falls back to reading all Gmail. See docs/OBSERVER_SOURCE.md.
 
 Verification: full Vitest suite 4,637 passed, 23 skipped; new source/transport/selection/action/worker tests included. TypeScript and changed-file ESLint passed; webpack production build passed. The existing real-HTTPS loopback photo test requires proxy-free test environment here and passed with the proxy disabled for the test command. No production setting or provider credential was changed, no original mailbox was read, no paid AI was consumed. Added six pgTAP assertions for real-brand admission/owner isolation; local execution unavailable because Docker is not installed. Supabase/CI database checks must pass before merge. Migration renumbered to 20260914090099 at merge per D24 (90098 went to klaviyo_key_separators, #665).
+
+### 2026-11-26 — GROS-OBS-002 — legacy sender compatibility
+
+- Status: review
+- Branch/worktree: `codex/observer-legacy-senders`
+- Commit(s): this change
+- Changed contracts: no new schema or shape. A Sheet From cell is normalized through the existing mailbox helper before exact original-message verification; unusable sender values are excluded before Gmail lookup. This admits the documented legacy display-name export while retaining human rating, reviewer, source identity, wrong-sender and wrong-recipient gates.
+- Migrations: none.
+- Verification run: 44 focused source, transport, worker, mailbox and MIME tests passed; TypeScript and changed-file ESLint passed. Regression tests cover display-name/case normalization, Good and unnamed-reviewer rejection, invalid senders, legacy Message-ID lookup and rejecting an original with another sender.
+- Known issues: code is not yet deployed. The owner's Observer deployment succeeded and its review rows now exist, but a real human-approved Gmail import is still pending. The preceding live scheduled job read the Sheet successfully with no selections; it did not authenticate to Gmail. Seven pre-existing asset failures were reported separately.
+- Next consumer: CI/review and GROS deployment, then owner assigns genuine ratings and the live original import/withdrawal checks. No repeat PC download required for this server-side correction.
+
+### 2026-11-27 — GROS-OBS-003 — brand defaults with email overrides
+
+- Status: review
+- Branch/worktree: `codex/observer-legacy-senders`; PR #672 expanded to the final approved curation behavior.
+- Commit(s): this change.
+- Changed contracts: additive optional Brand ratings source (`observer-brand-review-v1`, A:I), exact-ID/domain inheritance, explicit email precedence and reviewer attribution. Identified transactionals are excluded alongside confirmations. Original email source schema stays A:V. Requests batch source pages and reuse only per-instance grid metadata; rating values stay fresh for withdrawal gates.
+- Migrations: none. No credentials or mailbox flags changed.
+- Verification run: 49 focused source/transport/address/MIME/worker tests passed, including inheritance, override precedence, duplicate/invalid brands, withdrawal and transactional exclusion; 20 final source tests after metadata/request changes passed. TypeScript and changed-file lint passed. Full suite: 4,671 passed, 23 skipped, with one unrelated pathological-preview nesting test timing out under load; that unchanged test passed in an isolated 21-test rerun. Observer exporter: 102 checks and Worker dry-run passed.
+- Known issues: both updated deployments and real human approval/withdrawal are pending. Unclassified email types remain possible; no conversion/design verdict is inferred. Live Sheet controls were checked through native metadata; browser render unavailable due to connection timeout.
+- Next consumer: deploy PR and Observer v1.5.0, then human ratings and live Gmail/inspiration acceptance.
