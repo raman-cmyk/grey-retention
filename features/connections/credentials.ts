@@ -3,6 +3,8 @@
  * provider and never return or log the secret itself, only a masked hint
  * (first characters, eight bullets, last four) the owner can recognise.
  */
+import { klaviyoPrivateKeyPattern } from '@/lib/providers/klaviyo/key-shape'
+
 export type Checked<T> = { ok: true; value: T } | { ok: false; error: string }
 
 /** `pk_YxS7U••••••••9de0`: keeps `keep` leading characters and the last 4. */
@@ -16,7 +18,7 @@ const text = (input: unknown) => (typeof input === 'string' ? input.trim() : '')
 export function checkKlaviyoKey(input: unknown): Checked<{ hint: string }> {
   const key = text(input)
   if (!key) return { ok: false, error: 'Paste your Klaviyo private API key.' }
-  if (/^pk_[A-Za-z0-9]{20,64}$/.test(key))
+  if (klaviyoPrivateKeyPattern.test(key))
     return { ok: true, value: { hint: maskSecret(key, 8) } }
   if (/^[A-Za-z0-9]{6}$/.test(key))
     return {

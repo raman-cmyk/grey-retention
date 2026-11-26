@@ -33,6 +33,23 @@ const failure = async (call: Promise<unknown>) => {
 }
 
 describe('klaviyoClient', () => {
+  it('passes an internally separated key unchanged to Klaviyo for validation', async () => {
+    const separated = 'pk_SAMPLE_0123456789abcdefghij'
+    const { transport, requests } = answering(recorded.badKey)
+    const error = await failure(
+      klaviyoClient(separated, { transport }).get(
+        '/api/accounts',
+        'accounts:read'
+      )
+    )
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.headers.authorization).toBe(
+      `Klaviyo-API-Key ${separated}`
+    )
+    expect(error.kind).toBe('bad_key')
+    expect(JSON.stringify(error.details)).not.toContain(separated)
+  })
+
   it("sends the key, the pinned revision and JSON:API only to Klaviyo's host", async () => {
     const { transport, requests } = answering(recorded.account)
     const body = await klaviyoClient(key, { transport }).get(

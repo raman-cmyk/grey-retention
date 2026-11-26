@@ -1,5 +1,5 @@
 begin;
-select plan(39);
+select plan(42);
 
 -- Owner ...01 and staff ...05 of workspace 101; owner ...04 of workspace 102.
 create function pg_temp.connect(k text, hint text, rev text default '2026-10-15', later text[] default '{}', account text default 'CdrG01') returns integer language sql as $$
@@ -69,6 +69,14 @@ select is((select count(*)::int from public.klaviyo_credentials),0,'another work
 select throws_ok($$select public.klaviyo_api_key('00000000-0000-4000-8000-000000000101')$$,'42501',null,'and cannot read the key');
 reset role;
 select is(pg_temp.stored(),'pk_SAMPLE0123456789abcdefghij','the key is kept in Vault');
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-4000-8000-000000000001');
+select lives_ok($$select pg_temp.connect('pk_SAMPLE_0123456789abcdefghij','pk_SAMPL••••••••ghij')$$,
+  'a provider key with an internal underscore connects');
+select throws_ok($$select pg_temp.connect(E'pk_SAMPLE_0123456789\r\nX-Evil: 1abcdefghij','pk_SAMPL••••••••ghij')$$,
+  '23514', null, 'an internal separator never permits header injection');
+reset role;
+select is(pg_temp.stored(),'pk_SAMPLE_0123456789abcdefghij','Vault keeps the separated key byte for byte');
 select throws_ok($$insert into public.workspace_connections(tenant_id, provider, mode, status, fixture_account)
   values ('00000000-0000-4000-8000-000000000102', 'drive', 'live', 'connected', 'fixture:x')$$,'23514',null,'only Klaviyo can be live');
 
