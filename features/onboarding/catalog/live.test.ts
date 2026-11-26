@@ -79,6 +79,28 @@ beforeEach(() => {
 })
 
 describe('catalogSourceFor', () => {
+  it('uses the history timeout only when requested, keeping the catalog bound unchanged', async () => {
+    const connected = {
+      connection: { mode: 'live', status: 'connected' },
+      key: sampleKlaviyoKey
+    }
+    await catalogSourceFor(
+      database(connected).db,
+      jobOf('live'),
+      live,
+      undefined,
+      12_000
+    )
+    expect(client.options.at(-1)).toMatchObject({
+      maxWaits: 0,
+      timeoutMs: 12_000
+    })
+    await catalogSourceFor(database(connected).db, jobOf('live'), live)
+    expect(client.options.at(-1)).toMatchObject({
+      maxWaits: 0,
+      timeoutMs: 6_000
+    })
+  })
   it("reads a live connection with its stored key, only with the owner's switch on", async () => {
     const connected = {
       connection: { mode: 'live', status: 'connected' },
