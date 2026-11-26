@@ -50,7 +50,11 @@ the critic ran when it was skipped. This change adds no new state or migration.
 
 - The real-store strategy source still needs its competitor library reader;
   wiring an agent does not populate evidence. With no patterns the mapper
-  makes no model call and returns no competitor moves.
+  makes no model call and returns no competitor moves. Since PICK-WIRE the
+  Brief writer does get the followed brands' send times and offers as dated
+  facts (`features/strategy/guidance.ts`), with the owner's revenue goal;
+  the Calendar planner gets the brand's email mix and the goal. Offer
+  emails take their codes from the offer ladder, in code, either way.
 - Timely paid background continuation is not part of this change. The
   ordinary sweep can finish a waiting plan with rules rather than paid AI.
 - No live model quality gate or real-brand end-to-end test has passed from
