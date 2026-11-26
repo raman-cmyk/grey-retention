@@ -97,6 +97,10 @@ test('UI-LRNb owner pins, unpins and removes what GROS learned, and hears each a
   await expect(doCard).toContainText(lead)
   await expect(doCard).toContainText('From your results')
   await expect(avoidCard).toContainText('From the email checks')
+  // #74: this week's report, in plain words.
+  await expect(
+    page.getByRole('region', { name: 'This week', exact: true })
+  ).toContainText("1 new do, 1 new don't.")
 
   await page.getByRole('button', { name: `Pin: ${lead}`, exact: true }).click()
   await expect(

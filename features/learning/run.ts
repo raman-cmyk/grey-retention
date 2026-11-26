@@ -38,6 +38,10 @@ export function sentEmail(email: EmailResult): SentEmail | null {
   const known = email.results.some(
     (r) => typeof r.statistics.unsubscribe_uniques === 'number'
   )
+  // #76: a spam count only when Klaviyo gave one (never a made-up 0).
+  const spamKnown = email.results.some(
+    (r) => typeof r.statistics.spam_complaints === 'number'
+  )
   return {
     buildId: email.buildId,
     emailType: resultLine(email).emailType,
@@ -47,6 +51,12 @@ export function sentEmail(email: EmailResult): SentEmail | null {
     unsubscribes: known
       ? email.results.reduce(
           (n, r) => n + (Number(r.statistics.unsubscribe_uniques) || 0),
+          0
+        )
+      : null,
+    spamComplaints: spamKnown
+      ? email.results.reduce(
+          (n, r) => n + (Number(r.statistics.spam_complaints) || 0),
           0
         )
       : null,

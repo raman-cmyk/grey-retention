@@ -3,8 +3,9 @@
  * Performance analyst and the Memory writer, in code. From a brand's own
  * sent emails whose results are final, the analyst finds what repeats:
  * which kinds of email get more or fewer clicks than the rest, which kinds
- * make more people unsubscribe (a "don't" even when they get clicks, #76),
- * and which kind of section gets the most clicks. A pattern needs at least
+ * make more people unsubscribe or mark them as spam (a "don't" even when
+ * they get clicks, #76), and which kind of section gets the most clicks.
+ * A pattern needs at least
  * `minSends` sends on each side (D22: 3+). The writer turns patterns into
  * do's and don'ts with their evidence, raises or lowers a rule's
  * confidence as evidence grows, and retires a rule once enough later sends
@@ -24,6 +25,13 @@ export const clickDrop = 0.8
 /** This many times the rest's unsubscribe rate, with `minUnsubscribes`. */
 export const unsubscribeLift = 2
 export const minUnsubscribes = 5
+/**
+ * #76: spam complaints at or over this share of the people a kind of email
+ * reached (1 in 1,000, the rate inbox providers start to warn at), and at
+ * least `minSpamComplaints` of them, teach a "don't" on their own.
+ */
+export const spamComplaintRate = 0.001
+export const minSpamComplaints = 3
 /** Sends of a kind after which a pattern that faded is retired. */
 export const retireAfter = 2 * minSends
 
@@ -37,11 +45,14 @@ export type SentEmail = {
   clicks: number
   /** Null when Klaviyo gave no count (never a made-up 0). */
   unsubscribes: number | null
+  /** #76: people who marked it as spam; null when Klaviyo gave no count. */
+  spamComplaints: number | null
   /** The section block with the most clicks, when known. */
   topBlock: string | null
 }
 
-export type Dimension = 'email_type' | 'unsubscribes' | 'top_section'
+export type Dimension =
+  'email_type' | 'unsubscribes' | 'spam_complaints' | 'top_section'
 
 export type Pattern = {
   dimension: Dimension
@@ -60,6 +71,8 @@ const designers = ['section-planner', 'art-director']
 
 const per100 = (part: number, whole: number) =>
   whole ? Math.round((part / whole) * 1000) / 10 : 0
+const per1000 = (part: number, whole: number) =>
+  whole ? Math.round((part / whole) * 10_000) / 10 : 0
 const words = (s: string) => s.replace(/[_-]+/g, ' ').trim()
 /** Surer with more sends: 0.55 at the minimum, at most 0.9. */
 export const confidenceFor = (sends: number) =>
@@ -95,8 +108,35 @@ export function findPatterns(
     ...new Set(emails.flatMap((e) => (e.emailType ? [e.emailType] : [])))
   ].sort()
   const unsubscribed = new Set<string>()
-  // #76 first: a kind that makes people unsubscribe is a don't, even when
-  // it gets clicks.
+  // #76 first: a kind people mark as spam is a don't, even when it gets
+  // clicks. Unlike unsubscribes it is judged on its own rate, not against
+  // the rest: complaints over the threshold hurt every email's delivery.
+  for (const type of types) {
+    const mine = emails.filter(
+      (e) => e.emailType === type && e.spamComplaints !== null
+    )
+    if (mine.length < minSends) continue
+    const complaints = mine.reduce((n, e) => n + e.spamComplaints!, 0)
+    const people = mine.reduce((n, e) => n + e.recipients, 0)
+    if (
+      complaints < minSpamComplaints ||
+      complaints < people * spamComplaintRate
+    )
+      continue
+    unsubscribed.add(type)
+    out.push({
+      dimension: 'spam_complaints',
+      value: type,
+      kind: 'dont',
+      rule: `Send fewer ${words(type)} emails: people mark them as spam, which hurts how all of this brand's emails reach the inbox.`,
+      why: `${words(type)} emails: ${per1000(complaints, people)} spam complaints per 1,000 people over ${mine.length} sends; inbox providers start to warn at ${spamComplaintRate * 1000} per 1,000.`,
+      appliesTo: planners,
+      evidence: mine.map((e) => ({ buildId: e.buildId })),
+      confidence: confidenceFor(mine.length)
+    })
+  }
+  // #76: a kind that makes people unsubscribe is a don't, even when it
+  // gets clicks.
   for (const type of types) {
     const counted = emails.filter((e) => e.unsubscribes !== null)
     const mine = counted.filter((e) => e.emailType === type)
@@ -132,7 +172,7 @@ export function findPatterns(
     if (!mine.people || !rest.people || !rest.clicks) continue
     const ratio = mine.clicks / mine.people / (rest.clicks / rest.people)
     const kind = ratio >= clickLift ? 'do' : ratio <= clickDrop ? 'dont' : null
-    // A kind people unsubscribe from is never a "do" (#76).
+    // A kind people unsubscribe from or mark as spam is never a "do" (#76).
     if (!kind || (kind === 'do' && unsubscribed.has(type))) continue
     out.push({
       dimension: 'email_type',
