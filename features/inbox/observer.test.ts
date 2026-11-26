@@ -55,6 +55,24 @@ function row(rating = 'Exemplary', reviewer = 'Reviewer') {
   return r
 }
 describe('Observer human selection', () => {
+  it('normalizes a legacy display-name sender without weakening human approval', () => {
+    const legacy = row()
+    legacy[4] = 'Northwind News <NEWS@northwind.example>'
+    expect(selectedObserverRows([headers, legacy])).toEqual([entry])
+    legacy[12] = 'Good'
+    expect(selectedObserverRows([headers, legacy])).toEqual([])
+    legacy[12] = 'Exemplary'
+    legacy[13] = ''
+    expect(selectedObserverRows([headers, legacy])).toEqual([])
+  })
+  it.each(['', 'Northwind News', 'not-an-address'])(
+    'rejects an unusable sender %j before Gmail lookup',
+    (sender) => {
+      const invalid = row()
+      invalid[4] = sender
+      expect(selectedObserverRows([headers, invalid])).toEqual([])
+    }
+  )
   it('requires exact Exemplary, a reviewer and a unique immutable ID; Good never enters', () => {
     expect(selectedObserverRows([headers, row()])).toEqual([entry])
     for (const rating of [
@@ -189,6 +207,37 @@ function fakeClient(raw: string) {
 const mime = (to = entry.alias) =>
   `From: ${entry.sender}\r\nTo: ${to}\r\nMessage-ID: ${entry.messageId}\r\nSubject: A newsletter\r\nContent-Type: text/plain\r\n\r\nHello`
 describe('Sheet-selected Gmail transport', () => {
+  it('imports a legacy display-name row by Message-ID and still refuses another sender', async () => {
+    const legacy = row()
+    legacy[4] = 'Northwind News <NEWS@northwind.example>'
+    legacy[7] = ''
+    const source = { read: async () => selectedObserverRows([headers, legacy]) }
+    for (const wrongSender of [false, true]) {
+      const raw = wrongSender
+        ? mime().replace(entry.sender, 'other@northwind.example')
+        : mime()
+      const client = fakeClient(raw)
+      const session = await observerGmailTransport(
+        { user: 'capture@gmail.com', password: 'a'.repeat(16) },
+        source,
+        () => client as unknown as ObserverImap
+      ).open()
+      await session.list({ uidValidity: null, lastUid: 0 }, 25)
+      expect(client.search).toHaveBeenCalledWith(
+        { gmailraw: 'rfc822msgid:' + entry.messageId },
+        { uid: true }
+      )
+      if (wrongSender)
+        await expect(session.fetchRaw(1, 10000)).rejects.toThrow(
+          'observer_identity_mismatch'
+        )
+      else
+        expect(Buffer.from(await session.fetchRaw(1, 10000)).toString()).toBe(
+          raw
+        )
+      await session.close()
+    }
+  })
   it('fetches an older email approved later, using all 64 bits; never marks it read', async () => {
     const client = fakeClient(mime()),
       source = { read: vi.fn(async () => [entry]) },

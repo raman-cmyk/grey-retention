@@ -1,6 +1,7 @@
 import 'server-only'
 import { createHash, createSign } from 'node:crypto'
 import { InboundTransportError } from '@/lib/providers/inbound-capture'
+import { bareAddress } from './addresses'
 
 export type ObserverEmail = {
   id: string
@@ -44,12 +45,14 @@ export function selectedObserverRows(values: unknown[][]): ObserverEmail[] {
     const id = String(r[0] ?? ''),
       domain = String(r[2] ?? ''),
       alias = String(r[6] ?? '').toLowerCase(),
+      sender = bareAddress(String(r[4] ?? '')),
       gmailId = String(r[7] ?? ''),
       messageId = String(r[8] ?? '')
     if (
       counts.get(id) !== 1 ||
       !idShape.test(id) ||
       !r[1] ||
+      !sender ||
       !domainShape.test(domain) ||
       domain.length > 253 ||
       r[12] !== 'Exemplary' ||
@@ -69,7 +72,7 @@ export function selectedObserverRows(values: unknown[][]): ObserverEmail[] {
         id,
         domain,
         alias,
-        sender: String(r[4] ?? '').toLowerCase(),
+        sender,
         gmailId,
         messageId
       }
