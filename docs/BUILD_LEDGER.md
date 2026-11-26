@@ -350,6 +350,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 ## Build takeover tasks
 
+AI-DIAG-001 — review, Codex live onboarding: preserve only HTTP status and fixed schema/thinking rejection categories in failed agent run detail. Provider messages and arbitrary diagnostic text are never persisted; no SQL or failure-code change.
+
 KLV-KEY-001 — review, Codex live onboarding: accept internal underscore separators in provider-issued private keys at the connection form, HTTP client and Vault admission command. Preserve the database's masked hint format, read-only verification, write lock and secret redaction. Owns the key-shape helper, both consumers, migration `090098` and credential tests; no new dependency or function-signature change.
 
 | ID           | Workstream                                                                                 | Depends on        | Status | Owner/task     | Verification                             | Notes                                                                       |
@@ -4750,3 +4752,14 @@ Append entries using this exact shape:
 - Verification run: full `pnpm verify` with `NODE_USE_ENV_PROXY=0`: formatting, lint, typecheck, 4,634 tests (23 skipped), production build passed. Code and database reviewers ready; focused reviewer tests 54 passed. Database reset/pgTAP must pass in CI; local Docker unavailable.
 - Known issues: production connection remains pending deployment; the separate live website reader returned validation failure and is being investigated. Klaviyo write lock remains enabled.
 - Next consumer: database CI, production deployment, then live onboarding verification.
+
+### 2026-11-26 — AI-DIAG-001 — actionable private provider failures
+
+- Status: review
+- Branch/worktree: `codex/site-reader-diagnostics`
+- Commit(s): this change
+- Changed contracts: failed agent run detail retains its error code, optionally followed by HTTP status and a fixed schema/thinking rejection category. Raw provider messages and arbitrary diagnostic text remain excluded. Caller error codes and retry behavior do not change.
+- Migrations: none; existing detail text column.
+- Verification run: 92 focused provider/runtime/AI tests passed, including rejected schema categorization and private diagnostic exclusion. Full verify and code review pending.
+- Known issues: the first live website model request was rejected and settled at zero; provider status was previously discarded. Retry after deploying this diagnostic to identify the setup fault.
+- Next consumer: live onboarding diagnosis.
