@@ -9,7 +9,8 @@ import {
   checkedFindings,
   readSitePage,
   sampleFindings,
-  siteReader
+  siteReader,
+  siteReaderOutput
 } from './reader'
 import { samplePage } from './sample'
 
@@ -32,6 +33,85 @@ const gemini = (content: unknown): AiRun => ({
   content,
   provider: 'gemini',
   model: 'gemini-2.5-flash'
+})
+
+describe('the live response grammar', () => {
+  const fact = {
+    topic: 'free_shipping',
+    statement: 'Free shipping over $75.',
+    quote: 'free shipping on  orders over $75.',
+    confidence: 0.9,
+    kind: 'over',
+    amount: 75,
+    currency: 'USD',
+    days: null,
+    min: null,
+    max: null,
+    region: null,
+    language: null,
+    subject: null,
+    name: null,
+    role: null
+  }
+
+  it('accepts empty topic values while retaining the existing evidence checks', async () => {
+    const result = await readSitePage(
+      { brand: 'Cedar Lane', page: page('/pages/shipping', 'shipping') },
+      askWith(gemini({ findings: [fact] })),
+      'nullable-values'
+    )
+    expect(result).toMatchObject({
+      answered: true,
+      findings: expect.arrayContaining([
+        expect.objectContaining({
+          topic: 'free_shipping',
+          value: { kind: 'over', amount: 75, currency: 'USD' }
+        })
+      ])
+    })
+    const unquoted = await readSitePage(
+      { brand: 'Cedar Lane', page: page('/pages/shipping', 'shipping') },
+      askWith(gemini({ findings: [{ ...fact, quote: 'Invented promise.' }] })),
+      'unquoted'
+    )
+    expect(unquoted).toMatchObject({ answered: true, findings: [] })
+  })
+
+  it('still rejects null evidence, out-of-range confidence, wrong types and too many findings', () => {
+    for (const change of [
+      { quote: null },
+      { statement: null },
+      { confidence: null },
+      { confidence: 2 },
+      { kind: 'invented' },
+      { subject: 'invented' },
+      { amount: '75' }
+    ])
+      expect(
+        siteReaderOutput.safeParse({ findings: [{ ...fact, ...change }] })
+          .success
+      ).toBe(false)
+    expect(
+      siteReaderOutput.safeParse({ findings: Array(16).fill(fact) }).success
+    ).toBe(false)
+  })
+
+  it('avoids optional fields and counted array/numeric bounds in the provider grammar', () => {
+    const schema = siteReader.schema.definition as {
+      properties: {
+        findings: {
+          maxItems?: number
+          items: { properties: Record<string, unknown>; required: string[] }
+        }
+      }
+    }
+    const findings = schema.properties.findings
+    expect(findings.items.required.sort()).toEqual(
+      Object.keys(findings.items.properties).sort()
+    )
+    expect(findings.maxItems).toBeUndefined()
+    expect(findings.items.properties.confidence).toEqual({ type: 'number' })
+  })
 })
 
 describe('the sample rules', () => {
