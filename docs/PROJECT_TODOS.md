@@ -8,6 +8,8 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 
 ## Confirmed direction
 
+- 26 Nov 2026 (approved, GROS-OBS-001): Grey Observer collects newsletter emails. Humans rate each email in its Sheet. GROS uses that Sheet as its selection database and fetches originals directly from Gmail; only Exemplary is admitted. Human rating overrides any model suggestion. GROS must withdraw downgraded items from Inspiration and reference selection. Implementation and live activation are separate checks.
+
 - Grow toward 2,000+ useful reusable email blocks. The first 20 types are the seed.
 - Gmail plus-addresses are the agreed initial competitor collection approach. The owner considers that choice done; ingestion health is a separate check.
 - Add strategic segmentation, a conversational segment builder and a highly capable central AI workspace.

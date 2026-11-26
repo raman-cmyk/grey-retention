@@ -1,4 +1,5 @@
 import 'server-only'
+import { observerAllowed } from '@/features/inbox/observer-access'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { inspirationBlueprint } from '@/features/inbox/blueprints'
@@ -53,11 +54,12 @@ export async function visibleEmail(
 > {
   const email = await db
     .from('competitor_emails')
-    .select('id,capture_id,inbox_message_id,synthetic')
+    .select('id,capture_id,external_id,inbox_message_id,synthetic')
     .eq('id', competitorEmailId)
     .maybeSingle()
   if (email.error) throw email.error
-  if (!email.data) return { ok: false }
+  if (!email.data || !(await observerAllowed([email.data])).length)
+    return { ok: false }
   const brand = email.data.capture_id
   const [follows, hidden, profile, capture] = await Promise.all([
     db

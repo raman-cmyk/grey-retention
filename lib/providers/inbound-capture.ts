@@ -13,6 +13,9 @@ export type InboundCursor = { uidValidity: number | null; lastUid: number }
 
 export type InboundListing = {
   uidValidity: number
+  /** Selected sources can pass missing/deleted originals without starving later rows. */
+  scannedThrough?: number
+  more?: boolean
   /** Newer than the cursor, oldest first, at most the limit asked for. */
   messages: {
     uid: number
@@ -29,6 +32,8 @@ export interface InboundSession {
   list(cursor: InboundCursor, limit: number): Promise<InboundListing>
   /** The raw RFC 822 message. Throws `too_large` above `maxBytes`. */
   fetchRaw(uid: number, maxBytes: number): Promise<Uint8Array>
+  /** Trusted selected-source mapping, after exact original/recipient checks. */
+  captureDomain?(uid: number): string | null
   /** Marks messages read (IMAP \Seen). Never deletes or moves them. */
   markProcessed(uids: number[]): Promise<void>
   close(): Promise<void>

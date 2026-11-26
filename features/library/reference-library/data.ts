@@ -1,4 +1,5 @@
 import 'server-only'
+import { observerAllowed } from '@/features/inbox/observer-access'
 import { sourceFormat } from '@/features/email-generation/html'
 import { toSafePreview } from '@/features/email-generation/to-safe-preview'
 import { summaryWindowDays } from '@/features/inbox/brand-summary'
@@ -99,7 +100,7 @@ export async function referenceLibrary(
           db
             .from('competitor_emails')
             .select(
-              'id,capture_id,subject,text_content,safe_html,received_at,synthetic,screenshot_path,screenshot_width,screenshot_height'
+              'id,capture_id,external_id,inbox_message_id,subject,text_content,safe_html,received_at,synthetic,screenshot_path,screenshot_width,screenshot_height'
             )
             .eq('capture_id', id)
             .order('received_at', { ascending: false })
@@ -141,7 +142,7 @@ export async function referenceLibrary(
   )
   const emails = {
     error: perDomain.find((r) => r.error)?.error ?? null,
-    data: perDomain.flatMap((r) => r.data ?? [])
+    data: await observerAllowed(perDomain.flatMap((r) => r.data ?? []))
   }
   if (captures.error || emails.error || imports.error || templates.error)
     return null
