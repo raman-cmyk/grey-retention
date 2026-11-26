@@ -368,6 +368,35 @@ describe('runAgent', () => {
     })
   })
 
+  it.each([
+    [
+      '400 INVALID_ARGUMENT schema_rejected private-key',
+      'rejected_request:http_400:schema_rejected'
+    ],
+    ['404 NOT_FOUND private-input', 'rejected_request:http_404'],
+    ['private-key or website content', 'rejected_request']
+  ])(
+    'keeps only fixed provider diagnostics in failed run logs',
+    async (diagnostic, detail) => {
+      const log = new InMemoryRunLog()
+      await runAgent(
+        tagger,
+        { html: 'x' },
+        {
+          tenantId,
+          industry: null,
+          callerKey: 's',
+          memory: new InMemoryMemoryStore(),
+          log,
+          now,
+          ai: async () => ({ ok: false, code: 'rejected_request', diagnostic })
+        }
+      )
+      expect(log.entries[0].detail).toBe(detail)
+      expect(JSON.stringify(log.entries)).not.toContain('private-')
+    }
+  )
+
   it("sends the agent's pictures and lets a call use a stronger tier", async () => {
     const ai = ok({ family: 'hero', confidence: 0.95 })
     const withImage = {
