@@ -604,7 +604,7 @@ describe('checkedFindings: the founder', () => {
   it('asks the model for the founder’s own note on the About page only', () => {
     expect(siteReader.instructions).toMatch(/founder: on the About page only/)
     expect(JSON.stringify(siteReader.schema.definition)).toContain(
-      '"name":{"type":"string"},"role":{"type":"string"}'
+      '"name":{"type":["string","null"]},"role":{"type":["string","null"]}'
     )
   })
 })

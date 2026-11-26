@@ -350,9 +350,11 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 ## Build takeover tasks
 
-AI-DIAG-001 — review, Codex live onboarding: preserve only HTTP status and fixed schema/thinking rejection categories in failed agent run detail. Provider messages and arbitrary diagnostic text are never persisted; no SQL or failure-code change.
+SITE-SCHEMA-001 — review, Codex live onboarding: reduce the Site reader response grammar with required nullable topic values; keep the existing strict fact and evidence checks. Owns reader.ts and reader/founder tests; no SQL or saved finding contract change.
 
-KLV-KEY-001 — review, Codex live onboarding: accept internal underscore separators in provider-issued private keys at the connection form, HTTP client and Vault admission command. Preserve the database's masked hint format, read-only verification, write lock and secret redaction. Owns the key-shape helper, both consumers, migration `090098` and credential tests; no new dependency or function-signature change.
+AI-DIAG-001 — complete, Codex live onboarding: preserve only HTTP status and fixed schema/thinking rejection categories in failed agent run detail. Provider messages and arbitrary diagnostic text are never persisted; no SQL or failure-code change.
+
+KLV-KEY-001 — complete, Codex live onboarding: accept internal underscore separators in provider-issued private keys at the connection form, HTTP client and Vault admission command. Preserve the database's masked hint format, read-only verification, write lock and secret redaction. Owns the key-shape helper, both consumers, migration `090098` and credential tests; no new dependency or function-signature change.
 
 | ID           | Workstream                                                                                 | Depends on        | Status | Owner/task     | Verification                             | Notes                                                                       |
 | ------------ | ------------------------------------------------------------------------------------------ | ----------------- | ------ | -------------- | ---------------------------------------- | --------------------------------------------------------------------------- |
@@ -4763,3 +4765,25 @@ Append entries using this exact shape:
 - Verification run: 92 focused provider/runtime/AI tests passed, including rejected schema categorization and private diagnostic exclusion. Full verify and code review pending.
 - Known issues: the first live website model request was rejected and settled at zero; provider status was previously discarded. Retry after deploying this diagnostic to identify the setup fault.
 - Next consumer: live onboarding diagnosis.
+
+### 2026-11-26 — KLV-KEY-001 / AI-DIAG-001 — production verification
+
+- Status: complete
+- Branch/worktree: merged #665 and #667
+- Commit(s): `026030a8`, `7a403da1`
+- Changed contracts: as recorded in the preceding handoffs.
+- Migrations: `090098` verified applied automatically in production.
+- Verification run: KLV full verify 4,634 tests and database/browser CI green; AI-DIAG full verify 4,639 tests and browser CI green. History-only conflict resolution retained the identical tested Git tree `756eafe3c646851efda44af4ff41a72e04de14d7`. Production key verification succeeded and the live connection was saved; account timezone imported. No credentials were committed or logged.
+- Known issues: live Site reader reports `rejected_request:http_400:schema_rejected`, settled at zero. Catalog/history imports queued; history retried a transient read. Owner will provide maximum discount and existing codes; none invented. Klaviyo writes stay locked.
+- Next consumer: SITE-SCHEMA-001 and onboarding validation.
+
+### 2026-11-26 — SITE-SCHEMA-001 — smaller website reader grammar
+
+- Status: review
+- Branch/worktree: `codex/onboarding-progress`
+- Commit(s): this change
+- Changed contracts: Site reader prompt `site-v3`; provider value properties are required and nullable, with array/numeric bounds enforced in existing application validation. Null optional values become absent before the original parser; required evidence, confidence, topic-specific values, quotations and scope checks are unchanged. Saved findings and database RPCs are unchanged. Sample answers may still omit optional values.
+- Migrations: none.
+- Verification run: 162 focused site/reader tests passed; full verify passed (4,642 tests, formatting, lint, typecheck, production build), plus the final focused suite after simplifying nullable enums. Code reviewer ready, 38 independent tests passed. Official Gemini structured-output guidance read 26 Nov: required nullable fields and application-side bounds reduce grammar states.
+- Known issues: paid live verification follows deployment, within the authorized allowance.
+- Next consumer: live website import retry.
