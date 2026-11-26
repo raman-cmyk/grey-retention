@@ -18,8 +18,13 @@ vi.mock('@/features/connections/actions', () => ({
 }))
 vi.mock('@/features/offers/actions', () => ({
   saveMaxDiscount: vi.fn(async () => ({})),
+  saveMarginFloor: vi.fn(async () => ({})),
   addDiscountCode: vi.fn(async () => ({})),
   retireDiscountCode: vi.fn(async () => ({}))
+}))
+vi.mock('@/features/goals/actions', () => ({
+  saveRevenueGoal: vi.fn(async () => ({})),
+  clearRevenueGoal: vi.fn(async () => ({}))
 }))
 vi.mock('@/features/team/actions', () => ({
   inviteTeammate: vi.fn(async () => ({})),
@@ -75,6 +80,24 @@ function view(over: Partial<SettingsView> = {}): SettingsView {
           percent: 10,
           expiresAt: '2026-11-01T18:14:59.000Z',
           ended: true
+        }
+      ]
+    },
+    goal: {
+      currency: 'USD',
+      today: '2026-11-16',
+      months: [
+        {
+          month: '2026-11-01',
+          label: 'November 2026',
+          goal: { month: '2026-11-01', amount: 20_000, currency: 'USD' },
+          revision: 2
+        },
+        {
+          month: '2026-12-01',
+          label: 'December 2026',
+          goal: null,
+          revision: 0
         }
       ]
     },
@@ -166,6 +189,124 @@ describe('Settings screen (UI-SETa)', () => {
     expect(card('Biggest discount')).toHaveTextContent(
       'Emails offer no discount.'
     )
+  })
+
+  it('sets the margin floor next to the biggest discount, in plain words (#39)', () => {
+    render(<SettingsScreen view={view()} />)
+    const floor = card('Margin floor')
+    expect(floor).toHaveTextContent('Not set')
+    expect(floor).toHaveTextContent(
+      'The lowest margin you accept on a sale. Not set: only your biggest discount limits offers.'
+    )
+    const save = within(floor).getByRole('button', {
+      name: 'Save margin floor'
+    })
+    expect(formOf(save)).toEqual({ revision: '3', margin: '', floor: '' })
+    expect(
+      within(floor).getByLabelText('Your usual margin on a sale, %')
+    ).toBeInTheDocument()
+    expect(
+      within(floor).getByLabelText('The lowest margin you accept on a sale, %')
+    ).toBeInTheDocument()
+    cleanup()
+    // 60% margin, 30% floor: at most 42% off; BIG30 at 30% still works,
+    // but with a 20% floor on a 40% margin (25% cap) a 30% code would not.
+    render(
+      <SettingsScreen
+        view={view({
+          offers: {
+            ...view().offers!,
+            maxDiscountPercent: 50,
+            grossMarginPercent: 60,
+            marginFloorPercent: 30
+          }
+        })}
+      />
+    )
+    expect(card('Margin floor')).toHaveTextContent('30%')
+    expect(card('Margin floor')).toHaveTextContent(
+      'On your 60% margin, no email offers more than 42% off.'
+    )
+    expect(
+      formOf(
+        within(card('Margin floor')).getByRole('button', {
+          name: 'Save margin floor'
+        })
+      )
+    ).toEqual({ revision: '3', margin: '60', floor: '30' })
+    cleanup()
+    render(
+      <SettingsScreen
+        view={view({
+          offers: {
+            ...view().offers!,
+            maxDiscountPercent: 50,
+            grossMarginPercent: 40,
+            marginFloorPercent: 20
+          }
+        })}
+      />
+    )
+    expect(
+      within(card('Discount codes')).getAllByRole('listitem')[1]
+    ).toHaveTextContent(
+      '30% off · Until Nov 30, 2026 · Below your margin floor, not used'
+    )
+  })
+
+  it('shows this month’s revenue goal and saves a new one in words, with each month’s revision (#33)', () => {
+    render(<SettingsScreen view={view()} />)
+    const goal = card('Revenue goal')
+    expect(goal).toHaveTextContent('$20,000')
+    expect(goal).toHaveTextContent(
+      'Email revenue for November 2026. The 15-day plan works back from it.'
+    )
+    const save = within(goal).getByRole('button', { name: 'Save goal' })
+    expect(formOf(save)).toEqual({
+      revisions: '2026-11-01:2,2026-12-01:0',
+      goal: ''
+    })
+    expect(
+      within(goal).getByLabelText(
+        'Goal, like $20,000 this month or 25k next month'
+      )
+    ).toBeInTheDocument()
+    expect(
+      formOf(
+        within(goal).getByRole('button', {
+          name: 'Remove the November 2026 goal'
+        })
+      )
+    ).toEqual({ month: '2026-11-01', revision: '2' })
+    cleanup()
+    // Next month's goal too; no currency known yet: the example names one.
+    const both = view({
+      goal: {
+        currency: null,
+        today: '2026-11-16',
+        months: [
+          { ...view().goal!.months[0], goal: null, revision: 4 },
+          {
+            ...view().goal!.months[1],
+            goal: { month: '2026-12-01', amount: 25_000, currency: 'USD' },
+            revision: 1
+          }
+        ]
+      }
+    })
+    render(<SettingsScreen view={both} />)
+    expect(card('Revenue goal')).toHaveTextContent('Not set')
+    expect(card('Revenue goal')).toHaveTextContent('December 2026: $25,000')
+    expect(
+      within(card('Revenue goal')).getByLabelText(
+        'Goal, like 20,000 USD this month'
+      )
+    ).toBeInTheDocument()
+    expect(
+      within(card('Revenue goal'))
+        .getAllByRole('button', { name: /^Remove/ })
+        .map((b) => b.textContent)
+    ).toEqual(['Remove the December 2026 goal'])
   })
 
   it('lists the codes, each with its own Remove, and adds a code', () => {
@@ -476,6 +617,7 @@ describe('Settings screen (UI-SETa)', () => {
   it('says which parts could not be read, and that the demo keeps nothing', () => {
     const unread = view({
       offers: null,
+      goal: null,
       klaviyo: null,
       timezone: null,
       team: null,
@@ -485,6 +627,7 @@ describe('Settings screen (UI-SETa)', () => {
       requests: null,
       unread: [
         'offers',
+        'goal',
         'klaviyo',
         'timezone',
         'team',
@@ -497,6 +640,8 @@ describe('Settings screen (UI-SETa)', () => {
     render(<SettingsScreen view={unread} />)
     for (const [name, words] of [
       ['Biggest discount', 'Your offers could not be read just now.'],
+      ['Margin floor', 'Your offers could not be read just now.'],
+      ['Revenue goal', 'Your revenue goal could not be read just now.'],
       ['Discount codes', 'Your offers could not be read just now.'],
       ['Klaviyo', 'The Klaviyo connection could not be read just now.'],
       ['Timezone', 'The timezone could not be read just now.'],
@@ -512,7 +657,7 @@ describe('Settings screen (UI-SETa)', () => {
     ])
     cleanup()
     render(<SettingsScreen view={{ ...unread, demo: true }} />)
-    expect(screen.getAllByText('Nothing is kept in the demo.')).toHaveLength(9)
+    expect(screen.getAllByText('Nothing is kept in the demo.')).toHaveLength(11)
     cleanup()
     // The demo's timezone shows, but cannot be saved.
     render(

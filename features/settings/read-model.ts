@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { unstable_rethrow } from 'next/navigation'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
+import { goalSettings, type GoalSettings } from '@/features/goals/settings'
 import { offersPage } from '@/features/offers/data'
 import { profilePageData } from '@/features/profile/data'
 import { teamPage } from '@/features/team/data'
@@ -43,6 +44,8 @@ export type KlaviyoState = {
 export type SettingsReadModel = {
   state: 'ready' | 'demo'
   offers: Awaited<ReturnType<typeof offersPage>>
+  /** Owner pick #33: this month's and next month's revenue goals. */
+  goal: GoalSettings | null
   klaviyo: KlaviyoState | null
   /**
    * Active members, invites not yet expired (null for staff, who do not see
@@ -134,6 +137,7 @@ export async function settingsReadModel(
 ): Promise<SettingsReadModel> {
   const empty = {
     offers: null,
+    goal: null,
     klaviyo: null,
     team: null,
     account: null,
@@ -150,8 +154,9 @@ export async function settingsReadModel(
       unstable_rethrow(error)
       return null
     })
-  const [offers, klaviyo, team, account] = await Promise.all([
+  const [offers, goal, klaviyo, team, account] = await Promise.all([
     settle(offersPage(context)),
+    settle(goalSettings(db, context)),
     settle(klaviyoState(db, context.tenantId)),
     settle(teamPage(context)),
     settle(profilePageData())
@@ -171,6 +176,7 @@ export async function settingsReadModel(
   return {
     state: 'ready',
     offers,
+    goal,
     klaviyo,
     team: teamReady
       ? {
