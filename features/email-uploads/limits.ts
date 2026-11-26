@@ -1,7 +1,7 @@
 /**
  * DES-ENGINE-003: the bounds and words of "Add your own email", shared by
  * the page, the server and the tests. The database checks the same bounds
- * (`supabase/migrations/20260914090100_email_uploads.sql`).
+ * (`supabase/migrations/20260914090102_email_uploads.sql`).
  */
 
 /** The page (Inspiration → Add your own email). */

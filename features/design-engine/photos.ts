@@ -189,6 +189,12 @@ const magic: Record<string, (b: Uint8Array) => boolean> = {
     b[11] === 0x50
 }
 
+/** DES-ENGINE-003: a picture's type from its first bytes (never what it says it is), or null. */
+export function sniffType(b: Uint8Array): string | null {
+  for (const [type, test] of Object.entries(magic)) if (test(b)) return type
+  return null
+}
+
 /** A picture's size from its header (PNG, JPEG, WebP, GIF), or null. */
 export function headerSize(type: string, b: Uint8Array): PhotoSize | null {
   const view = new DataView(b.buffer, b.byteOffset, b.byteLength)
@@ -289,14 +295,21 @@ function deadline<T>(work: Promise<T>, ms: number, stop: () => void) {
  */
 export async function loadPicture(
   src: string,
-  options: { origins?: readonly string[]; open?: PhotoOpener } = {}
+  options: {
+    origins?: readonly string[]
+    open?: PhotoOpener
+    /** DES-ENGINE-003: at most this many bytes (default 8 MB). */
+    maxBytes?: number
+  } = {}
 ): Promise<Loaded | Failed> {
   const allowed = new Set(options.origins ?? photoOrigins())
   const open = options.open ?? httpsOpener()
+  const maxBytes = options.maxBytes ?? photoLimits.bytes
+  const big = maxBytes === photoLimits.bytes ? photoWords.big : 'it is larger than 3 MB'
   const inline = /^data:(image\/[a-z]+);base64,([a-z0-9+/]+={0,2})$/i.exec(src)
   if (inline) {
     const bytes = Buffer.from(inline[2]!, 'base64')
-    if (bytes.byteLength > photoLimits.bytes) return failed(photoWords.big)
+    if (bytes.byteLength > maxBytes) return failed(big)
     return checked(inline[1]!, bytes)
   }
   let url: URL
@@ -335,9 +348,9 @@ export async function loadPicture(
     try {
       for await (const chunk of res.body) {
         total += chunk.byteLength
-        if (total > photoLimits.bytes) {
+        if (total > maxBytes) {
           res.cancel()
-          return failed(photoWords.big)
+          return failed(big)
         }
         chunks.push(Buffer.from(chunk))
       }
