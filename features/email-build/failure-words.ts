@@ -75,11 +75,21 @@ export const pushRefusalWords = {
     'One of its pictures cannot go into Klaviyo: it needs a JPG, PNG or GIF at a plain https address.',
   too_many_pictures:
     'It had more than 40 pictures, the most the app puts into one email.',
-  // The draft already in Klaviyo.
+  // The draft already in Klaviyo (PICK-99: never overwrite the owner's work).
   externally_modified:
-    'Its draft was changed or deleted in Klaviyo, so it was left as it is.',
+    'You changed or deleted this email’s draft in Klaviyo, so GROS will not replace it. Plan next 15 days to make a new email instead.',
   not_a_draft:
-    'Its campaign in Klaviyo is no longer a draft (it was scheduled or sent), so it was left alone.',
+    'This email is no longer a draft in Klaviyo (it was scheduled, sent or cancelled there), so GROS will not replace it. Plan next 15 days to make a new email instead.',
+  edited_in_klaviyo:
+    'You changed this email in Klaviyo, so GROS will not replace it. Plan next 15 days to make a new email instead.',
+  scheduled_in_klaviyo:
+    'You scheduled this email in Klaviyo, so GROS will not replace it. Plan next 15 days to make a new email instead.',
+  sent_in_klaviyo:
+    'This email was sent from Klaviyo, so GROS will not replace it. Plan next 15 days to make a new email instead.',
+  deleted_in_klaviyo:
+    'You deleted this email’s draft in Klaviyo, so GROS will not put it back. Plan next 15 days to make a new email instead.',
+  cancelled_in_klaviyo:
+    'This email was cancelled in Klaviyo, so GROS will not replace it. Plan next 15 days to make a new email instead.',
   campaign_ambiguous:
     'The app could not tell for sure which draft in Klaviyo is this email’s, so it left the draft alone.',
   audience_changed:
