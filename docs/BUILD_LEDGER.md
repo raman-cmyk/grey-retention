@@ -350,6 +350,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 ## Build takeover tasks
 
+HISTORY-BATCH-001 — review, Codex live onboarding: read expanded campaign messages in the provider default batches of 20, keeping the 300-message ceiling and worker time bound. Owns Klaviyo history paths and tests; no database or saved history shape change.
+
 SITE-SCHEMA-001 — review, Codex live onboarding: reduce the Site reader response grammar with required nullable topic values; keep the existing strict fact and evidence checks. Owns reader.ts and reader/founder tests; no SQL or saved finding contract change.
 
 AI-DIAG-001 — complete, Codex live onboarding: preserve only HTTP status and fixed schema/thinking rejection categories in failed agent run detail. Provider messages and arbitrary diagnostic text are never persisted; no SQL or failure-code change.
@@ -4787,3 +4789,14 @@ Append entries using this exact shape:
 - Verification run: 162 focused site/reader tests passed; full verify passed (4,642 tests, formatting, lint, typecheck, production build), plus the final focused suite after simplifying nullable enums. Code reviewer ready, 38 independent tests passed. Official Gemini structured-output guidance read 26 Nov: required nullable fields and application-side bounds reduce grammar states.
 - Known issues: paid live verification follows deployment, within the authorized allowance.
 - Next consumer: live website import retry.
+
+### 2026-11-26 — HISTORY-BATCH-001 — smaller campaign message pages
+
+- Status: review
+- Branch/worktree: `codex/history-batch-size`
+- Commit(s): this change
+- Changed contracts: campaign message requests use Klaviyo's documented default of 20 records per page, at most 15 pages (the existing ceiling of 300 messages). The worker time budget, cursor validation, partial-read reporting and read scopes are unchanged. Larger expanded pages repeatedly exceeded the 6-second request cap in the first live account; a smaller batch is tested live after deployment.
+- Migrations: none.
+- Verification run: focused history suites and full verify in progress. Regression coverage checks bounded pagination and explicit incomplete state at the page limit.
+- Known issues: catalog import succeeded with 16 real products (15 featurable), partial at its window limits. Paid catalog analysis succeeded. Site-v3 is deployed but two live attempts returned provider HTTP 503, using the existing bounded retries. History has exhausted its four transient tries and will be restarted after this change. Discounts still await the owner's limit and codes.
+- Next consumer: live history import verification.
