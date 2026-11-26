@@ -29,3 +29,17 @@ Do not turn the mode back off as an outage workaround: legacy inbox behavior is 
 - Missing credentials or an inaccessible Sheet gives a source error; it must not start scanning the whole mailbox.
 
 No live secret, deployment, mailbox or paid AI setting is changed by this PR. Automated tests use fictional brands, generated signing keys and fake Gmail/Sheets adapters. Local database execution requires Docker; run the Supabase reset/database suite in CI before merge if Docker is unavailable locally. Live Gmail and full browser acceptance are activation checks, not established by mocks.
+
+## Brand requests, niches and filters (GROS-INS-002)
+
+A workspace owner may follow a real brand Grey Observer does not collect yet. GROS records it as a **request** (the brand shows "Requested: we are subscribing to its emails") instead of refusing it. At most 10 new requests per workspace in 24 hours. Observer stays the only system that subscribes.
+
+1. Each scheduled sweep appends every pending request that still has a follower to the Observer Sheet's **GROS requests** tab (created by GROS on the first run): `Domain`, `Requested at UTC`, `Workspaces`, `Schema version` = `gros-brand-requests-v1`. One row per website, written once (RAW), never edited or removed by GROS. The sweep's answer shows `requests` with counts only.
+2. Observer (v1.4.x) reads the tab, subscribes to each new domain it does not already collect, and lists the brand in its Brands tab as usual. Observer may add its own columns to the right of column D; it must not change columns A–D.
+3. When the Brands tab shows the brand's `Signup status` as `Verified`, GROS marks the request **Subscribed** ("waiting for an email our team rates Exemplary"). Its first email a person rates Exemplary makes it **Live**, exactly as above.
+
+**Owner setup (once):** in the Observer Sheet, Share → change `gros-observer-reader@grey-observer.iam.gserviceaccount.com` from Viewer to **Editor**. Then protect every other tab so this account can edit only GROS requests: Data → Protect sheets and ranges → Sheet → choose each existing tab (Brands, Email review, GROS queue, Capture, Email results, Findings, Design review, Tag rules, Controls) → Restrict who can edit → only you and `grey-observer-sheet@grey-observer.iam.gserviceaccount.com`. GROS's reader of human ratings still asks Google for read-only access; only the request writer asks for edit access. Without Editor access, requests stay Requested and the sweep reports `observer_requests_unavailable`; nothing else changes.
+
+**Niches.** In Admin → Inbox → Brand directory, choose each brand's niche from the fixed industry list and press Save niche. A chosen niche decides the brand's industry (it outranks the labels of its emails). A store's **Your niche** list shows the Exemplary emails of brands of its own industry that it does not follow and has not hidden; the store's industry comes from onboarding. Real brands appear there only with `OBSERVER_SOURCE=sheet`.
+
+**Filters.** Inspiration lists **Your competitors** (brands followed) or **Your niche**, **All / Design / Text**, and **All brands** or one brand, kept in the page address (`?source=niche&show=design&brand=brand.com`). Design or Text is the existing rule: an email whose images carry it (60 words or fewer per image) is Design; one without images, or mostly words, is Text. Use this design works on emails of followed brands; a niche email offers Follow first.

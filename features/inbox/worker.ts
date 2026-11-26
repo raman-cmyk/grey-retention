@@ -195,13 +195,16 @@ export async function pollInbox(
         if (selectedDomain) {
           const existing = await db
             .from('competitor_captures')
-            .select('id,alias_slug')
+            .select('id,alias_slug,subscription_status')
             .eq('domain', selectedDomain)
             .maybeSingle()
           if (existing.error) throw existing.error
           selectedAlias =
             existing.data?.alias_slug ??
             'observer-' + sha256(selectedDomain).slice(0, 24)
+          // GROS-INS-002: a brand with an approved Observer original is one
+          // Observer is subscribed to (a request is fulfilled), so it counts
+          // as subscribed for following and for "Your niche".
           if (!existing.data) {
             const added = await db.from('competitor_captures').upsert(
               {
@@ -209,18 +212,28 @@ export async function pollInbox(
                 alias_slug: selectedAlias,
                 synthetic: false,
                 brand_name: selectedDomain,
-                niche: 'unclassified'
+                niche: 'unclassified',
+                subscription_status: 'subscribed'
               },
               { onConflict: 'domain', ignoreDuplicates: true }
             )
             if (added.error) throw added.error
-          } else if (!existing.data.alias_slug) {
-            const updated = await db
-              .from('competitor_captures')
-              .update({ alias_slug: selectedAlias })
-              .eq('id', existing.data.id)
-              .is('alias_slug', null)
-            if (updated.error) throw updated.error
+          } else {
+            if (!existing.data.alias_slug) {
+              const updated = await db
+                .from('competitor_captures')
+                .update({ alias_slug: selectedAlias })
+                .eq('id', existing.data.id)
+                .is('alias_slug', null)
+              if (updated.error) throw updated.error
+            }
+            if (existing.data.subscription_status !== 'subscribed') {
+              const subscribed = await db
+                .from('competitor_captures')
+                .update({ subscription_status: 'subscribed' })
+                .eq('id', existing.data.id)
+              if (subscribed.error) throw subscribed.error
+            }
           }
           const current = await db
             .from('competitor_captures')

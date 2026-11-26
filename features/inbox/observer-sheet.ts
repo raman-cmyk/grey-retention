@@ -1,6 +1,7 @@
 import 'server-only'
-import { createHash, createSign } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { InboundTransportError } from '@/lib/providers/inbound-capture'
+import { googleJson, observerSheetConfig, readScope } from './observer-google'
 
 export type ObserverEmail = {
   id: string
@@ -86,67 +87,10 @@ export function observerSelection(
 ): ObserverSelection {
   if (env.OBSERVER_SOURCE?.trim() && env.OBSERVER_SOURCE.trim() !== 'sheet')
     throw failed()
-  let credential: { client_email: string; private_key: string }
-  try {
-    credential = JSON.parse(env.OBSERVER_SHEETS_SERVICE_ACCOUNT ?? '')
-  } catch {
-    throw failed()
-  }
-  const sheet = env.OBSERVER_SPREADSHEET_ID ?? ''
-  if (
-    !/^[\w-]+$/.test(sheet) ||
-    !credential.client_email?.endsWith('.gserviceaccount.com') ||
-    !credential.private_key?.includes('BEGIN PRIVATE KEY')
-  )
-    throw failed()
-  let token = '',
-    expires = 0
-  const read = async (url: string) => {
-    try {
-      if (Date.now() >= expires) {
-        const issued = Math.floor(Date.now() / 1000)
-        const encode = (v: unknown) =>
-          Buffer.from(JSON.stringify(v)).toString('base64url')
-        const unsigned =
-          encode({ alg: 'RS256', typ: 'JWT' }) +
-          '.' +
-          encode({
-            iss: credential.client_email,
-            scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
-            aud: 'https://oauth2.googleapis.com/token',
-            iat: issued,
-            exp: issued + 3500
-          })
-        const sign = createSign('RSA-SHA256')
-          .update(unsigned)
-          .sign(credential.private_key)
-          .toString('base64url')
-        const response = await request('https://oauth2.googleapis.com/token', {
-          method: 'POST',
-          body: new URLSearchParams({
-            grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-            assertion: unsigned + '.' + sign
-          }),
-          signal: AbortSignal.timeout(8000),
-          cache: 'no-store'
-        })
-        if (!response.ok) throw failed()
-        const value = await response.json()
-        if (typeof value.access_token !== 'string') throw failed()
-        token = value.access_token
-        expires = Date.now() + 3000000
-      }
-      const response = await request(url, {
-        headers: { Authorization: 'Bearer ' + token },
-        signal: AbortSignal.timeout(8000),
-        cache: 'no-store'
-      })
-      if (!response.ok) throw failed()
-      return await response.json()
-    } catch {
-      throw failed()
-    }
-  }
+  const config = observerSheetConfig(env)
+  if (!config) throw failed()
+  const { sheet } = config
+  const read = googleJson(config.credential, readScope, request, failed)
   return {
     async read() {
       const base = 'https://sheets.googleapis.com/v4/spreadsheets/' + sheet

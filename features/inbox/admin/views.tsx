@@ -4,6 +4,11 @@ import { Field } from '@/components/gros/input'
 import { ListRow, RowList } from '@/components/gros/list-row'
 import { Status } from '@/components/gros/status'
 import { SelectField } from '@/features/admin/fields'
+import {
+  industries,
+  industryName,
+  type Industry
+} from '@/features/intelligence/taxonomy'
 import { inboxAdminAction } from './actions'
 import type { DirectoryBrand, OpsTask } from './data'
 
@@ -236,6 +241,59 @@ export function OpsQueue({
   )
 }
 
+/** A niche from the fixed list (GROS-INS-002), or null for free words. */
+const chosenNiche = (niche: string | null): Industry | null => {
+  const value = (niche ?? '').trim().toLowerCase()
+  return (industries as readonly string[]).includes(value)
+    ? (value as Industry)
+    : null
+}
+
+/** A brand's niche in words: Supplements, or "Niche not set". */
+const nicheWords = (niche: string | null) => {
+  const chosen = chosenNiche(niche)
+  return chosen
+    ? `Niche ${industryName(chosen)}`
+    : niche && niche !== 'unclassified'
+      ? `Niche ${niche} (not on the list)`
+      : 'Niche not set'
+}
+
+/**
+ * GROS-INS-002: a brand's niche, chosen from the fixed industry list. It
+ * decides which stores see the brand's Exemplary emails under "Your niche"
+ * (it outranks what its emails' labels say). Saved with the brand's own
+ * website, +alias and name, so nothing else about the brand changes.
+ */
+export function NichePicker({ brand }: { brand: DirectoryBrand }) {
+  return (
+    <ActionButton
+      action={inboxAdminAction}
+      label="Save niche"
+      kind="outline"
+      size="row"
+      spokenLabel={`Save niche: ${brand.name}`}
+      fields={{
+        kind: 'save_brand',
+        domain: brand.domain,
+        alias: brand.aliasSlug,
+        name: brand.name
+      }}
+    >
+      <SelectField
+        label="Niche"
+        name="niche"
+        required
+        defaultValue={chosenNiche(brand.niche) ?? ''}
+        options={[
+          { value: '', label: 'Choose a niche', disabled: true },
+          ...industries.map((i) => ({ value: i, label: industryName(i) }))
+        ]}
+      />
+    </ActionButton>
+  )
+}
+
 /**
  * The competitor brands, one row each: where to subscribe, its niche,
  * subscription, last email, how many emails and its sender domains.
@@ -264,7 +322,7 @@ export function BrandDirectory({ brands }: { brands: DirectoryBrand[] }) {
                   b.address
                     ? `Subscribe with ${b.address}`
                     : 'Set INBOX_IMAP_USER in Vercel to see its address',
-                  b.niche ?? '',
+                  nicheWords(b.niche),
                   subscriptionWord(b.subscription),
                   `Last email ${day(b.lastEmailAt)}`,
                   `${b.emails} ${b.emails === 1 ? 'email' : 'emails'}`,
@@ -272,7 +330,12 @@ export function BrandDirectory({ brands }: { brands: DirectoryBrand[] }) {
                     ? `Senders ${b.senders.join(', ')}`
                     : 'No sender domains'
                 ]}
-                end={<SubscriptionStatus status={b.subscription} />}
+                end={
+                  <div className="flex flex-wrap items-end gap-[var(--space-3)]">
+                    <NichePicker brand={b} />
+                    <SubscriptionStatus status={b.subscription} />
+                  </div>
+                }
               />
             ))}
           </RowList>

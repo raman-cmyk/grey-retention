@@ -65,9 +65,12 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks())
 
 describe('trackDomain', () => {
-  it('follows only a currently Exemplary real Observer brand without launching another collector', async () => {
+  it('follows a real brand Observer collects without launching another collector', async () => {
     observer.enabled.mockReturnValue(true)
-    observer.read.mockResolvedValue([{ domain: 'curated.test' }])
+    capture = {
+      data: { id: 'cap-1', subscription_status: 'subscribed' },
+      error: null
+    }
     expect(await trackDomain({}, form({ domain: 'curated.test' }))).toEqual({
       message:
         'Following curated.test. Only its human-rated Exemplary emails appear here.'
@@ -77,9 +80,37 @@ describe('trackDomain', () => {
       t: tenant,
       domain: 'curated.test'
     })
+    // The live Sheet is no longer read to decide (GROS-INS-002).
+    expect(observer.read).not.toHaveBeenCalled()
+  })
+
+  it('records a real brand Observer does not collect yet as a request', async () => {
+    observer.enabled.mockReturnValue(true)
+    capture = {
+      data: { id: 'cap-2', subscription_status: 'pending' },
+      error: null
+    }
+    expect(await trackDomain({}, form({ domain: 'newbrand.com' }))).toEqual({
+      message:
+        'Requested newbrand.com. We are subscribing to its emails; they appear here once our team rates them Exemplary.'
+    })
+    // Observer subscribes; GROS starts no capture job of its own.
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledWith('subscribe_competitor', {
+      t: tenant,
+      domain: 'newbrand.com'
+    })
+  })
+
+  it('says when the daily request limit is reached', async () => {
+    observer.enabled.mockReturnValue(true)
+    rpc.mockResolvedValue({ data: null, error: { code: 'PT429' } })
     expect(
-      (await trackDomain({}, form({ domain: 'unreviewed.test' }))).error
-    ).toMatch(/no currently human-rated Exemplary/)
+      (await trackDomain({}, form({ domain: 'eleventh.com' }))).error
+    ).toBe(
+      'You asked for 10 new brands today, the most in a day. Try again tomorrow.'
+    )
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 
   it('tracks a sample domain and asks for its emails', async () => {

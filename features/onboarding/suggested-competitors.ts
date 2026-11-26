@@ -82,8 +82,15 @@ export function hostOf(address: string): string {
 const sameSite = (a: string, b: string) =>
   !!a && !!b && (a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`))
 
-/** A brand's industry: what most of its labelled emails say, else its niche's words. */
+/**
+ * A brand's industry. A niche a platform admin chose from the fixed list
+ * (GROS-INS-002, the niche picker in Admin > Inbox) decides; otherwise
+ * what most of its labelled emails say, else its niche's words.
+ */
 export function brandIndustry(brand: InboxBrand): Industry | null {
+  const chosen = (brand.niche ?? '').trim().toLowerCase()
+  if ((industries as readonly string[]).includes(chosen))
+    return chosen as Industry
   const counts = Object.entries(brand.labelled) as [Industry, number][]
   const total = counts.reduce((a, [, n]) => a + n, 0)
   if (total >= minLabelled) {

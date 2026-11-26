@@ -13,8 +13,12 @@ export type TrackedDomain = {
   revision: number
   domain: string
   label: string
-  /** LIVE once emails arrive; PENDING while waiting; ERROR on a failure. */
-  status: 'live' | 'pending' | 'error'
+  /**
+   * LIVE once emails arrive; PENDING while waiting; ERROR on a failure.
+   * A real brand (GROS-INS-002) is REQUESTED until Grey Observer has signed
+   * up to it, then SUBSCRIBED until its first email rated Exemplary.
+   */
+  status: 'live' | 'pending' | 'error' | 'requested' | 'subscribed'
   emails: number
   sample: boolean
 }
@@ -47,15 +51,23 @@ export { domainLimit } from '@/features/library/inspirations/domain'
  * LIVE once emails have arrived (a capture with fewer than 10 is still
  * live), ERROR when the capture failed, PENDING while waiting.
  */
-const statusOf = (
+export const statusOf = (
   status: string | undefined,
-  emails: number
+  emails: number,
+  real?: { subscription: string | undefined }
 ): TrackedDomain['status'] =>
-  status === 'error'
-    ? 'error'
-    : emails > 0 && (status === 'live' || status === 'degraded')
+  real
+    ? // Real brands come from Grey Observer, not the sample capture job.
+      emails > 0
       ? 'live'
-      : 'pending'
+      : real.subscription === 'subscribed'
+        ? 'subscribed'
+        : 'requested'
+    : status === 'error'
+      ? 'error'
+      : emails > 0 && (status === 'live' || status === 'degraded')
+        ? 'live'
+        : 'pending'
 
 /**
  * Everything the reference library shows for one workspace, read with the
@@ -92,7 +104,7 @@ export async function referenceLibrary(
       ids.length
         ? db
             .from('competitor_captures')
-            .select('id,domain,status,synthetic')
+            .select('id,domain,status,synthetic,subscription_status')
             .in('id', ids)
         : Promise.resolve({ data: [], error: null }),
       Promise.all(
@@ -234,7 +246,13 @@ export async function referenceLibrary(
       revision: s.revision,
       domain: capture?.domain ?? '',
       label: s.label,
-      status: statusOf(capture?.status, perCapture.get(s.capture_id) ?? 0),
+      status: statusOf(
+        capture?.status,
+        perCapture.get(s.capture_id) ?? 0,
+        capture && !capture.synthetic
+          ? { subscription: capture.subscription_status }
+          : undefined
+      ),
       emails: perCapture.get(s.capture_id) ?? 0,
       sample: capture?.synthetic ?? true
     }

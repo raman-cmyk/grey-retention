@@ -1,10 +1,7 @@
 'use server'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import {
-  observerEnabled,
-  observerSelection
-} from '@/features/inbox/observer-sheet'
+import { observerEnabled } from '@/features/inbox/observer-sheet'
 import type { FormResult } from '@/components/ui/action-form'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
@@ -65,19 +62,12 @@ export async function trackDomain(
   // The domain is also its label, which holds up to 120 characters.
   if (domain.length > 120)
     return { error: 'That website is too long. Use one under 120 characters.' }
+  // GROS-INS-002: a real brand Grey Observer does not collect yet is not
+  // refused; following it records a request that the scheduled sweep hands
+  // to Observer (the only system that subscribes). Only its emails a person
+  // rates Exemplary ever appear.
   const real = !isSampleDomain(domain)
-  if (real) {
-    if (!observerEnabled()) return { error: sampleOnly }
-    try {
-      if (!(await observerSelection().read()).some((e) => e.domain === domain))
-        return {
-          error:
-            'This brand has no currently human-rated Exemplary email in Observer.'
-        }
-    } catch {
-      return { error: 'Observer could not be checked. Nothing was changed.' }
-    }
-  }
+  if (real && !observerEnabled()) return { error: sampleOnly }
   const { context, db } = session
   // Already tracked: say so, and change nothing (its label, rules and any
   // playbook built on it stay as they are).
@@ -115,10 +105,15 @@ export async function trackDomain(
         error: `You follow ${domainLimit} brands, the most at a time. Stop one to follow another.`
       }
     if (saved.error.code === '42501') return { error: ownerOnly }
+    if (saved.error.code === 'PT429')
+      return {
+        error:
+          'You asked for 10 new brands today, the most in a day. Try again tomorrow.'
+      }
     if (saved.error.code === '23514')
       return {
         error: real
-          ? 'This brand has no imported Observer original yet. Let the inbox sync finish and try again.'
+          ? 'That website could not be followed. Check it and try again.'
           : sampleOnly
       }
     return { error: 'We could not follow this brand. Nothing was changed.' }
@@ -127,10 +122,21 @@ export async function trackDomain(
   const queued = real || (await requestEmails(db, context.tenantId, saved.data))
   refresh()
   if (!queued) return { error: retryText(domain) }
+  if (!real)
+    return {
+      message: `Following ${domain}. Its newsletters usually arrive within 1–7 days.`
+    }
+  // A brand Observer is not subscribed to yet is a request.
+  const now = await db
+    .from('competitor_captures')
+    .select('subscription_status')
+    .eq('domain', domain)
+    .maybeSingle()
   return {
-    message: real
-      ? `Following ${domain}. Only its human-rated Exemplary emails appear here.`
-      : `Following ${domain}. Its newsletters usually arrive within 1–7 days.`
+    message:
+      now.data?.subscription_status === 'pending'
+        ? `Requested ${domain}. We are subscribing to its emails; they appear here once our team rates them Exemplary.`
+        : `Following ${domain}. Only its human-rated Exemplary emails appear here.`
   }
 }
 
