@@ -55,8 +55,14 @@ export function googleJson(
   credential: ServiceAccount,
   scope: string,
   request: typeof fetch = fetch,
-  failure: () => Error = () => sheetUnavailable()
+  failure: () => Error = () => sheetUnavailable(),
+  /** Ends every call at once when the caller's time is up. */
+  stop?: AbortSignal
 ) {
+  const signal = () =>
+    stop
+      ? AbortSignal.any([AbortSignal.timeout(8000), stop])
+      : AbortSignal.timeout(8000)
   let token = '',
     expires = 0
   return async (url: string, init: RequestInit = {}) => {
@@ -85,7 +91,7 @@ export function googleJson(
             grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
             assertion: unsigned + '.' + sign
           }),
-          signal: AbortSignal.timeout(8000),
+          signal: signal(),
           cache: 'no-store'
         })
         if (!response.ok) throw failure()
@@ -100,7 +106,7 @@ export function googleJson(
           ...(init.body ? { 'Content-Type': 'application/json' } : {}),
           Authorization: 'Bearer ' + token
         },
-        signal: AbortSignal.timeout(8000),
+        signal: signal(),
         cache: 'no-store'
       })
       if (!response.ok) throw failure()

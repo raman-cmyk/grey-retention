@@ -16,8 +16,10 @@ const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   createServiceClient: vi.fn(),
   requireRequestContext: vi.fn(),
-  revalidatePath: vi.fn()
+  revalidatePath: vi.fn(),
+  nicheEmails: vi.fn()
 }))
+vi.mock('./niche-read', () => ({ nicheEmails: mocks.nicheEmails }))
 vi.mock('@/features/library/reference-library/data', async (original) => ({
   ...(await original<
     typeof import('@/features/library/reference-library/data')
@@ -174,6 +176,48 @@ describe('inspirationView (UI-INSa)', () => {
     expect(view.emails).toEqual([])
     // Unknown while unread: no Follow is offered anywhere (UI-INSb review).
     expect(view.slotsLeft).toBe(0)
+  })
+})
+
+describe('inspirationReadModel: Your niche (GROS-INS-002)', () => {
+  const niche = { source: 'niche', show: 'all', brand: null } as const
+
+  it('reads the niche only when asked, and only for the session’s own suggested brands', async () => {
+    const service = { service: true }
+    mocks.createClient.mockResolvedValue({ member: true })
+    mocks.createServiceClient.mockReturnValue(service)
+    mocks.referenceLibrary.mockResolvedValue(library())
+    mocks.readCompetitorSuggestions.mockResolvedValue(suggestions)
+    mocks.nicheEmails.mockResolvedValue([
+      item('n1', '2026-11-14T10:00:00Z', { domain: 'bark.example' })
+    ])
+    await inspirationReadModel(context)
+    expect(mocks.nicheEmails).not.toHaveBeenCalled()
+    const view = await inspirationReadModel(context, niche)
+    expect(mocks.nicheEmails).toHaveBeenCalledWith(
+      service,
+      suggestions.map((s) => ({
+        captureId: s.captureId,
+        domain: s.domain,
+        name: s.name
+      }))
+    )
+    expect(view.emails.map((e) => e.id)).toEqual(['n1'])
+  })
+
+  it('reads no niche without suggestions, and says when it could not be read', async () => {
+    mocks.createClient.mockResolvedValue({ member: true })
+    mocks.createServiceClient.mockReturnValue({})
+    mocks.referenceLibrary.mockResolvedValue(library())
+    mocks.readCompetitorSuggestions.mockRejectedValue(new Error('42501'))
+    const unread = await inspirationReadModel(context, niche)
+    expect(mocks.nicheEmails).not.toHaveBeenCalled()
+    expect(unread.unread).toEqual(['suggestions', 'niche'])
+    mocks.readCompetitorSuggestions.mockResolvedValue(suggestions)
+    mocks.nicheEmails.mockRejectedValue(new Error('sheet down'))
+    expect((await inspirationReadModel(context, niche)).unread).toEqual([
+      'niche'
+    ])
   })
 })
 

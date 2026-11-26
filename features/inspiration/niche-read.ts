@@ -10,8 +10,13 @@ import {
 } from '@/features/library/reference-library/model'
 import type { Database } from '@/lib/supabase/database.types'
 
-/** The latest emails read per brand of the niche. */
+/** The latest emails shown per brand of the niche... */
 export const nichePerBrand = 6
+/**
+ * ...out of this many of its latest stored ones, so newer emails no person
+ * rated Exemplary do not hide its older approved ones.
+ */
+export const nicheReadPerBrand = 30
 
 export type NicheBrand = { captureId: string; domain: string; name: string }
 
@@ -45,7 +50,7 @@ export async function nicheEmails(
         .eq('capture_id', b.captureId)
         .order('received_at', { ascending: false })
         .order('id')
-        .limit(nichePerBrand)
+        .limit(nicheReadPerBrand)
     )
   )
   const failed = reads.find((r) => r.error)
@@ -59,9 +64,16 @@ export async function nicheEmails(
     (e) =>
       e.synthetic === isSampleDomain(brandOf.get(e.capture_id)?.domain ?? '')
   )
+  // The newest `nichePerBrand` of each brand (each read is newest first).
+  const perBrand = new Map<string, number>()
+  const kept = emails.filter((e) => {
+    const n = (perBrand.get(e.capture_id) ?? 0) + 1
+    perBrand.set(e.capture_id, n)
+    return n <= nichePerBrand
+  })
   const shots = [
     ...new Set(
-      emails.flatMap((e) => (e.screenshot_path ? [e.screenshot_path] : []))
+      kept.flatMap((e) => (e.screenshot_path ? [e.screenshot_path] : []))
     )
   ]
   const signed = shots.length
@@ -72,7 +84,7 @@ export async function nicheEmails(
       s.path && s.signedUrl && !s.error ? [[s.path, s.signedUrl] as const] : []
     )
   )
-  return emails.map((email) => {
+  return kept.map((email) => {
     const brand = brandOf.get(email.capture_id)
     return {
       id: email.id,

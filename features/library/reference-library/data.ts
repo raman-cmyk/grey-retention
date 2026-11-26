@@ -58,11 +58,14 @@ export const statusOf = (
 ): TrackedDomain['status'] =>
   real
     ? // Real brands come from Grey Observer, not the sample capture job.
+      // Requested only while a request is pending; a brand Observer
+      // collects whose emails are not (or no longer) rated Exemplary waits
+      // for one.
       emails > 0
       ? 'live'
-      : real.subscription === 'subscribed'
-        ? 'subscribed'
-        : 'requested'
+      : real.subscription === 'pending'
+        ? 'requested'
+        : 'subscribed'
     : status === 'error'
       ? 'error'
       : emails > 0 && (status === 'live' || status === 'degraded')

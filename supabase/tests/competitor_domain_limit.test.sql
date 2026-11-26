@@ -26,7 +26,7 @@ select is(pg_temp.active_count(),10,'all 10 are tracked');
 select is((pg_temp.sub('limit-1.example')).private_rules,'','a new domain starts without private rules');
 set local role authenticated;
 select throws_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','limit-11.example')$$,'PT409','You can track up to 10 domains','an 11th domain is refused');
-select throws_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','brand.com')$$,'23514',null,'only sample .example domains in this version');
+select throws_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','brand.com')$$,'PT403',null,'a sample store cannot ask for a real brand (GROS-INS-002)');
 select throws_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101',repeat('a',120) || '.example')$$,'23514',null,'a domain too long to be its own label is refused');
 
 -- The advanced page sets rules; tracking the same domain again keeps them.

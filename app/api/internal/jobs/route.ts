@@ -42,7 +42,9 @@ const noStore = { 'cache-control': 'no-store' }
  * `Authorization: Bearer <CRON_SECRET>`. It first reads the Inspiration inbox
  * once (INB-001: Gmail when `INBOX_IMAP_USER` and `INBOX_IMAP_APP_PASSWORD`
  * are set, otherwise the sample inbox), keeps the images of new emails
- * (INB-002), at most 18 seconds together, then runs due
+ * (INB-002), at most 18 seconds together, then hands brand requests to
+ * Grey Observer through its Sheet (GROS-INS-002, at most 8 seconds, only
+ * with `OBSERVER_SOURCE=sheet`), then runs due
  * jobs for every active workspace in bounded batches through the fixture
  * adapters only, in what is left of the 40-second budget. The inbox does
  * not depend on `ADAPTER_MODE`; the workspace jobs do.

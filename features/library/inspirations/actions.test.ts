@@ -108,9 +108,13 @@ describe('trackDomain', () => {
     expect(
       (await trackDomain({}, form({ domain: 'eleventh.com' }))).error
     ).toBe(
-      'You asked for 10 new brands today, the most in a day. Try again tomorrow.'
+      'This store asked for 10 new brands today, the most in a day. Try again tomorrow.'
     )
     expect(revalidatePath).not.toHaveBeenCalled()
+    rpc.mockResolvedValue({ data: null, error: { code: 'PT403' } })
+    expect(
+      (await trackDomain({}, form({ domain: 'realbrand.com' }))).error
+    ).toMatch(/^Only a store connected to its real brand/)
   })
 
   it('tracks a sample domain and asks for its emails', async () => {

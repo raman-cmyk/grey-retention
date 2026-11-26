@@ -108,7 +108,12 @@ export async function trackDomain(
     if (saved.error.code === 'PT429')
       return {
         error:
-          'You asked for 10 new brands today, the most in a day. Try again tomorrow.'
+          'This store asked for 10 new brands today, the most in a day. Try again tomorrow.'
+      }
+    if (saved.error.code === 'PT403')
+      return {
+        error:
+          'Only a store connected to its real brand can ask for a new brand. Follow a sample brand, whose website ends in .example.'
       }
     if (saved.error.code === '23514')
       return {
@@ -132,9 +137,14 @@ export async function trackDomain(
     .select('subscription_status')
     .eq('domain', domain)
     .maybeSingle()
+  // Followed either way; when its status cannot be read, say only that.
+  if (now.error || !now.data)
+    return {
+      message: `Following ${domain}. Its emails appear here once our team rates them Exemplary.`
+    }
   return {
     message:
-      now.data?.subscription_status === 'pending'
+      now.data.subscription_status === 'pending'
         ? `Requested ${domain}. We are subscribing to its emails; they appear here once our team rates them Exemplary.`
         : `Following ${domain}. Only its human-rated Exemplary emails appear here.`
   }
