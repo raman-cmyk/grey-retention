@@ -3,6 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { ownerLine } from '@/features/fallback/owner-words'
 import { buildReason } from './failure-words'
+import type { KlaviyoState } from '@/features/results/klaviyo-state'
+import type { EmailStatus } from '@/features/results/sync'
 import {
   emailScreen,
   type EmailLogLine,
@@ -31,7 +33,9 @@ function slotFormat(plan: unknown, slot: number): 'designed' | 'text' {
 export async function loadEmailScreen(
   db: SupabaseClient<Database>,
   tenantId: string,
-  buildId: string
+  buildId: string,
+  /** The store's time zone (the session's), for Klaviyo's send times. */
+  timezone = 'UTC'
 ): Promise<{ ok: true; screen: EmailScreen | null } | { ok: false }> {
   const build = await db
     .from('email_builds')
@@ -53,7 +57,7 @@ export async function loadEmailScreen(
       .order('last_seen_at', { ascending: false })
       .limit(maxLines)
   // A build id and a push key are uuids: no LIKE wildcard in either.
-  const [run, own, test] = await Promise.all([
+  const [run, own, test, synced] = await Promise.all([
     db
       .from('strategy_runs')
       .select('plan')
@@ -61,9 +65,30 @@ export async function loadEmailScreen(
       .eq('id', row.run_id)
       .maybeSingle(),
     lines(`%email-build-${row.id}%`),
-    lines(`ab-test:${row.push_key}:%`)
+    lines(`ab-test:${row.push_key}:%`),
+    // PICK-99: what the results sync last read of its draft in Klaviyo.
+    db
+      .from('klaviyo_email_results')
+      .select(
+        'status,changed,design_changed,scheduled_for,send_strategy,sent_at,checked_at'
+      )
+      .eq('tenant_id', tenantId)
+      .eq('build_id', row.id)
+      .maybeSingle()
   ])
   if (run.error || own.error || test.error) return { ok: false }
+  // Not read: the page still opens, saying what it knows without it.
+  const s = synced.error ? null : synced.data
+  const klaviyoState: KlaviyoState | null = s
+    ? {
+        status: s.status as EmailStatus,
+        edited: s.changed || s.design_changed,
+        scheduledFor: s.scheduled_for,
+        sendStrategy: s.send_strategy,
+        sentAt: s.sent_at,
+        checkedAt: s.checked_at
+      }
+    : null
   // The newest lines, shown oldest first.
   const log: EmailLogLine[] = [...(own.data ?? []), ...(test.data ?? [])]
     .sort((a, b) => b.last_seen_at.localeCompare(a.last_seen_at))
@@ -99,7 +124,9 @@ export async function loadEmailScreen(
         referenceReason:
           typeof row.referenceReason === 'string'
             ? row.referenceReason.slice(0, 600)
-            : null
+            : null,
+        klaviyoState,
+        timezone
       },
       log
     )

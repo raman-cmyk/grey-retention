@@ -25,6 +25,10 @@ import { libraryCopyOn } from './library-copy'
 import { libraryPortsFor } from './library-copy-live'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, refusedCode, type BuildFailureCode } from './failure-words'
+import {
+  storedRefusal,
+  type KlaviyoRefusal
+} from '@/features/results/never-overwrite'
 import { type SavedOffers, type StoreSource } from './ports'
 import type { ReferenceEmail } from '@/features/studio/reference'
 import {
@@ -120,6 +124,15 @@ export async function runEmailBuilds(
      * (`readReferenceRows`, `toReferences`).
      */
     references?: ReferenceLoader
+    /**
+     * PICK-99: what the owner did in Klaviyo with this planned email's
+     * draft (by its push key), as the results sync last read it: a push is
+     * refused before the pusher is called. Default: `storedRefusal` on `db`.
+     */
+    klaviyoState?: (
+      tenantId: string,
+      pushKey: string
+    ) => Promise<KlaviyoRefusal | null>
   } = {}
 ) {
   const pusher = deps.pusher ?? fakeDraftPusher()
@@ -472,6 +485,16 @@ export async function runEmailBuilds(
         const email = builtEmail.safeParse(job.email)
         if (!email.success) {
           await fail('built_email_invalid', true)
+          continue
+        }
+        // PICK-99: never overwrite the owner's work. A draft of this
+        // planned email (same push key) he scheduled, sent, deleted,
+        // cancelled or changed in Klaviyo is left as it is.
+        const owners = await (deps.klaviyoState
+          ? deps.klaviyoState(job.tenant_id, job.push_key)
+          : storedRefusal(db, job.tenant_id, job.push_key))
+        if (owners) {
+          await fail(refusedCode(owners), true)
           continue
         }
         // REL-OFF: the last gate before Klaviyo. A push can wait on Klaviyo
