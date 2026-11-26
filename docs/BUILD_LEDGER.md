@@ -356,6 +356,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 ## Build takeover tasks
 
+GROS-OBS-003 — review, Codex brand rating defaults: named human brand ratings apply to current/future emails; explicit email ratings override them. Owns Observer selection and tests, source docs, and the separate Observer export package. No SQL changes.
+
 GROS-OBS-002 — review, Codex Observer activation: normalize legacy display-name sender cells with the existing mailbox helper before original-message identity checks. Owns observer-sheet.ts and regression tests; no migrations or mailbox mutation.
 
 ONB-RESILIENCE-001 — complete, Codex live onboarding: preserve successfully checked site pages when another page has a temporary model outage, retry a wholly unanswered site, and match the history request timeout to its admission margin. No SQL or persisted finding/history shape changes.
@@ -373,6 +375,8 @@ KLV-KEY-001 — complete, Codex live onboarding: accept internal underscore sepa
 | STR-LIVE-001 | Connect existing strategy agents to owner-started planning behind an off-by-default switch | STR-003, ONB-057b | review | Codex takeover | Full verify: 4,118 tests; reviewer ready | No live switch or provider change. Keep cron and sample planning code-only. |
 
 ## Global decisions
+
+- GROS-OBS-003 (27 Nov 2026, owner confirmed): named human brand ratings default existing/future newsletter emails; any nonblank individual rating overrides the brand and requires its own reviewer. Missing/invalid/duplicate identities never approve an import. Brand and email inputs remain in the existing Sheet, read independently of derived formulas. No new credential or SQL contract.
 
 - GROS-OBS-002 (26 Nov 2026): legacy Observer rows may store the From cell as a display-name mailbox. Normalize that cell using the existing `bareAddress` helper and reject unusable values before Gmail lookup. Original sender, recipient and Message-ID checks remain required; human ratings and original archive records are unchanged.
 
@@ -4854,3 +4858,14 @@ Verification: full Vitest suite 4,637 passed, 23 skipped; new source/transport/s
 - Verification run: 44 focused source, transport, worker, mailbox and MIME tests passed; TypeScript and changed-file ESLint passed. Regression tests cover display-name/case normalization, Good and unnamed-reviewer rejection, invalid senders, legacy Message-ID lookup and rejecting an original with another sender.
 - Known issues: code is not yet deployed. The owner's Observer deployment succeeded and its review rows now exist, but a real human-approved Gmail import is still pending. The preceding live scheduled job read the Sheet successfully with no selections; it did not authenticate to Gmail. Seven pre-existing asset failures were reported separately.
 - Next consumer: CI/review and GROS deployment, then owner assigns genuine ratings and the live original import/withdrawal checks. No repeat PC download required for this server-side correction.
+
+### 2026-11-27 — GROS-OBS-003 — brand defaults with email overrides
+
+- Status: review
+- Branch/worktree: `codex/observer-legacy-senders`; PR #672 expanded to the final approved curation behavior.
+- Commit(s): this change.
+- Changed contracts: additive optional Brand ratings source (`observer-brand-review-v1`, A:I), exact-ID/domain inheritance, explicit email precedence and reviewer attribution. Identified transactionals are excluded alongside confirmations. Original email source schema stays A:V. Requests batch source pages and reuse only per-instance grid metadata; rating values stay fresh for withdrawal gates.
+- Migrations: none. No credentials or mailbox flags changed.
+- Verification run: 49 focused source/transport/address/MIME/worker tests passed, including inheritance, override precedence, duplicate/invalid brands, withdrawal and transactional exclusion; 20 final source tests after metadata/request changes passed. TypeScript and changed-file lint passed. Full suite: 4,671 passed, 23 skipped, with one unrelated pathological-preview nesting test timing out under load; that unchanged test passed in an isolated 21-test rerun. Observer exporter: 102 checks and Worker dry-run passed.
+- Known issues: both updated deployments and real human approval/withdrawal are pending. Unclassified email types remain possible; no conversion/design verdict is inferred. Live Sheet controls were checked through native metadata; browser render unavailable due to connection timeout.
+- Next consumer: deploy PR and Observer v1.5.0, then human ratings and live Gmail/inspiration acceptance.

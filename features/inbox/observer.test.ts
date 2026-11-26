@@ -54,6 +54,111 @@ function row(rating = 'Exemplary', reviewer = 'Reviewer') {
   r[21] = 'observer-email-review-v1'
   return r
 }
+const brandHeaders = [
+  'Brand ID',
+  'Domain',
+  'Brand rating',
+  'Reviewer',
+  'Review notes',
+  'Collected emails',
+  'Open brand emails',
+  'Data issue',
+  'Schema version'
+]
+const brandRow = (rating: unknown = 'Exemplary', reviewer = 'Reviewer') => [
+  'brand-1',
+  entry.domain,
+  rating,
+  reviewer,
+  '',
+  '',
+  '',
+  '',
+  'observer-brand-review-v1'
+]
+
+describe('brand defaults with email overrides', () => {
+  it('inherits a named brand rating for existing and newly collected emails', () => {
+    const inherited = row('', '')
+    const newer = [...inherited]
+    newer[0] = 'email-new'
+    expect(
+      selectedObserverRows(
+        [headers, inherited, newer],
+        [brandHeaders, brandRow()]
+      )
+    ).toEqual([entry, { ...entry, id: 'email-new' }])
+  })
+  it('lets explicit ratings override either direction, without borrowing the brand reviewer', () => {
+    for (const rating of [
+      'Good',
+      'Unreviewed',
+      'Needs improvement',
+      'Unusable',
+      'exemplary',
+      '3/5'
+    ])
+      expect(
+        selectedObserverRows([headers, row(rating)], [brandHeaders, brandRow()])
+      ).toEqual([])
+    const invalid = row()
+    ;(invalid as unknown[])[12] = 46086
+    expect(
+      selectedObserverRows([headers, invalid], [brandHeaders, brandRow()])
+    ).toEqual([])
+    expect(
+      selectedObserverRows(
+        [headers, row('Exemplary', '')],
+        [brandHeaders, brandRow()]
+      )
+    ).toEqual([])
+    expect(
+      selectedObserverRows([headers, row()], [brandHeaders, brandRow('Good')])
+    ).toEqual([entry])
+  })
+  it('withdraws inherited approvals on downgrade/deletion, preserving explicit Exemplary', () => {
+    expect(
+      selectedObserverRows(
+        [headers, row('', '')],
+        [brandHeaders, brandRow('Good')]
+      )
+    ).toEqual([])
+    expect(
+      selectedObserverRows([headers, row('', '')], [brandHeaders])
+    ).toEqual([])
+    expect(selectedObserverRows([headers, row()], [brandHeaders])).toEqual([
+      entry
+    ])
+  })
+  it('rejects unnamed, mismatched, duplicate and malformed brand defaults', () => {
+    const other = brandRow()
+    other[1] = 'other.example'
+    const schema = brandRow()
+    schema[8] = 'old'
+    for (const rows of [
+      [brandRow('Exemplary', '')],
+      [other],
+      [schema],
+      [brandRow(), brandRow()]
+    ])
+      expect(
+        selectedObserverRows([headers, row('', '')], [brandHeaders, ...rows])
+      ).toEqual([])
+    expect(() => selectedObserverRows([headers, row('', '')], [[]])).toThrow(
+      'observer_sheet_unavailable'
+    )
+  })
+  it('excludes identified confirmations and transactionals even for an approved brand', () => {
+    for (const type of ['confirmation', 'transactional', 'Transactional']) {
+      const email = row('', '')
+      email[11] = type
+      expect(
+        selectedObserverRows([headers, email], [brandHeaders, brandRow()])
+      ).toEqual([])
+    }
+  })
+})
+
 describe('Observer human selection', () => {
   it('normalizes a legacy display-name sender without weakening human approval', () => {
     const legacy = row()
@@ -132,6 +237,7 @@ describe('Observer human selection', () => {
       },
       urls: string[] = [],
       claims: unknown[] = []
+    let brandRating = 'Exemplary'
     const request = vi.fn(
       async (url: string | URL | Request, init?: RequestInit) => {
         urls.push(String(url))
@@ -144,7 +250,7 @@ describe('Observer human selection', () => {
           )
           return Response.json({ access_token: 'private-token' })
         }
-        if (!String(url).includes('/values/'))
+        if (!String(url).includes('/values:batchGet'))
           return Response.json({
             sheets: [
               {
@@ -152,16 +258,30 @@ describe('Observer human selection', () => {
                   title: 'Email review',
                   gridProperties: { rowCount: 1000, columnCount: 22 }
                 }
+              },
+              {
+                properties: {
+                  title: 'Brand ratings',
+                  gridProperties: { rowCount: 1000, columnCount: 9 }
+                }
               }
             ]
           })
         expect(decodeURIComponent(String(url))).toContain('A6:V1000')
-        return Response.json({ values: [headers, row()] })
+        return Response.json({
+          valueRanges: [
+            { values: [headers, row('', '')] },
+            { values: [brandHeaders, brandRow(brandRating)] }
+          ]
+        })
       }
     )
     const source = observerSelection(env, request as typeof fetch)
     expect(await source.read()).toEqual([entry])
     expect(await source.read()).toEqual([entry])
+    brandRating = 'Good'
+    expect(await source.read()).toEqual([])
+    expect(urls.filter((u) => u.includes('fields=sheets'))).toHaveLength(1)
     expect(urls.filter((u) => u.includes('oauth2.'))).toHaveLength(1)
     expect(claims[0]).toMatchObject({
       scope: 'https://www.googleapis.com/auth/spreadsheets.readonly'
