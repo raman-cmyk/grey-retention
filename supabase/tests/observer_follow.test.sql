@@ -1,11 +1,15 @@
 begin;
-select plan(6);
+select plan(7);
 
 insert into public.competitor_captures(domain,synthetic,alias_slug)
 values ('curated-observer.test',false,'observer-curated'),('uncurated-observer.test',false,'observer-uncurated');
+-- Tests are isolated transactions; an earlier inbox test cannot seed this mailbox.
+insert into public.inbox_mailboxes(key,transport) values ('gmail','gmail_imap') on conflict (key) do nothing;
 insert into public.inbox_messages(mailbox_id,message_key,uidvalidity,uid,transport_id,raw_path,raw_sha256,raw_bytes,received_at,synthetic,state,method,capture_id)
 select m.id,repeat('a',64),999001,999001,'observer:fixture-email','gmail/'||repeat('a',64)||'.eml',repeat('a',64),100,now(),false,'assigned','alias',c.id
 from public.inbox_mailboxes m,public.competitor_captures c where m.key='gmail' and c.domain='curated-observer.test';
+
+select is((select count(*)::int from public.inbox_messages where transport_id='observer:fixture-email'),1,'the fixture includes one approved original');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
