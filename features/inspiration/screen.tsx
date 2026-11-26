@@ -263,13 +263,7 @@ function FilterLink({
   )
 }
 
-function Filters({
-  label,
-  children
-}: {
-  label: string
-  children: ReactNode
-}) {
+function Filters({ label, children }: { label: string; children: ReactNode }) {
   return (
     <nav aria-label={label} className="flex flex-wrap gap-[var(--space-2)]">
       {children}
