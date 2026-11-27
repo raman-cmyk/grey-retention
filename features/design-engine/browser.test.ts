@@ -20,6 +20,13 @@ describe('getting an email ready for the locked browser', () => {
     expect(out).not.toMatch(/data-gr-section="9"|data-gr-section='9'|data-de-/)
     expect(out).toContain('data-gr-section="1"')
     expect(out).toContain('data-gr-section="2"')
+    // DES-ENGINE-003a: a mark after a slash (a browser reads it as an
+    // attribute) is removed too, and the tag stays whole.
+    const slashed = markedHtml(
+      '<table><tr><td><img/data-de-src="https://x.example/a.png" src="https://y.example/b.png"><img/data-de-held src="c.png"></td></tr></table>'
+    )
+    expect(slashed).not.toContain('data-de-')
+    expect(slashed).toContain('src="https://y.example/b.png"')
   })
 
   it('holds the place of a picture the browser may not load, keeping its address', () => {

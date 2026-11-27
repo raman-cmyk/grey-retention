@@ -97,6 +97,9 @@ export function localEnvironment(status) {
     // DES-ENGINE-002b2: Copy copies the chosen design in local fake mode
     // (the copying job runs only when a journey or a developer runs it).
     DESIGN_LIBRARY_COPY: 'on',
+    // DES-ENGINE-003: "Add your own email" in local fake mode (the
+    // measuring job runs only when a journey or a developer runs it).
+    DESIGN_UPLOAD_COPY: 'on',
     CRON_SECRET: status.cronSecret
   }
 }
