@@ -88,6 +88,9 @@ create unique index library_blocks_shared_print on public.library_blocks (versio
 create unique index library_blocks_private_print on public.library_blocks (tenant_id, version, fingerprint)
   where tenant_id is not null;
 create index library_blocks_pick on public.library_blocks (kind, uses desc) where quality = 'passed';
+-- The deleting trigger and the purge's cascade find an upload's blocks by it.
+create index if not exists library_blocks_geometry_upload on public.library_blocks (geometry_upload)
+  where geometry_upload is not null;
 
 create table public.library_block_sources (
   block_id uuid not null references public.library_blocks(id) on delete cascade,
