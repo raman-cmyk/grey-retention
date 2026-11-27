@@ -3,6 +3,7 @@ import { observerAllowed } from '@/features/inbox/observer-access'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { inspirationBlueprint } from '@/features/inbox/blueprints'
+import { recentPicks, workspaceLibrary } from '@/features/block-library/read'
 import {
   blueprintWords,
   copyFailures,
@@ -125,11 +126,18 @@ const placeholderLeft = /https:\/\/email-copies\.invalid\//
 
 export function libraryPortsFor(
   db: Db,
-  input: { tenant: string; build: string; lease: string; upload?: string }
+  input: {
+    tenant: string
+    build: string
+    lease: string
+    upload?: string
+    /** DES-ENGINE-004b: a Scratch build with the library on. */
+    scratch?: boolean
+  }
 ): LibraryCopyPort {
   /** Asks for the copy (stored once), reads it, and signs its cut photos. */
   const ask = async (
-    source: { message: string } | { upload: string },
+    source: { message: string } | { upload: string } | { blocks: string[] },
     copyIn: CopyInput,
     photos: number
   ): Promise<CopyState> => {
@@ -141,7 +149,9 @@ export function libraryPortsFor(
       lease: input.lease,
       ...('upload' in source
         ? { upload: source.upload, message: null }
-        : { message: source.message }),
+        : 'blocks' in source
+          ? { blocks: source.blocks, message: null }
+          : { message: source.message }),
       input: copyIn as unknown as Json,
       photos
     } as never)
@@ -225,6 +235,26 @@ export function libraryPortsFor(
     return { state: 'done', record: { ...record.data, html } }
   }
   return {
+    ...(input.scratch
+      ? {
+          scratch: {
+            // The blocks this workspace may use (hidden ones left out) and
+            // its last Scratch emails' picks.
+            async library() {
+              const [blocks, recent] = await Promise.all([
+                workspaceLibrary(db, input.tenant),
+                recentPicks(db, input.tenant)
+              ])
+              return { blocks: blocks.filter((b) => !b.hidden), recent }
+            },
+            copy: (
+              blocks: readonly string[],
+              copyIn: CopyInput,
+              photos: number
+            ) => ask({ blocks: [...blocks] }, copyIn, photos)
+          }
+        }
+      : {}),
     ...(input.upload
       ? {
           upload: input.upload,

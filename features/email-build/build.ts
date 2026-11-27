@@ -169,6 +169,11 @@ export const builtEmail = z.object({
        * (its look kept) or another brand's (copied like a library email).
        */
       upload: z.enum(['own', 'other']).optional(),
+      /**
+       * DES-ENGINE-004b: a Scratch email built from this many library
+       * blocks (`emailId` is then `scratch`).
+       */
+      scratch: z.int().min(1).max(12).optional(),
       sections: z.array(copiedSection).max(41),
       footerAdded: z.boolean()
     })

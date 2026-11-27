@@ -10,6 +10,7 @@ import type {
 import type { WordPools, WordRules } from '@/features/design-engine/words'
 import type { WebFont } from '@/features/studio/design-step'
 import type { Store } from './ports'
+import type { LibraryBlock } from './scratch'
 
 /**
  * DES-ENGINE-002b2: "Use this design" with Copy, in the email build's
@@ -228,6 +229,19 @@ export type LibraryCopyPort = {
     input: CopyInput,
     photos: number
   ) => Promise<CopyState>
+  /**
+   * DES-ENGINE-004b: a Scratch build with the library on
+   * (`DESIGN_LIBRARY_SCRATCH=on`): the blocks the workspace may use and its
+   * last Scratch emails' picks, and the copy of the picked blocks.
+   */
+  scratch?: {
+    library: () => Promise<{ blocks: LibraryBlock[]; recent: string[] }>
+    copy: (
+      blocks: readonly string[],
+      input: CopyInput,
+      photos: number
+    ) => Promise<CopyState>
+  }
 }
 
 export type UploadBlueprintState =
@@ -256,6 +270,20 @@ export const copyWords = {
     'The copy of your own design did not keep its look (its colours, fonts or pictures), so this email was made with coded blocks.',
   uploadTooLittle: (copied: number, total: number) =>
     `Only ${copied} of the ${total} sections of your email could be copied, so this email was made with coded blocks.`
+} as const
+
+/** DES-ENGINE-004b: why a Scratch email was drawn with coded blocks instead of from the library. */
+export const scratchWords = {
+  none: (reason: string) =>
+    `GROS could not build this email from the block library (${reason.replace(/\.$/, '')}), so it was made with coded blocks.`,
+  copying:
+    'Drawing this email from the block library took too long, so it was made with coded blocks.',
+  failed: (reason: string) =>
+    `This email could not be drawn from the block library (${reason.replace(/\.$/, '')}), so it was made with coded blocks.`,
+  leaks:
+    'The email drawn from the block library still showed something of another brand when GROS checked it, so it was made with coded blocks instead (your brand’s words and photos only).',
+  checks:
+    'The email drawn from the block library did not pass the email checks, so it was made with coded blocks.'
 } as const
 
 /** DES-ENGINE-003b: at least this share of an upload's sections must be copied. */
@@ -462,10 +490,19 @@ export const photosFor = (input: CopyInput) =>
 export function copiedLines(library: {
   sections: readonly CopiedSection[]
   upload?: 'own' | 'other'
+  scratch?: number
 }): string[] {
   const reasons = library.sections.flatMap((s) =>
     s.result !== 'copied' && s.reason ? [s.reason] : []
   )
+  // DES-ENGINE-004b: a Scratch email from the block library.
+  if (library.scratch)
+    return [
+      reasons.length
+        ? `Built from ${library.scratch} layouts in the GROS block library, in your brand’s colours, fonts, logo, words and photos. Some sections were built differently:`
+        : `Built from ${library.scratch} layouts in the GROS block library, in your brand’s colours, fonts, logo, words and photos. Only the layouts come from the library: never another brand’s words or pictures.`,
+      ...reasons
+    ]
   // DES-ENGINE-003b: one of the owner's own uploaded emails, said by how
   // much of it was kept.
   const { copied, total } = copiedCount(library.sections)

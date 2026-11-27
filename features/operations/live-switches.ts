@@ -6,6 +6,7 @@ import { klaviyoMode } from '@/features/connections/live-klaviyo'
 import { designStudioOn } from '@/features/studio/waits'
 import { libraryCopyOn } from '@/features/email-build/library-copy'
 import { uploadCopyOn } from '@/features/email-uploads/switch'
+import { libraryScratchOn } from '@/features/email-build/scratch-switch'
 import { inboxConfig } from '@/features/inbox/config'
 import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import { strategyAgentsOn } from '@/features/strategy/agents'
@@ -150,6 +151,20 @@ export function liveSwitches(env: Env = process.env): LiveSwitch[] {
           state: 'off',
           detail:
             'Off: “Add your own email” is not shown and no upload is measured. Set DESIGN_UPLOAD_COPY=on.'
+        },
+    // DES-ENGINE-004b: Scratch builds from the whole block library.
+    libraryScratchOn(env)
+      ? {
+          label: 'Scratch from the library',
+          state: 'on',
+          detail:
+            'On: a Scratch email picks its sections from the block library (layouts captured from the Inspiration inbox and your own emails) and is drawn in the brand’s look by the copying job (where the scheduled jobs are on, SCHEDULED_JOBS_ENABLED).'
+        }
+      : {
+          label: 'Scratch from the library',
+          state: 'off',
+          detail:
+            'Off: a Scratch email is drawn with the 20 coded blocks. Set DESIGN_LIBRARY_SCRATCH=on.'
         },
     klaviyoMode(env) === 'live'
       ? {

@@ -3400,6 +3400,7 @@ export type Database = {
       }
       email_copies: {
         Row: {
+          blocks: string[] | null
           build_id: string
           cleaned_at: string | null
           created_at: string
@@ -3414,6 +3415,7 @@ export type Database = {
           upload_id: string | null
         }
         Insert: {
+          blocks?: string[] | null
           build_id: string
           cleaned_at?: string | null
           created_at?: string
@@ -3428,6 +3430,7 @@ export type Database = {
           upload_id?: string | null
         }
         Update: {
+          blocks?: string[] | null
           build_id?: string
           cleaned_at?: string | null
           created_at?: string
@@ -5505,6 +5508,49 @@ export type Database = {
           },
           {
             foreignKeyName: 'learning_runs_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      library_block_hides: {
+        Row: {
+          block_id: string
+          hidden_at: string
+          hidden_by: string
+          tenant_id: string
+        }
+        Insert: {
+          block_id: string
+          hidden_at?: string
+          hidden_by: string
+          tenant_id: string
+        }
+        Update: {
+          block_id?: string
+          hidden_at?: string
+          hidden_by?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'library_block_hides_block_id_fkey'
+            columns: ['block_id']
+            isOneToOne: false
+            referencedRelation: 'library_blocks'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_block_hides_hidden_by_fkey'
+            columns: ['hidden_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_block_hides_tenant_id_fkey'
             columns: ['tenant_id']
             isOneToOne: false
             referencedRelation: 'tenants'
@@ -9028,6 +9074,7 @@ export type Database = {
       }
       request_email_copy: {
         Args: {
+          blocks?: string[]
           build: string
           input: Json
           lease: string
@@ -9364,6 +9411,10 @@ export type Database = {
       set_holiday_country: {
         Args: { country: string; t: string }
         Returns: undefined
+      }
+      set_library_block_hidden: {
+        Args: { block: string; hide: boolean; t: string }
+        Returns: boolean
       }
       set_margin_floor: {
         Args: {
