@@ -81,6 +81,19 @@ describe.skipIf(!on)('library 1:1 gate', () => {
       expect(
         rows.flatMap((r) => r.leaks.map((l) => `${r.id}: ${l.kind} ${l.value}`))
       ).toEqual([])
+      // PICK-006: the tokens visibly changed the buttons as drawn.
+      const buttons = rows.flatMap((r) => r.buttons ?? [])
+      expect(buttons.length).toBeGreaterThan(0)
+      const style = brand.tokens?.['button.style'].value
+      const corner = brand.tokens?.['radius.button'].value
+      if (style === 'outline')
+        expect(buttons.every((b) => b.outline)).toBe(true)
+      if (style === 'filled') expect(buttons.some((b) => b.outline)).toBe(false)
+      if (brand.tokens && corner !== undefined)
+        for (const b of buttons)
+          expect(b.radius).toBeLessThanOrEqual(corner + 0.5)
+      if (style === 'outline')
+        expect(buttons.some((b) => b.radius > 8)).toBe(true)
       if (!only.length)
         expect(rows.filter((r) => r.pass).length).toBeGreaterThanOrEqual(
           brandGateTarget
