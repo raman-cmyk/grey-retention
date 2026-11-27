@@ -693,6 +693,30 @@ describe('the design step judges the studio’s email whole (DST-006d part 2c)',
     ])
   })
 
+  it('gives the studio the brand’s own web fonts the store carries (pick #3)', async () => {
+    const { store, progress, blocks, hero } = await beforeDesign()
+    const face = {
+      family: 'Fraunces',
+      url: 'https://fonts.gstatic.com/s/fraunces/v1/600.woff2',
+      weight: 600,
+      italic: false
+    }
+    const studio = ports(blocks, hero)
+    await step(
+      {
+        ...store,
+        fonts: [{ family: 'Fraunces', roles: ['heading'], faces: [face] }]
+      },
+      progress,
+      studio
+    )
+    expect(vi.mocked(studio.design).mock.calls[0]![0].fonts).toEqual([face])
+    // A store without them: none, as before.
+    const plain = ports(blocks, hero)
+    await step(store, progress, plain)
+    expect(vi.mocked(plain.design).mock.calls[0]![0].fonts).toEqual([])
+  })
+
   it('gives the studio the inbox email the sections step picked (DST-002b)', async () => {
     const reference: ReferenceEmail = {
       id: 'ref-1',

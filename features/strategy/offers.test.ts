@@ -311,6 +311,8 @@ describe('the margin floor (PLN-039)', () => {
     )
     const read = await readPlanOffers(source, tenant, '2026-11-16', zone)
     expect(read.maxDiscountPercent).toBe(42)
+    // PLN-039b: the plan knows the floor set it, to say so.
+    expect(read.limitedBy).toBe('margin_floor')
     const picked = [
       { id: 'offer:SALE45', code: 'SALE45', percent: 45, until: null },
       { id: 'offer:OWNER10', code: 'OWNER10', percent: 10, until: null }

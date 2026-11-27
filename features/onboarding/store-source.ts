@@ -38,6 +38,7 @@ import {
   sentEmail,
   type HistorySnapshot
 } from '@/features/onboarding/history/facts'
+import { brandFonts, type BrandFont } from '@/features/onboarding/brand-fonts'
 import { listFindings, type Finding } from '@/features/onboarding/findings'
 import {
   storeMaterial,
@@ -117,6 +118,11 @@ export type OwnStoreParts = {
    * `brand_photos`) and the website they were read from.
    */
   sitePhotos?: { domain: string; photos: readonly SitePhotoRow[] } | null
+  /**
+   * Pick #3: the brand's web fonts the Site reader kept (`brandFonts`,
+   * already only from the workspace's current website), heading first.
+   */
+  fonts?: readonly BrandFont[] | null
 }
 
 /**
@@ -254,7 +260,18 @@ export function storeFrom(parts: OwnStoreParts): Store {
     ...(parts.history ? { pastSubjects: pastSubjects(parts.history) } : {}),
     ...(confirmed ? { confirmed } : {}),
     ...voiceOf(parts.voice, [name, ...products.map((p) => p.title)]),
-    ...neverWordsOf(parts.neverWords, facts)
+    ...neverWordsOf(parts.neverWords, facts),
+    // Pick #3: the website's own fonts (`brandFonts` keeps only those of a
+    // live read of the current website; the sample store has none).
+    ...(parts.fonts?.length
+      ? {
+          fonts: parts.fonts.map((f) => ({
+            family: f.family,
+            roles: [...f.roles],
+            faces: [...f.faces]
+          }))
+        }
+      : {})
   }
 }
 
@@ -345,7 +362,8 @@ export function ownStoreSource(db: Db): StoreSource {
         history,
         voice,
         neverWords,
-        sitePhotos
+        sitePhotos,
+        fonts
       ] = await Promise.all([
         workspaceTimezone(db, tenantId),
         listCatalog(db, tenantId, { featurableOnly: true, synthetic: !live }),
@@ -393,6 +411,13 @@ export function ownStoreSource(db: Db): StoreSource {
             code: String((error as { code?: unknown })?.code ?? 'unknown')
           })
           return null
+        }),
+        // Pick #3: optional; without them the brand kit's font is used.
+        brandFonts(db, tenantId).catch((error: unknown) => {
+          logger.warn('Brand fonts unreadable for the email', {
+            code: String((error as { code?: unknown })?.code ?? 'unknown')
+          })
+          return null
         })
       ])
       if (profile.error) throw profile.error
@@ -435,7 +460,8 @@ export function ownStoreSource(db: Db): StoreSource {
           history && history.live === live && neverWords
             ? neverWords.never.map((w) => w.phrase)
             : null,
-        sitePhotos
+        sitePhotos,
+        fonts
       })
     }
   }
