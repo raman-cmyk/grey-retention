@@ -6,12 +6,14 @@ import { cn } from '@/lib/utils'
 import { Card } from './card'
 import { grosRoot } from './font'
 import { Mark } from './mark'
+import { NoticesButton } from './notices-button'
 
 /**
  * Nav (BRAND.md): the top bar is the only navigation. The mark and the page
  * title on the left, a white pill menu of six items in the middle (Brand
  * joined the five on 25 Nov, UI-BRAND-2), and on
- * the right the wide Ask GROS button and the round Settings button. No
+ * the right the wide Ask GROS button, the round Notifications button
+ * (PICK-107) and the round Settings button. No
  * sidebar. On a narrow screen the three parts wrap onto their own lines;
  * nothing hides behind a menu icon.
  */
@@ -34,7 +36,7 @@ export const navItems = [
 }[]
 export type NavKey = (typeof navItems)[number]['key']
 /** The page's place in the bar: a menu item, or one of the two buttons. */
-export type NavPlace = NavKey | 'settings' | 'ask'
+export type NavPlace = NavKey | 'settings' | 'ask' | 'notices'
 export const settingsHref: Route = '/settings'
 export const askHref: Route = '/gros'
 /** The assistant's name (the white label may rename it). */
@@ -127,6 +129,11 @@ export function TopBar({
             <MessageCircle aria-hidden size={20} strokeWidth={2} />
             Ask {assistant}
           </Link>
+          {/* PICK-107: the person's notices, with how many are new. */}
+          <NoticesButton
+            current={current === 'notices'}
+            className={roundPillClass}
+          />
           <Link
             href={settingsHref}
             aria-label="Settings"

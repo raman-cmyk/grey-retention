@@ -29,6 +29,10 @@ const emails = vi.hoisted(() => ({
 vi.mock('@/features/email-build/worker', () => emails)
 const push = vi.hoisted(() => ({ draftPusherFor: vi.fn(() => ({})) }))
 vi.mock('@/features/klaviyo-push/live', () => push)
+const notices = vi.hoisted(() => ({
+  sendNoticeEmails: vi.fn(async () => ({ sent: 3 }))
+}))
+vi.mock('@/features/notifications/email', () => notices)
 
 import { GET } from '@/app/api/internal/jobs/route'
 
@@ -200,7 +204,8 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
         }
       },
       plans: { ran: 1 },
-      emails: { ran: 2 }
+      emails: { ran: 2 },
+      notices: { sent: 3 }
     })
     expect(scheduler.runScheduledJobs).toHaveBeenCalledOnce()
     expect(strategy.runStrategyRuns).toHaveBeenCalledOnce()
@@ -228,6 +233,24 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
     expect(response.status).toBe(200)
     expect((await response.json()).inbox.ready).toBe(false)
     expect(scheduler.runScheduledJobs).toHaveBeenCalledOnce()
+  })
+
+  it('emails notices through the fake mailer, and goes on when that step fails (PICK-107)', async () => {
+    await GET(request(`Bearer ${secret}`))
+    const db = service.createServiceClient.mock.results.at(-1)?.value
+    expect(notices.sendNoticeEmails).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ deliver: expect.any(Function) })
+    )
+    notices.sendNoticeEmails.mockRejectedValueOnce(
+      Object.assign(new Error('claim detail'), { code: 'PGRST301' })
+    )
+    const response = await GET(request(`Bearer ${secret}`))
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.notices).toEqual({ sent: 0 })
+    expect(JSON.stringify(body)).not.toContain('claim detail')
+    expect(scheduler.runScheduledJobs).toHaveBeenCalledTimes(2)
   })
 
   it('returns a safe error when the sweep cannot start', async () => {
