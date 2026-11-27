@@ -401,9 +401,16 @@ describe('CI workflows', () => {
       expect(step).toMatch(/if: steps\.peek\.outputs\.waiting != '0'/)
     // No token left on the runner the browser draws on.
     expect(text).toContain('persist-credentials: false')
+    // DES-ENGINE-004: the library blocks are peeked at and checked too.
+    expect(text).toContain(
+      "call '/api/internal/design/blocks?peek=1' blocks.json 30 || exit 1"
+    )
+    expect(text).toContain(
+      'run: node --import ./scripts/ts-register.mjs scripts/design-blocks.mjs'
+    )
     // The secret only reaches the steps that call the app (the peek, the
-    // copies and the uploads); no artifacts.
-    expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(3)
+    // copies, the uploads and the blocks); no artifacts.
+    expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(4)
     expect(text).not.toContain('upload-artifact')
   })
   it('keeps the onboarding readers workflow opt-in, HTTPS-only and one small request when idle', () => {
