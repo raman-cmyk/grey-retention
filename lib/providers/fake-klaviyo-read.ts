@@ -6,7 +6,9 @@ import type {
   KlaviyoFlow,
   KlaviyoReadProvider,
   KlaviyoSnapshot,
-  Money
+  Money,
+  ProfileFacts,
+  ProfileGroup
 } from './klaviyo-read'
 
 /**
@@ -601,9 +603,55 @@ export function sampleKlaviyoSnapshot({
     daily,
     activeSubscribers: { count: 16520, changePercent: 15 },
     abandonedCheckouts30d: 419,
+    profileGroups: sampleProfileGroups(now),
     // Sample data is never synced from Klaviyo.
     syncedAt: null
   }
+}
+
+/**
+ * PICK-101: the sample store's 16,520 people, grouped by what Klaviyo knows
+ * about them (list hygiene counts who it leaves out). Made up, like the
+ * rest: 310 bounced; 930 asleep for 180 days (390 of them only "open"
+ * through Apple Mail privacy); recent buyers who never click; people too
+ * new, emailed too little or with no data to judge; and engaged readers.
+ */
+export function sampleProfileGroups(now: Date): ProfileGroup[] {
+  const weekly = (weeks: number) =>
+    Array.from({ length: weeks }, (_, i) => iso(now, 3 + i * 7))
+  const quiet: ProfileFacts = {
+    suppression: null,
+    firstEmail: iso(now, 420),
+    emails: weekly(56),
+    lastClick: 'never',
+    lastOpen: 'never',
+    lastPrivacyOpen: 'never',
+    lastSiteVisit: 'never',
+    lastOrder: 'never'
+  }
+  const group = (count: number, facts: Partial<ProfileFacts>) => ({
+    count,
+    facts: { ...quiet, ...facts }
+  })
+  return [
+    group(310, { suppression: 'hard_bounce' }),
+    group(300, {}),
+    group(240, { lastClick: iso(now, 250) }),
+    group(390, { lastPrivacyOpen: iso(now, 4) }),
+    group(410, { lastOrder: iso(now, 40) }),
+    group(1200, { firstEmail: iso(now, 60), emails: weekly(9) }),
+    group(260, { emails: [iso(now, 20), iso(now, 80), iso(now, 150)] }),
+    group(180, {
+      firstEmail: 'unknown',
+      emails: 'unknown',
+      lastClick: 'unknown',
+      lastOpen: 'unknown',
+      lastPrivacyOpen: 'unknown'
+    }),
+    group(9000, { lastClick: iso(now, 12), lastOpen: iso(now, 12) }),
+    group(3130, { lastOpen: iso(now, 25) }),
+    group(1100, { lastSiteVisit: iso(now, 33) })
+  ]
 }
 
 /** The fake Klaviyo read adapter: labelled sample data, never a network call. */

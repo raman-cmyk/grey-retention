@@ -1,6 +1,7 @@
 import 'server-only'
 import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import { klaviyoPrivateKeyPattern } from './key-shape'
+import { grosSegmentNamePattern } from './segment-name'
 
 /**
  * The live Klaviyo client (KLV-001): JSON:API requests to Klaviyo's one
@@ -10,7 +11,8 @@ import { klaviyoPrivateKeyPattern } from './key-shape'
  * recorded transport instead of the network.
  *
  * Writes (PSH-001) go only to the addresses that make or change a draft
- * campaign, its variations, templates and images: nothing this client can
+ * campaign, its variations, templates and images, and to make GROS's own
+ * list-hygiene segment (PICK-101): nothing this client can
  * call schedules or sends an email (D17: the owner schedules in Klaviyo).
  * And none is made at all while the write lock is on (KLV-LOCK-001, the
  * default): only reads and the read-only report questions go out.
@@ -214,10 +216,13 @@ export type KlaviyoWriteMethod = 'POST' | 'PATCH' | 'DELETE'
 const kid = '[A-Za-z0-9_-]{1,64}'
 /**
  * Every write this client makes: a draft campaign, its message's test
- * settings, its variations, templates and images. Never a schedule, a send
- * job, a list, a segment, a profile or a campaign deletion.
+ * settings, its variations, templates and images, and (PICK-101) GROS's own
+ * list-hygiene segment, made once and never changed or deleted. Never a
+ * schedule, a send job, a list, any other segment, a profile or a campaign
+ * deletion.
  */
 const draftWrites: { method: KlaviyoWriteMethod; path: RegExp }[] = [
+  { method: 'POST', path: /^\/api\/segments\/?$/ },
   { method: 'POST', path: /^\/api\/campaigns\/?$/ },
   { method: 'POST', path: /^\/api\/campaign-messages\/?$/ },
   { method: 'PATCH', path: new RegExp(`^/api/campaign-messages/${kid}/?$`) },
@@ -229,6 +234,34 @@ const draftWrites: { method: KlaviyoWriteMethod; path: RegExp }[] = [
 ]
 export const isDraftWrite = (method: KlaviyoWriteMethod, path: string) =>
   draftWrites.some((w) => w.method === method && w.path.test(path))
+
+/**
+ * PICK-101: a segment write is only ever the create of GROS's own
+ * list-hygiene segment: `{ data: { type: 'segment', attributes: { name,
+ * definition, is_starred: false } } }` with a name GROS makes
+ * (`grosSegmentNamePattern`) and nothing else in it.
+ */
+export function isGrosSegmentCreate(body: unknown) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false
+  const { data, ...rest } = body as Record<string, unknown>
+  if (Object.keys(rest).length || !data || typeof data !== 'object')
+    return false
+  const { type, attributes, ...more } = data as Record<string, unknown>
+  if (type !== 'segment' || Object.keys(more).length) return false
+  if (!attributes || typeof attributes !== 'object') return false
+  const a = attributes as Record<string, unknown>
+  return (
+    Object.keys(a).every((k) =>
+      ['name', 'definition', 'is_starred'].includes(k)
+    ) &&
+    typeof a.name === 'string' &&
+    grosSegmentNamePattern.test(a.name) &&
+    !!a.definition &&
+    typeof a.definition === 'object' &&
+    !Array.isArray(a.definition) &&
+    (a.is_starred === undefined || a.is_starred === false)
+  )
+}
 
 /**
  * Fields a draft write never carries, anywhere in its body: a message's
@@ -393,6 +426,8 @@ export function klaviyoClient(
         url.origin !== klaviyoHost ||
         url.search !== '' ||
         !isDraftWrite(method, url.pathname) ||
+        (/^\/api\/segments\/?$/.test(url.pathname) &&
+          !isGrosSegmentCreate(body)) ||
         (method === 'DELETE') !== (body === null) ||
         carriesSchedule(body)
       )
