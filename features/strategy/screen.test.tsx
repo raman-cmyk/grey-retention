@@ -14,7 +14,8 @@ vi.mock('./actions', () => ({
   pickOffers: vi.fn(async () => ({}))
 }))
 vi.mock('@/features/email-build/actions', () => ({
-  createEmail: vi.fn(async () => ({}))
+  createEmail: vi.fn(async () => ({})),
+  createAllEmails: vi.fn(async () => ({}))
 }))
 
 import type { PlanRun } from './load'
@@ -484,3 +485,90 @@ describe('the Plan screen (UI-PLAN-b)', () => {
     ).toBeChecked()
   })
 })
+
+describe('Create all emails on the Plan screen (PICK-102)', () => {
+  const three = () =>
+    run({
+      plan: {
+        ...run().plan!,
+        slots: [slot('2026-11-17'), slot('2026-11-20'), slot('2026-11-24')]
+      } as PlanRun['plan'],
+      sendPassed: [false, false, false]
+    })
+
+  it('offers the owner one button for every email not started yet', () => {
+    render(<PlanScreen view={planScreen(three(), owner)} />)
+    expect(
+      screen.getByRole('button', { name: 'Create all 3 emails' })
+    ).toBeVisible()
+    expect(screen.getByText(/Makes every email not started yet/)).toBeVisible()
+    // Nothing is being made yet: no progress bar.
+    expect(screen.queryByRole('progressbar')).toBeNull()
+  })
+
+  it('never shows staff the button, and leaves it out when one is left', () => {
+    render(<PlanScreen view={planScreen(three(), { owner: false })} />)
+    expect(screen.queryByRole('button', { name: /Create all/ })).toBeNull()
+    cleanup()
+    render(
+      <PlanScreen
+        view={planScreen(
+          { ...three(), builds: { 0: drafted('b0'), 1: drafted('b1') } },
+          owner
+        )}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /Create all/ })).toBeNull()
+  })
+
+  it('shows how far the emails got while they are made, with why one failed', () => {
+    render(
+      <PlanScreen
+        view={planScreen(
+          {
+            ...three(),
+            builds: {
+              0: drafted('b0'),
+              1: {
+                id: 'b1',
+                state: 'failed',
+                step: 'design',
+                sampleDraft: false,
+                reason: 'Its design could not be drawn.'
+              },
+              2: {
+                id: 'b2',
+                state: 'build_queued',
+                step: 'copy',
+                sampleDraft: false,
+                reason: null
+              }
+            }
+          },
+          owner
+        )}
+      />
+    )
+    const bar = screen.getByRole('progressbar', { name: 'Emails made' })
+    expect(bar).toHaveAttribute('aria-valuenow', '1')
+    expect(bar).toHaveAttribute('aria-valuemax', '3')
+    expect(
+      screen.getByText('1 of 3 ready · 1 failed · 1 working')
+    ).toBeVisible()
+    expect(
+      within(screen.getByRole('list', { name: 'What needs you' })).getByText(
+        /Its design could not be drawn\./
+      )
+    ).toBeVisible()
+  })
+})
+
+function drafted(id: string) {
+  return {
+    id,
+    state: 'drafted' as const,
+    step: 'push' as const,
+    sampleDraft: true,
+    reason: null
+  }
+}
