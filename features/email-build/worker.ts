@@ -23,8 +23,13 @@ import { buildAgentsFor, emailAgentsReady } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { libraryCopyOn } from './library-copy'
 import { libraryPortsFor } from './library-copy-live'
+import { uploadCopyOn } from '@/features/email-uploads/switch'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, refusedCode, type BuildFailureCode } from './failure-words'
+import {
+  storedRefusal,
+  type KlaviyoRefusal
+} from '@/features/results/never-overwrite'
 import { type SavedOffers, type StoreSource } from './ports'
 import type { ReferenceEmail } from '@/features/studio/reference'
 import {
@@ -114,12 +119,23 @@ export async function runEmailBuilds(
      * Default: the owner's switch (`DESIGN_LIBRARY_COPY=on`).
      */
     library?: boolean
+    /** DES-ENGINE-003b: copying uploads (`DESIGN_UPLOAD_COPY=on`). */
+    uploads?: boolean
     /**
      * DST-002b: how a Copy or Remix build's references are read. Default:
      * the Inspiration inbox with this service-role client
      * (`readReferenceRows`, `toReferences`).
      */
     references?: ReferenceLoader
+    /**
+     * PICK-99: what the owner did in Klaviyo with this planned email's
+     * draft (by its push key), as the results sync last read it: a push is
+     * refused before the pusher is called. Default: `storedRefusal` on `db`.
+     */
+    klaviyoState?: (
+      tenantId: string,
+      pushKey: string
+    ) => Promise<KlaviyoRefusal | null>
   } = {}
 ) {
   const pusher = deps.pusher ?? fakeDraftPusher()
@@ -133,6 +149,7 @@ export async function runEmailBuilds(
   const agents = deps.agents === undefined ? buildAgentsFor(db) : deps.agents
   const studio = deps.studio ?? designStudioOn(process.env)
   const library = deps.library ?? libraryCopyOn(process.env)
+  const uploadOn = deps.uploads ?? uploadCopyOn(process.env)
   // The owner's click: every step, every save of the steps with rounds
   // (REL-AI part 2b) and the push. Its deadline, not this count, ends it.
   // DST-006b: a build claimed already is the only build this run runs.
@@ -247,6 +264,12 @@ export async function runEmailBuilds(
         // REL-AI: the copy step skips the subjects of the plan's other emails.
         const taken =
           job.step === 'copy' ? await planSubjects(db, job) : undefined
+        // DES-ENGINE-003b: the owner's own uploaded email this build copies,
+        // for its design step (with the owner's switch on).
+        const upload =
+          job.step === 'design' && uploadOn
+            ? await buildUpload(db, job)
+            : undefined
         // DST-002b: the owner's Copy or Remix, for the step that plans it.
         // A text email is never copied or remixed (DST-002b1): no read.
         const reference =
@@ -278,13 +301,15 @@ export async function runEmailBuilds(
             until,
             clock: now,
             ...(reference ? { reference } : {}),
-            // DES-ENGINE-002b2: a Copy email's design copied for the brand.
-            ...(library && job.step === 'design'
+            // DES-ENGINE-002b2: a Copy email's design copied for the brand;
+            // DES-ENGINE-003b: or the workspace's own uploaded email.
+            ...((library || upload) && job.step === 'design'
               ? {
                   library: libraryPortsFor(db, {
                     tenant: job.tenant_id,
                     build: job.id,
-                    lease: job.lease_token
+                    lease: job.lease_token,
+                    ...(upload ? { upload } : {})
                   })
                 }
               : {}),
@@ -474,6 +499,16 @@ export async function runEmailBuilds(
           await fail('built_email_invalid', true)
           continue
         }
+        // PICK-99: never overwrite the owner's work. A draft of this
+        // planned email (same push key) he scheduled, sent, deleted,
+        // cancelled or changed in Klaviyo is left as it is.
+        const owners = await (deps.klaviyoState
+          ? deps.klaviyoState(job.tenant_id, job.push_key)
+          : storedRefusal(db, job.tenant_id, job.push_key))
+        if (owners) {
+          await fail(refusedCode(owners), true)
+          continue
+        }
         // REL-OFF: the last gate before Klaviyo. A push can wait on Klaviyo
         // for a long time: its code must still work with Settings now.
         if (email.data.code !== null) {
@@ -632,8 +667,12 @@ export async function buildReference(
       .eq('tenant_id', job.tenant_id)
   // UI-USE: `reference_id` is not in the generated types until they are
   // regenerated (BUILD_LEDGER Known issues); this read names its shape.
-  type Row = { mode: string; reference_id?: string | null }
-  let found = (await read('mode,reference_id')) as unknown as {
+  type Row = {
+    mode: string
+    reference_id?: string | null
+    upload_id?: string | null
+  }
+  let found = (await read('mode,reference_id,upload_id')) as unknown as {
     data: Row[] | null
     error: { code?: string } | null
   }
@@ -643,6 +682,10 @@ export async function buildReference(
     found = (await read('mode')) as unknown as typeof found
   if (found.error) throw found.error
   const row = (found.data ?? [])[0]
+  // DES-ENGINE-003b: a copy of the owner's own uploaded email follows no
+  // inspiration email; its sections are planned as for Scratch (the
+  // coded email it falls back to), and its design step copies the upload.
+  if (row?.upload_id) return undefined
   const mode = row?.mode
   if (mode !== 'copy' && mode !== 'remix') return undefined
   const chosen =
@@ -660,6 +703,21 @@ export async function buildReference(
           )
         }
   } as const
+}
+
+/** DES-ENGINE-003b: the upload a build copies (`email_builds.upload_id`), if any. */
+export async function buildUpload(
+  db: Db,
+  job: { id: string; tenant_id: string }
+): Promise<string | undefined> {
+  const { data, error } = await db
+    .from('email_builds')
+    .select('upload_id')
+    .eq('id', job.id)
+    .eq('tenant_id', job.tenant_id)
+    .maybeSingle()
+  if (error) throw error
+  return typeof data?.upload_id === 'string' ? data.upload_id : undefined
 }
 
 /**

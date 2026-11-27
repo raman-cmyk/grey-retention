@@ -181,10 +181,10 @@ describe('the guard and the note', () => {
       slots.map((s) => [s.date, s.time])
     )
     expect(droppedOffersNote(dropped)).toBe(
-      'Left out of their emails because they would not work on that day (above your max, not one of your codes, or ended): AFTERNOON on Thu 19 Nov, CANDLE10 on Tue 17 Nov, FOREVER on Wed 18 Nov. Those emails go out without a discount.'
+      'Left out of their emails because they would not work on that day (above your biggest discount or what your margin floor allows, not one of your codes, or ended): AFTERNOON on Thu 19 Nov, CANDLE10 on Tue 17 Nov, FOREVER on Wed 18 Nov. Those emails go out without a discount.'
     )
     expect(droppedOffersNote(dropped.slice(0, 1))).toBe(
-      'Left out of its email because it would not work on that day (above your max, not one of your codes, or ended): AFTERNOON on Thu 19 Nov. That email goes out without a discount.'
+      'Left out of its email because it would not work on that day (above your biggest discount or what your margin floor allows, not one of your codes, or ended): AFTERNOON on Thu 19 Nov. That email goes out without a discount.'
     )
     expect(withoutUnusableOffers(slots.slice(0, 1), offers, zone)).toEqual({
       slots: slots.slice(0, 1),
@@ -311,6 +311,8 @@ describe('the margin floor (PLN-039)', () => {
     )
     const read = await readPlanOffers(source, tenant, '2026-11-16', zone)
     expect(read.maxDiscountPercent).toBe(42)
+    // PLN-039b: the plan knows the floor set it, to say so.
+    expect(read.limitedBy).toBe('margin_floor')
     const picked = [
       { id: 'offer:SALE45', code: 'SALE45', percent: 45, until: null },
       { id: 'offer:OWNER10', code: 'OWNER10', percent: 10, until: null }

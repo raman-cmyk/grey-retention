@@ -22,7 +22,12 @@ import type { StoredPulse } from './stored'
  * no offers, never the sample. So the plan only picks a code the email will
  * be allowed to use, within the owner's max, on a day it still works.
  */
-export type PlanOffers = { maxDiscountPercent: number; codes: DiscountCode[] }
+export type PlanOffers = {
+  maxDiscountPercent: number
+  codes: DiscountCode[]
+  /** PLN-039b: set when the margin floor, not the owner's max, sets the cap. */
+  limitedBy?: 'margin_floor'
+}
 
 /** Nothing saved: no discount and no codes. */
 const noOffers: OfferSource = {
@@ -69,7 +74,12 @@ export async function readPlanOffers(
     throw Object.assign(new Error('offers_unreadable'), {
       code: 'offers_unreadable'
     })
-  return offersAt({ offers: async () => read }, tenantId, at)
+  const offers = await offersAt({ offers: async () => read }, tenantId, at)
+  // PLN-039b: say which setting set the cap, so a left-out code is named
+  // for the margin floor rather than the owner's own max.
+  return read.limitedBy === 'margin_floor' && read.maxDiscountPercent !== null
+    ? { ...offers, limitedBy: 'margin_floor' }
+    : offers
 }
 
 /**
@@ -238,7 +248,7 @@ export function droppedOffersNote(dropped: readonly PlannedSlot[]) {
   const words = (named: string[]) => {
     const more =
       all.length > named.length ? ` and ${all.length - named.length} more` : ''
-    return `Left out of ${one ? 'its email' : 'their emails'} because ${one ? 'it' : 'they'} would not work on that day (above your max, not one of your codes, or ended): ${named.join(', ')}${more}. ${one ? 'That email goes' : 'Those emails go'} out without a discount.`
+    return `Left out of ${one ? 'its email' : 'their emails'} because ${one ? 'it' : 'they'} would not work on that day (above your biggest discount or what your margin floor allows, not one of your codes, or ended): ${named.join(', ')}${more}. ${one ? 'That email goes' : 'Those emails go'} out without a discount.`
   }
   // At most ten named, and fewer until the note fits a stored note's 600
   // characters (whole names, a whole sentence).

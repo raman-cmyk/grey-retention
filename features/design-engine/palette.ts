@@ -133,3 +133,22 @@ export function paletteMapper(brand: BrandPalette) {
   }
 }
 export type PaletteMapper = ReturnType<typeof paletteMapper>
+
+/**
+ * DES-ENGINE-003b: an own design's text colour, kept, or moved only as far
+ * towards near-black or white (whichever reads on `behind`) as it takes to
+ * be readable (`min`, 4.5 to 1, or 3 for large words): the hue stays.
+ */
+export function nudged(color: string, behind: string, min: number): string {
+  if (contrast(color, behind) >= min) return color
+  const ink = inkOn(behind)
+  for (let share = 0.1; share < 1; share += 0.1) {
+    const next = mix(color, ink, share)
+    if (contrast(next, behind) >= min) return next
+  }
+  return ink
+}
+
+/** The contrast a text of `size` px needs (as the email's checks read it). */
+export const neededContrast = (size: number) => (size >= 24 ? 3 : 4.5)
+export { contrast }

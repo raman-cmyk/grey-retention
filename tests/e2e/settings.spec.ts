@@ -233,6 +233,63 @@ test('UI-SETb the owner makes a teammate Manager, then Staff, and deactivates an
     )
 })
 
+test('PICK-WIRE the owner sets a margin floor and a revenue goal in Settings (#39, #33)', async ({
+  page
+}, info) => {
+  test.skip(
+    info.project.name.startsWith('mobile'),
+    'Form check; one layout is enough'
+  )
+  await newOwner(page, { prefix: 'settings-floor', name: 'Floor studio' })
+  await page.goto('/settings')
+  const floor = page.getByRole('region', { name: 'Margin floor' })
+  await expect(floor).toContainText('Not set')
+  await floor.getByLabel('Your usual margin on a sale, %').fill('60')
+  await floor.getByLabel('The lowest margin you accept on a sale, %').fill('30')
+  // The margin floor lives with the biggest discount, so that comes first.
+  await floor.getByRole('button', { name: 'Save margin floor' }).click()
+  await expect(
+    floor.getByText('Save your biggest discount first.')
+  ).toBeVisible()
+  const max = page.getByRole('region', { name: 'Biggest discount' })
+  await max.getByLabel('Percent off, 0 to 100').fill('50')
+  await max.getByRole('button', { name: 'Save biggest discount' }).click()
+  await expect(
+    max.getByText('Saved. New emails offer at most 50% off.')
+  ).toBeVisible()
+  await page.reload()
+  await floor.getByLabel('Your usual margin on a sale, %').fill('60')
+  await floor.getByLabel('The lowest margin you accept on a sale, %').fill('70')
+  await floor.getByRole('button', { name: 'Save margin floor' }).click()
+  await expect(
+    floor.getByText(
+      'The lowest margin you accept must be below your usual margin of 60%.'
+    )
+  ).toBeVisible()
+  await floor.getByLabel('The lowest margin you accept on a sale, %').fill('30')
+  await floor.getByRole('button', { name: 'Save margin floor' }).click()
+  await expect(floor.getByText(/at most 42% off/)).toBeVisible()
+  await page.reload()
+  await expect(floor).toContainText(
+    'On your 60% margin, no email offers more than 42% off.'
+  )
+
+  const goal = page.getByRole('region', { name: 'Revenue goal' })
+  await expect(goal).toContainText('Not set')
+  await goal.getByLabel(/^Goal, like/).fill('20% off')
+  await goal.getByRole('button', { name: 'Save goal' }).click()
+  await expect(goal.getByText(/^Type one amount/)).toBeVisible()
+  await goal.getByLabel(/^Goal, like/).fill('20,000 USD this month')
+  await goal.getByRole('button', { name: 'Save goal' }).click()
+  await expect(goal.getByText(/^Saved\. The goal for /)).toBeVisible()
+  await page.reload()
+  await expect(goal).toContainText('$20,000')
+  await goal.getByRole('button', { name: /^Remove the .* goal$/ }).click()
+  await expect(goal.getByText(/^Removed the goal for /)).toBeVisible()
+  await page.reload()
+  await expect(goal).toContainText('Not set')
+})
+
 test('UI-SETa staff see Settings without the owner’s controls', async ({
   page
 }, info) => {
@@ -247,6 +304,8 @@ test('UI-SETa staff see Settings without the owner’s controls', async ({
   ).toBeVisible()
   for (const name of [
     'Save biggest discount',
+    'Save margin floor',
+    'Save goal',
     'Add code',
     'Remove',
     'Connect Klaviyo',

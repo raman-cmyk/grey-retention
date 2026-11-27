@@ -164,7 +164,11 @@ describe('the history reads, against recorded Klaviyo answers', () => {
       { campaignId: 'CmpS02', included: ['SegVIP'], excluded: ['LstSuppr'] }
     ])
     expect(transport.calls[0]).toContain('filter=equals(status,"scheduled")')
-    expect(transport.calls[1]).toContain('filter=any(id,["CmpS01","CmpS02"])')
+    // Listing campaigns needs the channel filter, and pages by cursor only.
+    expect(transport.calls[1]).toContain(
+      `filter=equals(messages.channel,'email'),any(id,["CmpS01","CmpS02"])`
+    )
+    expect(transport.calls[1]).not.toContain('page[size]')
   })
 
   it('asks the reports as a read-only question, and reads their rows', async () => {

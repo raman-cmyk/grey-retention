@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { letterKinds } from '@/features/letter/kind-list'
 import { emailFormats, emailTypes } from './plan'
+import { sendTimeBases, timeStrengths } from './send-times'
 
 /**
  * The shapes a run saves (`strategy_runs.pulse` and `.plan`), checked again
@@ -87,6 +88,17 @@ export const storedPlan = z.object({
         format: z.enum(emailFormats).optional(),
         // DST-PIC #24: a text email's kind.
         letterKind: z.enum(letterKinds).optional().catch(undefined),
+        // PICK-97: why it has its send time (an odd one is none).
+        timing: z
+          .object({
+            basis: z.enum(sendTimeBases),
+            strength: z.enum(timeStrengths),
+            othersTried: z.boolean(),
+            best: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+            moved: z.boolean()
+          })
+          .optional()
+          .catch(undefined),
         why: words,
         evidence: z
           .array(z.object({ id: z.string().max(160), fact: words }))
@@ -94,6 +106,24 @@ export const storedPlan = z.object({
       })
     )
     .max(10),
+  /**
+   * #33: the revenue goal of the window's month(s) when the plan was made.
+   * A broken one is left out (the plan still shows), never trusted.
+   */
+  goal: z
+    .array(
+      z.object({
+        month: isoDate,
+        label: z.string().max(40),
+        sentence: words,
+        /** What this plan does toward it ("This plan has 5 emails in …"). */
+        plan: words.optional(),
+        pace: z.enum(['met', 'on_track', 'behind', 'missed', 'unknown'])
+      })
+    )
+    .max(2)
+    .optional()
+    .catch(undefined),
   sample: z.boolean().optional(),
   own: z.boolean().optional()
 })

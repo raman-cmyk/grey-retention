@@ -8,6 +8,7 @@ import {
   copyRecord,
   libraryCopyOn,
   photosFor,
+  swapFontsOf,
   wordsFromDraft
 } from './library-copy'
 import { sampleStoreFrom } from './ports'
@@ -84,6 +85,60 @@ describe('the library copy’s input (DES-ENGINE-002b2)', () => {
     expect(input.vocabulary).not.toContain('OTHER50')
     expect(input.brand.name).toBe(s.brand.name)
     expect(photosFor(input)).toBeLessThanOrEqual(24)
+  })
+
+  it('swaps headings into the brand’s heading web font and the rest into its body font (pick #3)', async () => {
+    const s = await store()
+    const rules = { maxDiscountPercent: 20, codes: [] }
+    const made = (fonts?: Parameters<typeof swapFontsOf>[1]) =>
+      copyInput({
+        store: { ...s, ...(fonts ? { fonts: fonts as never } : {}) },
+        draft: draft(),
+        rules,
+        sourceNames: [],
+        mode: 'preview'
+      }).brand
+    // None kept: the brand kit's font for both, as before.
+    expect(made()).toMatchObject({
+      headingFont: s.brand.font,
+      bodyFont: s.brand.font
+    })
+    const both = made([
+      { family: 'Fraunces', roles: ['heading'] },
+      { family: 'Inter', roles: ['body'] }
+    ])
+    expect(both).toMatchObject({ headingFont: 'Fraunces', bodyFont: 'Inter' })
+    expect(
+      copyInputSchema.safeParse({
+        ...copyInput({
+          store: {
+            ...s,
+            fonts: [
+              { family: 'Fraunces', roles: ['heading'], faces: [] },
+              { family: 'Inter', roles: ['body'], faces: [] }
+            ]
+          },
+          draft: draft(),
+          rules,
+          sourceNames: [],
+          mode: 'preview'
+        })
+      }).success
+    ).toBe(true)
+    // One font for both roles, and each role standing in for the other.
+    expect(
+      swapFontsOf(s.brand, [{ family: 'Lora', roles: ['heading', 'body'] }])
+    ).toEqual({ headingFont: 'Lora', bodyFont: 'Lora' })
+    expect(
+      swapFontsOf(s.brand, [{ family: 'Inter', roles: ['body'] }])
+    ).toEqual({ headingFont: 'Inter', bodyFont: 'Inter' })
+    // A font only loaded, or a name the email cannot carry: the kit's.
+    expect(
+      swapFontsOf({ font: 'Poppins' }, [
+        { family: 'Caveat', roles: [] },
+        { family: 'Bad;Font', roles: ['heading'] }
+      ])
+    ).toEqual({ headingFont: 'Poppins', bodyFont: 'Poppins' })
   })
 
   it('shows an old price only for a confirmed sale', async () => {

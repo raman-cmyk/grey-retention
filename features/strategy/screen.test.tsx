@@ -59,6 +59,50 @@ const run = (over: Partial<PlanRun> = {}): PlanRun => ({
   ...over
 })
 
+describe('the revenue goal on the Plan screen (#33)', () => {
+  it('shows the goal on its own card above the 15 days, and no card without one', () => {
+    render(
+      <PlanScreen
+        view={planScreen(
+          run({
+            plan: {
+              ...run().plan!,
+              goal: [
+                {
+                  month: '2026-11-01',
+                  label: 'November 2026',
+                  sentence: '$12,400 still needed by 30 November.',
+                  plan: 'This plan has 2 emails in November 2026.',
+                  pace: 'behind'
+                }
+              ]
+            } as PlanRun['plan']
+          }),
+          owner
+        )}
+        assistant="Ava"
+      />
+    )
+    const card = screen.getByRole('region', { name: 'Revenue goal' })
+    expect(card).toHaveTextContent('November 2026')
+    // The white label's own name, never "GROS".
+    expect(card).toHaveTextContent('from the emails Ava made.')
+    expect(card).not.toHaveTextContent('GROS')
+    expect(card).toHaveTextContent(
+      '$12,400 still needed by 30 November. This plan has 2 emails in November 2026.'
+    )
+    expect(card).toHaveTextContent('Change the goal in Settings.')
+    expect(
+      card.compareDocumentPosition(
+        screen.getByRole('region', { name: 'Your next 15 days' })
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    cleanup()
+    render(<PlanScreen view={planScreen(run(), owner)} />)
+    expect(screen.queryByRole('region', { name: 'Revenue goal' })).toBeNull()
+  })
+})
+
 describe('the Plan screen (UI-PLAN-b)', () => {
   it('asks for a first plan, and tells staff only the owner can plan', () => {
     const { rerender } = render(<PlanScreen view={planScreen(null, owner)} />)
@@ -379,6 +423,36 @@ describe('the Plan screen (UI-PLAN-b)', () => {
       )
     ).toBeInTheDocument()
     expect(screen.getByText(/In Klaviyo as a draft/)).toBeInTheDocument()
+  })
+
+  it('says on the row what the owner did with the draft in Klaviyo (PICK-99)', () => {
+    render(
+      <PlanScreen
+        view={planScreen(
+          run({
+            builds: {
+              0: {
+                id: 'b0',
+                state: 'drafted',
+                step: 'push',
+                sampleDraft: false,
+                reason: null,
+                klaviyo: [
+                  'Scheduled in Klaviyo for 14 Jan, 9:00 (store time)',
+                  'Edited in Klaviyo'
+                ]
+              }
+            }
+          }),
+          owner
+        )}
+      />
+    )
+    expect(
+      screen.getByText(/Scheduled in Klaviyo for 14 Jan, 9:00 \(store time\)/)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Edited in Klaviyo/)).toBeInTheDocument()
+    expect(screen.queryByText(/In Klaviyo as a draft/)).toBeNull()
   })
 
   it('keeps the owner’s ticks and choice when the pick is refused', () => {

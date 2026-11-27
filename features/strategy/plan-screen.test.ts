@@ -156,6 +156,28 @@ describe('the Plan screen (UI-PLAN-a)', () => {
       })
   })
 
+  it('shows the revenue goal as the plan worked back from it, and none without one (#33)', () => {
+    const goal = [
+      {
+        month: '2026-11-01',
+        label: 'November 2026',
+        sentence: '$12,400 still needed by 30 November.',
+        plan: 'This plan has 4 emails in November 2026.',
+        pace: 'behind'
+      }
+    ]
+    expect(
+      plan(run({ plan: { ...run().plan!, goal } as PlanRun['plan'] })).goal
+    ).toEqual([
+      {
+        label: 'November 2026',
+        sentence:
+          '$12,400 still needed by 30 November. This plan has 4 emails in November 2026.'
+      }
+    ])
+    expect(plan(run()).goal).toEqual([])
+  })
+
   it('lays out the 15 days and the emails by date and time, the first still to create next', () => {
     const screen = plan(run())
     expect(screen).toMatchObject({
@@ -264,6 +286,7 @@ describe('the Plan screen (UI-PLAN-a)', () => {
       action: { kind: 'open', buildId: 'b1' }
     })
     expect(by(3)).toMatchObject({ status: { kind: 'in_klaviyo' } })
+    expect(by(3).status).not.toHaveProperty('words')
     expect(by(0)).toMatchObject({
       status: { kind: 'working', word: 'Designing' },
       action: { kind: 'open', buildId: 'b0' }

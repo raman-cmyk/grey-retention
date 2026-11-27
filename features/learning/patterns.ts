@@ -3,8 +3,9 @@
  * Performance analyst and the Memory writer, in code. From a brand's own
  * sent emails whose results are final, the analyst finds what repeats:
  * which kinds of email get more or fewer clicks than the rest, which kinds
- * make more people unsubscribe (a "don't" even when they get clicks, #76),
- * and which kind of section gets the most clicks. A pattern needs at least
+ * make more people unsubscribe or mark them as spam (a "don't" even when
+ * they get clicks, #76), and which kind of section gets the most clicks.
+ * A pattern needs at least
  * `minSends` sends on each side (D22: 3+). The writer turns patterns into
  * do's and don'ts with their evidence, raises or lowers a rule's
  * confidence as evidence grows, and retires a rule once enough later sends
@@ -24,6 +25,13 @@ export const clickDrop = 0.8
 /** This many times the rest's unsubscribe rate, with `minUnsubscribes`. */
 export const unsubscribeLift = 2
 export const minUnsubscribes = 5
+/**
+ * #76: spam complaints at or over this share of the people a kind of email
+ * reached (1 in 1,000, the rate inbox providers start to warn at), and at
+ * least `minSpamComplaints` of them, teach a "don't" on their own.
+ */
+export const spamComplaintRate = 0.001
+export const minSpamComplaints = 3
 /** Sends of a kind after which a pattern that faded is retired. */
 export const retireAfter = 2 * minSends
 
@@ -37,11 +45,20 @@ export type SentEmail = {
   clicks: number
   /** Null when Klaviyo gave no count (never a made-up 0). */
   unsubscribes: number | null
+  /** #76: people who marked it as spam; null when Klaviyo gave no count. */
+  spamComplaints: number | null
   /** The section block with the most clicks, when known. */
   topBlock: string | null
+  /**
+   * PICK-99: the owner changed it in Klaviyo before it went out (its words
+   * or its design): its results are not GROS's own words alone, and every
+   * rule that counts it says so.
+   */
+  edited?: boolean
 }
 
-export type Dimension = 'email_type' | 'unsubscribes' | 'top_section'
+export type Dimension =
+  'email_type' | 'unsubscribes' | 'spam_complaints' | 'top_section'
 
 export type Pattern = {
   dimension: Dimension
@@ -60,16 +77,24 @@ const designers = ['section-planner', 'art-director']
 
 const per100 = (part: number, whole: number) =>
   whole ? Math.round((part / whole) * 1000) / 10 : 0
+const per1000 = (part: number, whole: number) =>
+  whole ? Math.round((part / whole) * 10_000) / 10 : 0
 const words = (s: string) => s.replace(/[_-]+/g, ' ').trim()
 /** Surer with more sends: 0.55 at the minimum, at most 0.9. */
 export const confidenceFor = (sends: number) =>
   Math.min(0.9, Math.round((0.55 + 0.05 * (sends - minSends)) * 100) / 100)
 
-/** The emails the analyst may learn from, in the window. */
+/**
+ * The emails the analyst may learn from, in the window. PICK-99: never one
+ * the owner edited in Klaviyo before it went out: its results are his
+ * rewrite's, so it is neither evidence nor counted toward the three sends
+ * of any rule (nor toward retiring one).
+ */
 export function usable(emails: readonly SentEmail[], now: number) {
   const since = now - windowDays * 86_400_000
   return emails.filter(
     (e) =>
+      !e.edited &&
       e.recipients >= minPeople &&
       e.clicks >= 0 &&
       Date.parse(e.sentAt) >= since &&
@@ -95,8 +120,35 @@ export function findPatterns(
     ...new Set(emails.flatMap((e) => (e.emailType ? [e.emailType] : [])))
   ].sort()
   const unsubscribed = new Set<string>()
-  // #76 first: a kind that makes people unsubscribe is a don't, even when
-  // it gets clicks.
+  // #76 first: a kind people mark as spam is a don't, even when it gets
+  // clicks. Unlike unsubscribes it is judged on its own rate, not against
+  // the rest: complaints over the threshold hurt every email's delivery.
+  for (const type of types) {
+    const mine = emails.filter(
+      (e) => e.emailType === type && e.spamComplaints !== null
+    )
+    if (mine.length < minSends) continue
+    const complaints = mine.reduce((n, e) => n + e.spamComplaints!, 0)
+    const people = mine.reduce((n, e) => n + e.recipients, 0)
+    if (
+      complaints < minSpamComplaints ||
+      complaints < people * spamComplaintRate
+    )
+      continue
+    unsubscribed.add(type)
+    out.push({
+      dimension: 'spam_complaints',
+      value: type,
+      kind: 'dont',
+      rule: `Send fewer ${words(type)} emails: people mark them as spam, which hurts how all of this brand's emails reach the inbox.`,
+      why: `${words(type)} emails: ${per1000(complaints, people)} spam complaints per 1,000 people over ${mine.length} sends; inbox providers start to warn at ${spamComplaintRate * 1000} per 1,000.`,
+      appliesTo: planners,
+      evidence: mine.map((e) => ({ buildId: e.buildId })),
+      confidence: confidenceFor(mine.length)
+    })
+  }
+  // #76: a kind that makes people unsubscribe is a don't, even when it
+  // gets clicks.
   for (const type of types) {
     const counted = emails.filter((e) => e.unsubscribes !== null)
     const mine = counted.filter((e) => e.emailType === type)
@@ -132,7 +184,7 @@ export function findPatterns(
     if (!mine.people || !rest.people || !rest.clicks) continue
     const ratio = mine.clicks / mine.people / (rest.clicks / rest.people)
     const kind = ratio >= clickLift ? 'do' : ratio <= clickDrop ? 'dont' : null
-    // A kind people unsubscribe from is never a "do" (#76).
+    // A kind people unsubscribe from or mark as spam is never a "do" (#76).
     if (!kind || (kind === 'do' && unsubscribed.has(type))) continue
     out.push({
       dimension: 'email_type',
@@ -175,7 +227,20 @@ export type StoredRule = {
   key: string
   status: 'active' | 'expired' | 'retired'
   confidence: number
+  /** The owner removed it on Learned (`retired_by`): never brought back. */
+  removedByOwner?: boolean
 }
+
+/**
+ * #76: the "don'ts" about how people take a kind of email (spam, then
+ * unsubscribes). One of these that faded comes back when the pattern does,
+ * as a new rule (a stored rule never comes back to life), and while one is
+ * found a "do" for the same kind of email is retired.
+ */
+const deliverability = new Set<Dimension>(['spam_complaints', 'unsubscribes'])
+
+/** A rule's key without its return count (`…:dont#2`). */
+const baseKey = (key: string) => key.replace(/#\d+$/, '')
 
 export type RuleWrite =
   | {
@@ -204,7 +269,10 @@ export const ruleKey = (
  * a pattern still there has its confidence moved to the evidence; a rule
  * whose pattern turned the other way is retired at once; one whose pattern
  * faded is retired once `retireAfter` sends of that kind were read since,
- * and otherwise left to expire.
+ * and otherwise left to expire. #76: a spam or unsubscribe "don't" found
+ * for a kind of email retires an active "do" for that kind (`turned`); one
+ * that faded or expired is added again under its key with a return count
+ * (`…:dont#2`) when the pattern returns, unless the owner removed it.
  */
 export function planWrites(input: {
   tenantId: string
@@ -218,18 +286,28 @@ export function planWrites(input: {
     input.patterns.map((p) => [ruleKey(input.tenantId, p), p])
   )
   const active = input.stored.filter((r) => r.status === 'active')
-  const storedKeys = new Set(input.stored.map((r) => r.key))
-  for (const [key, pattern] of found)
-    if (!storedKeys.has(key))
+  const expiresAt = new Date(input.now + ruleDays * 86_400_000).toISOString()
+  for (const [key, pattern] of found) {
+    const before = input.stored.filter((r) => baseKey(r.key) === key)
+    if (!before.length) {
+      writes.push({ op: 'add', key, pattern, expiresAt })
+      continue
+    }
+    // #76: a deliverability "don't" that faded comes back as a new rule.
+    if (
+      deliverability.has(pattern.dimension) &&
+      !before.some((r) => r.status === 'active' || r.removedByOwner)
+    )
       writes.push({
         op: 'add',
-        key,
+        key: `${key}#${before.length + 1}`.slice(0, 200),
         pattern,
-        expiresAt: new Date(input.now + ruleDays * 86_400_000).toISOString()
+        expiresAt
       })
+  }
   const emails = usable(input.emails, input.now)
   for (const rule of active) {
-    const pattern = found.get(rule.key)
+    const pattern = found.get(baseKey(rule.key))
     if (pattern) {
       if (Math.abs(pattern.confidence - rule.confidence) >= 0.05)
         writes.push({
@@ -242,7 +320,7 @@ export function planWrites(input: {
         })
       continue
     }
-    const parts = rule.key.split(':')
+    const parts = baseKey(rule.key).split(':')
     // results:<tenant>:<dimension>:<value>:<kind>
     const [dimension, kind] = [parts[2], parts[parts.length - 1]]
     const value = parts.slice(3, -1).join(':')
@@ -251,7 +329,16 @@ export function planWrites(input: {
       value,
       kind: kind === 'do' ? 'dont' : 'do'
     })
-    if (found.has(opposite)) {
+    // #76: people marking a kind as spam, or leaving over it, turns its "do".
+    const deliveryDont =
+      dimension === 'email_type' &&
+      kind === 'do' &&
+      [...deliverability].some((d) =>
+        found.has(
+          ruleKey(input.tenantId, { dimension: d, value, kind: 'dont' })
+        )
+      )
+    if (found.has(opposite) || deliveryDont) {
       writes.push({
         op: 'update',
         id: rule.id,
@@ -285,6 +372,8 @@ export type LearnedRow = {
   status: 'active' | 'expired' | 'retired'
   createdAt: string
   updatedAt: string
+  /** The owner removed it on Learned: not something GROS retired. */
+  removedByOwner?: boolean
 }
 
 /**
@@ -304,7 +393,10 @@ export function weeklyLearning(rows: readonly LearnedRow[], now: number) {
   const retired = rows
     .filter(
       (r) =>
-        r.status !== 'active' && inWeek(r.updatedAt) && !inWeek(r.createdAt)
+        r.status !== 'active' &&
+        !r.removedByOwner &&
+        inWeek(r.updatedAt) &&
+        !inWeek(r.createdAt)
     )
     .map((r) => r.rule)
   const count = (n: number, one: string, many: string) =>

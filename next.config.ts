@@ -69,7 +69,14 @@ const oldClientPages: [source: string, destination: string][] = [
   ['/assets', '/brand/assets'],
   ['/settings/brand', '/brand'],
   ['/settings/brand/book', '/brand/book'],
-  ['/settings/assets', '/brand/assets']
+  ['/settings/assets', '/brand/assets'],
+  // DES-ENGINE-003b: the old "Add an email you like" pages (paste or upload,
+  // then copy or rewrite, and their results) are retired: your own emails
+  // are added on Inspiration (Add your own email) and made on the Plan.
+  ['/import-reference', '/inspiration/add'],
+  ['/import-reference/files/:fileImportId', '/inspiration/add'],
+  ['/create-email/:importId', '/inspiration/add'],
+  ['/emails/:resultId', '/plan']
 ]
 
 /** UI-KLV: the old Klaviyo detail pages and their GROS pages under Results. */

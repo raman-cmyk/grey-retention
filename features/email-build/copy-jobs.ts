@@ -133,7 +133,7 @@ export async function copyJobs(
 async function handOut(db: Db, job: Lease): Promise<CopyJob | null> {
   const copy = await db
     .from('email_copies')
-    .select('build_id,tenant_id,inbox_message_id,state,input,photos')
+    .select('build_id,tenant_id,inbox_message_id,upload_id,state,input,photos')
     .eq('build_id', job.subject_key)
     .maybeSingle()
   if (copy.error) {
@@ -169,7 +169,13 @@ async function handOut(db: Db, job: Lease): Promise<CopyJob | null> {
     await failCopy(db, job.id, job.lease_token, 'input_invalid')
     return null
   }
-  const sources = await copySources(db, c.inbox_message_id, { html: false })
+  // DES-ENGINE-003b: the copy of one of the workspace's own uploads, or
+  // of an inspiration email.
+  const sources = c.upload_id
+    ? await uploadSources(db, c.upload_id, c.tenant_id, { html: false })
+    : c.inbox_message_id
+      ? await copySources(db, c.inbox_message_id, { html: false })
+      : 'source_missing'
   if (sources === 'unreadable') {
     await retry(db, job.id, job.lease_token, 'copy_read_failed')
     return null
@@ -179,7 +185,7 @@ async function handOut(db: Db, job: Lease): Promise<CopyJob | null> {
     return null
   }
   const html = await db.storage
-    .from('inbox-raw')
+    .from(sources.bucket)
     .createSignedUrl(sources.path, copyLimits.linkSeconds)
   if (html.error || !html.data?.signedUrl) {
     await retry(db, job.id, job.lease_token, 'copy_links_failed')
@@ -211,17 +217,73 @@ async function handOut(db: Db, job: Lease): Promise<CopyJob | null> {
   }
 }
 
+type Sources =
+  | {
+      blueprint: unknown
+      bucket: 'inbox-raw' | 'email-uploads'
+      path: string
+      text: string | null
+      /** An upload's kind (the brand's own design is not leak-checked). */
+      design?: 'own' | 'other'
+    }
+  | 'blueprint_gone'
+  | 'source_missing'
+  | 'unreadable'
+
+/**
+ * DES-ENGINE-003b: an upload's stored blueprint and prepared HTML (its
+ * path, or its text), only a ready upload of the copy's own workspace,
+ * and only while its prepared HTML is the one pinned when it was added.
+ */
+async function uploadSources(
+  db: Db,
+  upload: string,
+  tenant: string,
+  { html }: { html: boolean }
+): Promise<Sources> {
+  const row = await db
+    .from('email_uploads')
+    .select('state,design,blueprint,html_etag')
+    .eq('id', upload)
+    .eq('tenant_id', tenant)
+    .maybeSingle()
+  if (row.error) return 'unreadable'
+  if (row.data?.state !== 'ready' || !parseBlueprint(row.data.blueprint).ok)
+    return 'blueprint_gone'
+  const folder = `${tenant}/${upload}`
+  const listed = await db.storage
+    .from('email-uploads')
+    .list(folder, { search: 'email.html' })
+  if (listed.error) return 'unreadable'
+  const now = listed.data.find((o) => o.name === 'email.html')
+  if (!now || now.metadata?.eTag !== row.data.html_etag) return 'source_missing'
+  const path = `${folder}/email.html`
+  const design = row.data.design === 'other' ? 'other' : 'own'
+  if (!html)
+    return {
+      blueprint: row.data.blueprint,
+      bucket: 'email-uploads',
+      path,
+      text: null,
+      design
+    }
+  const file = await db.storage.from('email-uploads').download(path)
+  if (file.error || !file.data) return 'unreadable'
+  return {
+    blueprint: row.data.blueprint,
+    bucket: 'email-uploads',
+    path,
+    text: await file.data.text(),
+    design
+  }
+}
+
 /** The inspiration email's stored blueprint and marked HTML (its path, or its text). */
 async function copySources(
   db: Db,
   message: string,
   { html }: { html: boolean }
-): Promise<
-  | { blueprint: unknown; path: string; text: string | null }
-  | 'blueprint_gone'
-  | 'source_missing'
-  | 'unreadable'
-> {
+): Promise<Sources> {
   const [stored, row] = await Promise.all([
     db
       .from('inbox_blueprints')
@@ -243,11 +305,18 @@ async function copySources(
     return 'blueprint_gone'
   const path = row.data?.marked_html_path
   if (!path) return 'source_missing'
-  if (!html) return { blueprint: stored.data.blueprint, path, text: null }
+  if (!html)
+    return {
+      blueprint: stored.data.blueprint,
+      bucket: 'inbox-raw',
+      path,
+      text: null
+    }
   const file = await db.storage.from('inbox-raw').download(path)
   if (file.error || !file.data) return 'unreadable'
   return {
     blueprint: stored.data.blueprint,
+    bucket: 'inbox-raw',
     path,
     text: await file.data.text()
   }
@@ -299,18 +368,26 @@ async function serverLeaks(
   if (!j.data) return 'gone'
   const copy = await db
     .from('email_copies')
-    .select('inbox_message_id,input')
+    .select('inbox_message_id,upload_id,tenant_id,input')
     .eq('build_id', j.data.subject_key)
     .maybeSingle()
   if (copy.error) return null
   if (!copy.data) return 'gone'
   const input = copyInputSchema.safeParse(copy.data.input)
   if (!input.success) return { leaks: 1 }
-  const sources = await copySources(db, copy.data.inbox_message_id, {
-    html: true
-  })
+  const sources = copy.data.upload_id
+    ? await uploadSources(db, copy.data.upload_id, copy.data.tenant_id, {
+        html: true
+      })
+    : copy.data.inbox_message_id
+      ? await copySources(db, copy.data.inbox_message_id, { html: true })
+      : 'source_missing'
   if (sources === 'unreadable') return null
   if (typeof sources === 'string' || !sources.text) return { leaks: 1 }
+  // The brand's own design is not checked against itself (its words,
+  // pictures and links are the brand's own): read from the upload itself,
+  // never from what the copy says.
+  if (sources.design === 'own') return { leaks: 0 }
   const parsed = parseBlueprint(sources.blueprint)
   try {
     return {

@@ -63,6 +63,64 @@ const shift = (date: string, days: number) =>
     .slice(0, 10)
 
 /**
+ * PLN-040b: how far back the offer ladder looks for an offer email GROS
+ * drafted (two offer spacings: `saleGapDays`). The checks keep their 7.
+ */
+export const saleLookbackDays = 14
+
+/**
+ * The sends of the plan's window (from `lookback` days before `start` to
+ * its end), the latest `maxExisting`, each with its Klaviyo campaign when
+ * known.
+ */
+function windowSends(
+  history: HistorySnapshot,
+  window: { start: string; days: number },
+  lookback = 7
+) {
+  const from = shift(window.start, -lookback)
+  const end = shift(window.start, window.days)
+  const sent = history.sent
+    .map((e) => ({
+      date: sendParts(e.sentAt, e.strategy, history.timezone).date,
+      offer: e.offer,
+      campaignId: e.campaignId
+    }))
+    .filter((e) => e.date >= from && e.date < end)
+    .map((e) => ({ ...e, audienceId: unknownAudience }))
+  const scheduled = history.scheduled
+    .filter((e) => e.date >= from && e.date < end)
+    .map((e) => ({
+      date: e.date,
+      audienceId: e.audienceIds[0] ?? unknownAudience,
+      offer: e.offer,
+      campaignId: e.campaignId
+    }))
+  // The latest 200: the window's own days before the week before it.
+  return [...sent, ...scheduled]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-maxExisting)
+}
+
+/**
+ * PLN-040b: the Klaviyo campaigns of the sends from `saleLookbackDays`
+ * before `start` to its end, to look up the offer GROS planned and drafted
+ * for each (`readOfferPercents`).
+ */
+export function windowCampaigns(
+  history: HistorySnapshot,
+  window: { start: string; days: number }
+): string[] {
+  return [
+    ...new Set(
+      windowSends(history, window, saleLookbackDays).flatMap((e) =>
+        e.campaignId ? [e.campaignId] : []
+      )
+    )
+  ]
+}
+
+/**
  * The history in the shape "Plan next 15 days" takes (lane A's
  * `StrategyData` and `readPlanInput`): emails a week (2 to 4), the usual
  * send time (within its send hours), at most 50 audiences (starred and
@@ -70,17 +128,23 @@ const shift = (date: string, days: number) =>
  * scheduled from 7 days before `start` to the window's end (they count
  * against the weekly cap, the offer share and the offer spacing; one with
  * no known audience still counts), and the latest results that were read.
+ *
+ * PLN-040b: `percents` holds the percent of the code GROS drafted for a
+ * Klaviyo campaign (by campaign id): such a send is an offer email of that
+ * percent, so a new plan picks the sale up from it. Every other send keeps
+ * no percent (Klaviyo's words never give one). `saleOffers` lists those
+ * known offer emails from `saleLookbackDays` before `start`, for the
+ * ladder only (the checks read `existing`, over 7 days).
  */
 export function planFromHistory(
   history: HistorySnapshot,
-  window: { start: string; days: number }
-): Pick<PlanInput, 'sendsPerWeek' | 'audiences' | 'existing'> & {
+  window: { start: string; days: number },
+  percents: ReadonlyMap<string, number> = new Map()
+): Pick<PlanInput, 'sendsPerWeek' | 'audiences' | 'existing' | 'saleOffers'> & {
   sendTime: string | null
   /** The pulse's `results` rows (features/strategy/pulse.ts). */
   results: { title: string; sentOn: string; clicks: number; revenue: number }[]
 } {
-  const from = shift(window.start, -7)
-  const end = shift(window.start, window.days)
   const hour = history.usualSendTime
     ? Number(history.usualSendTime.slice(0, 2))
     : null
@@ -93,20 +157,18 @@ export function planFromHistory(
     )
     .slice(0, maxAudiences)
     .map((a) => ({ id: a.id, label: a.name }))
-  const sent = history.sent
-    .map((e) => ({
-      date: sendParts(e.sentAt, e.strategy, history.timezone).date,
-      offer: e.offer
-    }))
-    .filter((e) => e.date >= from && e.date < end)
-    .map((e) => ({ ...e, audienceId: unknownAudience }))
-  const scheduled = history.scheduled
-    .filter((e) => e.date >= from && e.date < end)
-    .map((e) => ({
-      date: e.date,
-      audienceId: e.audienceIds[0] ?? unknownAudience,
-      offer: e.offer
-    }))
+  const percentOf = (campaignId: string | null) =>
+    campaignId ? percents.get(campaignId) : undefined
+  const existing = windowSends(history, window).map(({ campaignId, ...e }) => {
+    const percent = percentOf(campaignId)
+    return percent === undefined ? e : { ...e, offer: true, percent }
+  })
+  const saleOffers = windowSends(history, window, saleLookbackDays).flatMap(
+    (e) => {
+      const percent = percentOf(e.campaignId)
+      return percent === undefined ? [] : [{ date: e.date, percent }]
+    }
+  )
   return {
     sendsPerWeek: Math.min(4, Math.max(2, Math.round(history.sendsPerWeek))) as
       2 | 3 | 4,
@@ -115,10 +177,8 @@ export function planFromHistory(
         ? null
         : `${String(Math.min(sendHours.to, Math.max(sendHours.from, hour))).padStart(2, '0')}:00`,
     audiences,
-    // The latest 200: the window's own days before the week before it.
-    existing: [...sent, ...scheduled]
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(-maxExisting),
+    existing,
+    ...(saleOffers.length ? { saleOffers } : {}),
     results: history.sent
       .filter(
         (e) => e.recipients !== null && e.clicks !== null && e.revenue !== null

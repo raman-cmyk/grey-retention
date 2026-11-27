@@ -31,6 +31,11 @@ export type ChosenEmail = {
    * is over a year old. The email is then made from scratch.
    */
   unready: 'reading' | 'old' | null
+  /**
+   * DES-ENGINE-003b: one of the workspace's own uploaded emails (`id` is
+   * the upload's): copied only, its look kept when it is the brand's own.
+   */
+  upload?: 'own' | 'other'
 }
 
 export type FreeEmail = {

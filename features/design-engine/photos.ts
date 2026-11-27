@@ -70,6 +70,25 @@ export function photoOrigins(
   ]
 }
 
+/**
+ * DES-ENGINE-003: the hosts an uploaded email's own pictures may be
+ * fetched from (an owner's own design keeps its pictures, rule 11 needs
+ * them in Klaviyo): the common email tools' picture hosts, as constants,
+ * never a host the file names. Shopify's (Shopify Email and catalogs),
+ * Klaviyo's own image host, and Mailchimp's three. Our own storage is
+ * left out: an uploaded file never names a path on it for the server to
+ * fetch. A picture anywhere else is not fetched: the owner is asked to
+ * upload the email as .eml with its pictures inside, or its section is
+ * built from a library block with the reason.
+ */
+export const uploadPhotoOrigins: readonly string[] = [
+  'https://cdn.shopify.com',
+  'https://d3k81ch9hvuctc.cloudfront.net',
+  'https://mcusercontent.com',
+  'https://gallery.mailchimp.com',
+  'https://cdn-images.mailchimp.com'
+]
+
 /** Why a photo could not be used, in the owner's words. */
 export const photoWords = {
   host: 'it is hosted on a site GROS doesn’t load photos from yet',
@@ -170,6 +189,12 @@ const magic: Record<string, (b: Uint8Array) => boolean> = {
     b[11] === 0x50
 }
 
+/** DES-ENGINE-003: a picture's type from its first bytes (never what it says it is), or null. */
+export function sniffType(b: Uint8Array): string | null {
+  for (const [type, test] of Object.entries(magic)) if (test(b)) return type
+  return null
+}
+
 /** A picture's size from its header (PNG, JPEG, WebP, GIF), or null. */
 export function headerSize(type: string, b: Uint8Array): PhotoSize | null {
   const view = new DataView(b.buffer, b.byteOffset, b.byteLength)
@@ -223,7 +248,7 @@ export function headerSize(type: string, b: Uint8Array): PhotoSize | null {
   return null
 }
 
-type Loaded = { type: string; bytes: Buffer; size: PhotoSize }
+export type Loaded = { type: string; bytes: Buffer; size: PhotoSize }
 
 /** Checks a picture's bytes: its type's magic, its size, its pixels. */
 function checked(type: string, bytes: Buffer): Loaded | Failed {
@@ -262,6 +287,92 @@ function deadline<T>(work: Promise<T>, ms: number, stop: () => void) {
   return Promise.race([work, late]).finally(() => clearTimeout(timer))
 }
 
+/**
+ * DES-ENGINE-003: one picture's bytes, checked (type, size, pixels): an
+ * inline picture, or one fetched over https from the allowed origins only
+ * (the fixed list by default), every address checked first, never a
+ * redirect, at most 8 MB. Or why it cannot be used. Never throws.
+ */
+export async function loadPicture(
+  src: string,
+  options: {
+    origins?: readonly string[]
+    open?: PhotoOpener
+    /** DES-ENGINE-003: at most this many bytes (default 8 MB). */
+    maxBytes?: number
+  } = {}
+): Promise<Loaded | Failed> {
+  const allowed = new Set(options.origins ?? photoOrigins())
+  const open = options.open ?? httpsOpener()
+  const maxBytes = options.maxBytes ?? photoLimits.bytes
+  const big =
+    maxBytes === photoLimits.bytes ? photoWords.big : 'it is larger than 3 MB'
+  const inline = /^data:(image\/[a-z]+);base64,([a-z0-9+/]+={0,2})$/i.exec(src)
+  if (inline) {
+    const bytes = Buffer.from(inline[2]!, 'base64')
+    if (bytes.byteLength > maxBytes) return failed(big)
+    return checked(inline[1]!, bytes)
+  }
+  let url: URL
+  try {
+    url = new URL(src)
+  } catch {
+    return failed(photoWords.fetch)
+  }
+  if (url.protocol !== 'https:' || !allowed.has(url.origin))
+    return failed(photoWords.host)
+  // One deadline for the whole fetch: `https.get`'s timeout is only an
+  // idle-socket timeout, so a slow trickle could otherwise hold the copy.
+  let res: PhotoResponse | undefined
+  let late = false
+  const download = async (): Promise<Buffer | Failed> => {
+    try {
+      res = await open(url)
+    } catch (e) {
+      return failed(
+        (e as { code?: string })?.code === 'EBLOCKED'
+          ? photoWords.address
+          : photoWords.fetch
+      )
+    }
+    if (late) {
+      res.cancel()
+      return failed(photoWords.fetch)
+    }
+    // Never a redirect: the address asked for is the one answered.
+    if (res.status !== 200) {
+      res.cancel()
+      return failed(photoWords.fetch)
+    }
+    const chunks: Buffer[] = []
+    let total = 0
+    try {
+      for await (const chunk of res.body) {
+        total += chunk.byteLength
+        if (total > maxBytes) {
+          res.cancel()
+          return failed(big)
+        }
+        chunks.push(Buffer.from(chunk))
+      }
+    } catch {
+      return failed(photoWords.fetch)
+    }
+    return Buffer.concat(chunks)
+  }
+  let body: Buffer | Failed
+  try {
+    body = await deadline(download(), photoLimits.ms, () => {
+      late = true
+      res?.cancel()
+    })
+  } catch {
+    return failed(photoWords.fetch)
+  }
+  if (!Buffer.isBuffer(body)) return body
+  return checked(res!.contentType, body)
+}
+
 export function photoTools(
   browser: Browser,
   options: { origins?: readonly string[]; open?: PhotoOpener } = {}
@@ -269,74 +380,8 @@ export function photoTools(
   const allowed = new Set(options.origins ?? photoOrigins())
   const open = options.open ?? httpsOpener()
   const cache = new Map<string, Promise<Loaded | Failed>>()
-  const fetchOne = async (src: string): Promise<Loaded | Failed> => {
-    const inline = /^data:(image\/[a-z]+);base64,([a-z0-9+/]+={0,2})$/i.exec(
-      src
-    )
-    if (inline) {
-      const bytes = Buffer.from(inline[2]!, 'base64')
-      if (bytes.byteLength > photoLimits.bytes) return failed(photoWords.big)
-      return checked(inline[1]!, bytes)
-    }
-    let url: URL
-    try {
-      url = new URL(src)
-    } catch {
-      return failed(photoWords.fetch)
-    }
-    if (url.protocol !== 'https:' || !allowed.has(url.origin))
-      return failed(photoWords.host)
-    // One deadline for the whole fetch: `https.get`'s timeout is only an
-    // idle-socket timeout, so a slow trickle could otherwise hold the copy.
-    let res: PhotoResponse | undefined
-    let late = false
-    const download = async (): Promise<Buffer | Failed> => {
-      try {
-        res = await open(url)
-      } catch (e) {
-        return failed(
-          (e as { code?: string })?.code === 'EBLOCKED'
-            ? photoWords.address
-            : photoWords.fetch
-        )
-      }
-      if (late) {
-        res.cancel()
-        return failed(photoWords.fetch)
-      }
-      // Never a redirect: the address asked for is the one answered.
-      if (res.status !== 200) {
-        res.cancel()
-        return failed(photoWords.fetch)
-      }
-      const chunks: Buffer[] = []
-      let total = 0
-      try {
-        for await (const chunk of res.body) {
-          total += chunk.byteLength
-          if (total > photoLimits.bytes) {
-            res.cancel()
-            return failed(photoWords.big)
-          }
-          chunks.push(Buffer.from(chunk))
-        }
-      } catch {
-        return failed(photoWords.fetch)
-      }
-      return Buffer.concat(chunks)
-    }
-    let body: Buffer | Failed
-    try {
-      body = await deadline(download(), photoLimits.ms, () => {
-        late = true
-        res?.cancel()
-      })
-    } catch {
-      return failed(photoWords.fetch)
-    }
-    if (!Buffer.isBuffer(body)) return body
-    return checked(res!.contentType, body)
-  }
+  const fetchOne = (src: string) =>
+    loadPicture(src, { origins: [...allowed], open })
   const load = (src: string) => {
     let got = cache.get(src)
     if (!got) {

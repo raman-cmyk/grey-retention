@@ -4,6 +4,8 @@ import { buildReason } from '@/features/email-build/failure-words'
 import { planReason } from './failure-words'
 import { localTimeCandidates } from '@/lib/local-time'
 import { createClient } from '@/lib/supabase/server'
+import { stateParts } from '@/features/results/klaviyo-state'
+import type { EmailStatus } from '@/features/results/sync'
 import {
   storedPlan,
   storedPulse,
@@ -52,7 +54,23 @@ export type EmailBuildView = {
   sampleDraft: boolean
   /** Why it failed, in plain words (REL-084); null unless failed. */
   reason: string | null
+  /**
+   * PICK-99: a real draft's state in Klaviyo in plain words (store time),
+   * as the results sync last read it: "Scheduled in Klaviyo for 14 Jan,
+   * 9:00 (store time)", "Edited in Klaviyo". Absent: not read yet.
+   */
+  klaviyo?: string[]
 }
+
+const klaviyoStatuses = new Set<EmailStatus>([
+  'draft',
+  'scheduled',
+  'sending',
+  'sent',
+  'cancelled',
+  'deleted',
+  'stale'
+])
 
 const buildStates = [
   'build_queued',
@@ -133,6 +151,35 @@ export async function latestPlanRun(
         sampleDraft: b.sample_draft,
         // REL-084: a failed build always says why, in plain words.
         reason: state === 'failed' ? buildReason(b.error_code) : null
+      }
+    }
+    // PICK-99: what the results sync last read of each real draft. Not
+    // read (or the app live before its migration): the rows say less.
+    const drafted = Object.values(builds).filter(
+      (b) => b.state === 'drafted' && !b.sampleDraft
+    )
+    if (drafted.length) {
+      const synced = await db
+        .from('klaviyo_email_results')
+        .select(
+          'build_id,status,changed,design_changed,scheduled_for,send_strategy,sent_at,checked_at'
+        )
+        .eq('tenant_id', tenantId)
+        .eq('run_id', row.id)
+      for (const s of synced.error ? [] : (synced.data ?? [])) {
+        const b = drafted.find((d) => d.id === s.build_id)
+        if (!b || !klaviyoStatuses.has(s.status as EmailStatus)) continue
+        b.klaviyo = stateParts(
+          {
+            status: s.status as EmailStatus,
+            edited: s.changed === true || s.design_changed === true,
+            scheduledFor: s.scheduled_for ?? null,
+            sendStrategy: s.send_strategy ?? null,
+            sentAt: s.sent_at ?? null,
+            checkedAt: s.checked_at ?? null
+          },
+          timezone
+        )
       }
     }
   }

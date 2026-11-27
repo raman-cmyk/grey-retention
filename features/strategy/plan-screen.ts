@@ -1,5 +1,6 @@
 import type { EmailBuildView, PlanRun } from './load'
 import type { EmailType } from './plan'
+import { timingWords } from './send-times'
 
 /**
  * UI-PLAN-a (the owner's request of 16 November: a basic working UI on
@@ -51,6 +52,11 @@ export type PlanScreen =
       noAi: boolean
       /** The planner's own notes (a dropped email, an offer left out). */
       notes: string[]
+      /**
+       * #33: the owner's revenue goal as this plan worked back from it
+       * ("$12,400 still needed by 30 November…"); empty without a goal.
+       */
+      goal: { label: string; sentence: string }[]
       startOn: string
       days: PlanDay[]
       emails: PlanEmail[]
@@ -79,7 +85,12 @@ export type EmailStatus =
   | { kind: 'planned' }
   /** Agents are on it: the word is the step. */
   | { kind: 'working'; word: string }
-  | { kind: 'in_klaviyo' }
+  /**
+   * PICK-99: `words` is what the owner did with it in Klaviyo, as last read
+   * ("Scheduled in Klaviyo for 14 Jan, 9:00 (store time)", "Edited in
+   * Klaviyo"); absent until the sync has read it.
+   */
+  | { kind: 'in_klaviyo'; words?: string[] }
   /** Made by the fake pusher: nothing was sent to Klaviyo. */
   | { kind: 'sample_draft' }
   /** The owner must act: what happened and what to do, in his words. */
@@ -233,7 +244,11 @@ function emailState(
   }
   if (build.state === 'drafted')
     return {
-      status: { kind: build.sampleDraft ? 'sample_draft' : 'in_klaviyo' },
+      status: build.sampleDraft
+        ? { kind: 'sample_draft' }
+        : build.klaviyo
+          ? { kind: 'in_klaviyo', words: build.klaviyo }
+          : { kind: 'in_klaviyo' },
       action: { kind: 'open', buildId: build.id }
     }
   return {
@@ -326,7 +341,10 @@ export function planScreen(
         title: lead ? `${kind}: ${lead}` : kind,
         details: [
           dayLabel(s.date),
-          timeLabel(s.time),
+          // PICK-97: "9:00 am — when this group opens most".
+          s.timing
+            ? `${timeLabel(s.time)} — ${timingWords(s.timing)}`
+            : timeLabel(s.time),
           s.audience.label,
           ...(s.offer ? [`${s.offer.percent}% off with ${s.offer.code}`] : []),
           ...(format === 'text' ? ['Text email'] : [])
@@ -379,6 +397,10 @@ export function planScreen(
     sample: plan.sample === true,
     noAi: plan.source.brief === 'code' && plan.source.planner === 'code',
     notes: plan.notes,
+    goal: (plan.goal ?? []).map((g) => ({
+      label: g.label,
+      sentence: g.plan ? `${g.sentence} ${g.plan}` : g.sentence
+    })),
     startOn: run.startOn,
     days,
     emails,

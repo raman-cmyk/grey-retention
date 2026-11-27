@@ -13,6 +13,11 @@ name: Design copies
 # so its logs are too: it prints counts only, never an email, a link, a
 # brand's words or the secret.
 #
+# DES-ENGINE-003: the same run measures the emails owners uploaded on "Add
+# your own email" (scripts/design-uploads.mjs): each prepared email laid
+# out in the same locked browser with no request at all, its blueprint
+# reported. The app hands them out only with DESIGN_UPLOAD_COPY=on.
+#
 # Off until turned on, exactly like the scheduled jobs
 # (docs/SCHEDULED_JOBS_RUNBOOK.md): the same CRON_SECRET repository secret
 # and the same SCHEDULED_JOBS_ENABLED=true repository variable. When no
@@ -83,9 +88,13 @@ jobs:
             return 1
           }
           call '/api/internal/design/copies?peek=1' peek.json 30 || exit 1
-          waiting=$(jq -r '(.waiting | numbers) // 0' peek.json)
-          echo "Copies waiting: $waiting."
-          echo "waiting=$waiting" >> "$GITHUB_OUTPUT"
+          copies=$(jq -r '(.waiting | numbers) // 0' peek.json)
+          call '/api/internal/design/uploads?peek=1' uploads.json 30 || exit 1
+          uploads=$(jq -r '(.waiting | numbers) // 0' uploads.json)
+          echo "Copies waiting: $copies. Uploads waiting: $uploads."
+          echo "copies=$copies" >> "$GITHUB_OUTPUT"
+          echo "uploads=$uploads" >> "$GITHUB_OUTPUT"
+          echo "waiting=$((copies + uploads))" >> "$GITHUB_OUTPUT"
       - if: steps.peek.outputs.waiting != '0'
         uses: actions/checkout@v4
         with:
@@ -110,7 +119,13 @@ jobs:
         timeout-minutes: 5
         run: sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 update && pnpm exec playwright install-deps chromium || echo "::warning::apt unavailable; using the runner's preinstalled libraries"
       - name: Copy the chosen designs
-        if: steps.peek.outputs.waiting != '0'
+        if: steps.peek.outputs.waiting != '0' && steps.peek.outputs.copies != '0'
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: node --import ./scripts/ts-register.mjs scripts/design-copies.mjs
+      # DES-ENGINE-003: after the copies, even when they failed.
+      - name: Measure the uploaded emails
+        if: steps.peek.outputs.waiting != '0' && steps.peek.outputs.uploads != '0' && !cancelled()
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: node --import ./scripts/ts-register.mjs scripts/design-uploads.mjs

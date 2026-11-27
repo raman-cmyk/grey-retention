@@ -8,6 +8,7 @@ import {
   type FeedbackPage
 } from '@/features/feedback/data'
 import type { FeatureRequest } from '@/features/feedback/rules'
+import type { GoalSettings } from '@/features/goals/settings'
 import type { ManagedOffers } from '@/features/offers/source'
 import { timezoneWithOffset } from '@/lib/brand-time'
 import { localTime } from './defaults'
@@ -31,6 +32,7 @@ import {
  */
 export type SettingsPart =
   | 'offers'
+  | 'goal'
   | 'klaviyo'
   | 'timezone'
   | 'team'
@@ -46,6 +48,8 @@ export type SettingsView = {
   /** The owner or an admin (`saveMaxDiscount` and the code actions). */
   editor: boolean
   offers: ManagedOffers | null
+  /** Owner pick #33: this month's and next month's revenue goals. */
+  goal: GoalSettings | null
   klaviyo: KlaviyoState | null
   /** A key is checked with Klaviyo itself (KLAVIYO_MODE=live), else its format only. */
   liveKeys: boolean
@@ -107,6 +111,7 @@ export function settingsView(input: SettingsInput): SettingsView {
     owner: role === 'owner',
     editor: role === 'owner' || role === 'admin',
     offers: read?.offers ?? null,
+    goal: read?.goal ?? null,
     klaviyo: read?.klaviyo ?? null,
     liveKeys: input.liveKeys,
     timezone: zone
@@ -146,6 +151,7 @@ export function settingsView(input: SettingsInput): SettingsView {
   }
   for (const part of [
     'offers',
+    'goal',
     'klaviyo',
     'timezone',
     'team',

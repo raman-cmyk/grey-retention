@@ -8,6 +8,7 @@ import type {
   SwapProduct
 } from '@/features/design-engine/swap'
 import type { WordPools, WordRules } from '@/features/design-engine/words'
+import type { WebFont } from '@/features/studio/design-step'
 import type { Store } from './ports'
 
 /**
@@ -92,7 +93,9 @@ export const copyInputSchema = z.object({
   }),
   vocabulary: z.array(text(2_000)).max(600),
   sourceNames: z.array(text(200)).max(6),
-  mode: z.enum(['preview', 'klaviyo'])
+  mode: z.enum(['preview', 'klaviyo']),
+  /** DES-ENGINE-003b: the brand's own uploaded design: its look is kept. */
+  keepLook: z.boolean().optional()
 })
 export type CopyInput = {
   brand: SwapBrand
@@ -102,6 +105,7 @@ export type CopyInput = {
   vocabulary: string[]
   sourceNames: string[]
   mode: 'preview' | 'klaviyo'
+  keepLook?: boolean
 }
 
 /** A section of the copy as the email's page tells it. */
@@ -123,6 +127,8 @@ export const copyRecord = z.object({
     .array(z.object({ kind: z.string().max(20), value: z.string().max(200) }))
     .max(200),
   footerAdded: z.boolean(),
+  /** DES-ENGINE-003b: an own design's look problems (`lookProblems`); empty when kept. */
+  look: z.array(z.string().max(300)).max(60).optional(),
   /** The cut photos uploaded, by index (`<workspace>/<build>/<lease>/<i>.jpg`). */
   photos: z
     .array(
@@ -211,7 +217,23 @@ export type LibraryCopyPort = {
     input: CopyInput,
     photos: number
   ) => Promise<CopyState>
+  /**
+   * DES-ENGINE-003b: the workspace's own uploaded email this build copies
+   * (`email_builds.upload_id`), if any, its state and its copy.
+   */
+  upload?: string
+  uploadBlueprint?: (uploadId: string) => Promise<UploadBlueprintState>
+  copyUpload?: (
+    uploadId: string,
+    input: CopyInput,
+    photos: number
+  ) => Promise<CopyState>
 }
+
+export type UploadBlueprintState =
+  | { state: 'ready'; design: 'own' | 'other' }
+  | { state: 'waiting' }
+  | { state: 'unusable'; reason: string }
 
 /** Why a Copy email was drawn with coded blocks, in the owner's words. */
 export const copyWords = {
@@ -224,7 +246,36 @@ export const copyWords = {
   checks:
     'The copy of the email you chose did not pass the email checks, so this email was made with coded blocks.',
   failed: (reason: string) =>
-    `The design of the email you chose in Inspiration could not be copied (${reason.replace(/\.$/, '')}), so this email was made with coded blocks.`
+    `The design of the email you chose in Inspiration could not be copied (${reason.replace(/\.$/, '')}), so this email was made with coded blocks.`,
+  /** DES-ENGINE-003b: the owner's own uploaded email. */
+  uploadWaiting:
+    'Your email is still being read, so this email was made with coded blocks. Create it again later to copy its design.',
+  uploadFailed: (reason: string) =>
+    `The design of your email could not be copied (${reason.replace(/\.$/, '')}), so this email was made with coded blocks.`,
+  uploadLook:
+    'The copy of your own design did not keep its look (its colours, fonts or pictures), so this email was made with coded blocks.',
+  uploadTooLittle: (copied: number, total: number) =>
+    `Only ${copied} of the ${total} sections of your email could be copied, so this email was made with coded blocks.`
+} as const
+
+/** DES-ENGINE-003b: at least this share of an upload's sections must be copied. */
+export const uploadCopiedShare = 0.5
+
+/** How many of a copy's sections were copied, of how many. */
+export const copiedCount = (sections: readonly CopiedSection[]) => ({
+  copied: sections.filter((s) => s.result === 'copied').length,
+  total: sections.length
+})
+
+/** Pictures of an own design are kept as they are: what is written in them too. */
+export const keptPicturesWords =
+  'Your pictures are kept as they are: check any offer or price written in a picture (a discount in a banner, for example) before you schedule it.'
+
+/** Why an uploaded email cannot be copied, in the owner's words. */
+export const uploadWords = {
+  gone: 'it was deleted from your emails',
+  failed: 'GROS could not read its design',
+  pictures: 'one of its pictures changed or is gone'
 } as const
 
 /** Why the chosen email's blueprint cannot be used, in the owner's words. */
@@ -279,10 +330,35 @@ const photoOf = (src: string | undefined, alt: string): SwapPicture | null =>
     ? { src, width: 0, height: 0, alt: alt.slice(0, 300) }
     : null
 
+/** A family name the swap and the email may carry (the studio's own rule). */
+const familyName = /^[A-Za-z0-9][A-Za-z0-9 -]{0,59}$/
+
+/**
+ * Pick #3: the swap's heading and body fonts. The brand's own web fonts
+ * (`Store.fonts`) win: the first with the heading role for headings, the
+ * first with the body role for the rest (each the other's stand-in when
+ * the site gave only one); otherwise the brand kit's font for both. The
+ * drawing code adds the email-safe fonts after them (`safeFontStack`), as
+ * most inboxes never load a web font.
+ */
+export function swapFontsOf(
+  brand: Pick<BlockBrand, 'font'>,
+  fonts: readonly Pick<WebFont, 'family' | 'roles'>[] = []
+): { headingFont: string; bodyFont: string } {
+  const named = fonts.filter((f) => familyName.test(f.family))
+  const heading = named.find((f) => f.roles.includes('heading'))?.family
+  const body = named.find((f) => f.roles.includes('body'))?.family
+  return {
+    headingFont: heading ?? body ?? brand.font,
+    bodyFont: body ?? heading ?? brand.font
+  }
+}
+
 /** The brand as the swap reads it (sizes are read by the browser job). */
 export function swapBrandOf(
   brand: BlockBrand,
-  lifestyle?: { image: string; alt: string }
+  lifestyle?: { image: string; alt: string },
+  fonts?: readonly Pick<WebFont, 'family' | 'roles'>[]
 ): SwapBrand {
   const own = lifestyle ? photoOf(lifestyle.image, lifestyle.alt) : null
   return {
@@ -292,8 +368,7 @@ export function swapBrandOf(
     background: brand.background,
     accent: brand.accent,
     dark: brand.dark,
-    headingFont: brand.font,
-    bodyFont: brand.font,
+    ...swapFontsOf(brand, fonts),
     logo: photoOf(brand.logo, brand.name),
     logoOnDark: photoOf(brand.logoOnDark, brand.name),
     photos: own ? [own] : [],
@@ -311,7 +386,7 @@ export function swapBrandOf(
  * the brand's content says, for the leak check.
  */
 export function copyInput(input: {
-  store: Pick<Store, 'brand' | 'products' | 'facts' | 'confirmed'>
+  store: Pick<Store, 'brand' | 'products' | 'facts' | 'confirmed' | 'fonts'>
   draft: Draft
   rules: {
     maxDiscountPercent: number
@@ -342,7 +417,11 @@ export function copyInput(input: {
       ? [String(store.facts.freeShipping.over)]
       : []
   const words = wordsFromDraft(draft)
-  const brand = swapBrandOf(store.brand, store.confirmed?.lifestylePhoto)
+  const brand = swapBrandOf(
+    store.brand,
+    store.confirmed?.lifestylePhoto,
+    store.fonts
+  )
   const claims = store.facts.approvedClaims.slice(0, 40)
   return {
     brand,
@@ -382,10 +461,29 @@ export const photosFor = (input: CopyInput) =>
  */
 export function copiedLines(library: {
   sections: readonly CopiedSection[]
+  upload?: 'own' | 'other'
 }): string[] {
   const reasons = library.sections.flatMap((s) =>
     s.result !== 'copied' && s.reason ? [s.reason] : []
   )
+  // DES-ENGINE-003b: one of the owner's own uploaded emails, said by how
+  // much of it was kept.
+  const { copied, total } = copiedCount(library.sections)
+  if (library.upload === 'own')
+    return [
+      copied === total
+        ? 'Your own design was kept, every section: its layout, colours, fonts and pictures, with this email’s words, products, prices and links.'
+        : `Your own design was kept in ${copied} of its ${total} sections (their layout, colours, fonts and pictures), with this email’s words, products, prices and links. The others were built differently:`,
+      ...reasons,
+      keptPicturesWords
+    ]
+  if (library.upload === 'other')
+    return [
+      copied === total
+        ? 'Every section was copied from the email you added, with your brand’s colours, fonts, logo, words and photos.'
+        : `${copied} of the ${total} sections were copied from the email you added, with your brand’s colours, fonts, logo, words and photos. The others were built differently:`,
+      ...reasons
+    ]
   return [
     reasons.length
       ? 'The design was copied from the email you chose in Inspiration, with your brand’s colours, fonts, logo, words and photos. Some sections were built differently:'

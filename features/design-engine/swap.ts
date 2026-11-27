@@ -15,11 +15,19 @@ import {
 } from './blueprint'
 import { amount } from '@/features/assembly/amount'
 import { limits } from './likeness'
-import { lightness, paletteMapper, type PaletteMapper } from './palette'
+import {
+  lightness,
+  neededContrast,
+  nudged,
+  paletteMapper,
+  type PaletteMapper
+} from './palette'
 import {
   cutTo,
   holdsFacts,
+  holdsKeptFacts,
   wordPicker,
+  wordsAllowed,
   type Lengthen,
   type WordPools,
   type WordRules
@@ -112,6 +120,16 @@ export type SwapInput = {
   words: WordPools
   rules: WordRules
   cropper?: Cropper | null
+  /**
+   * DES-ENGINE-003b: the brand's **own** design (an email the owner
+   * uploaded as his brand's own): its colours, fonts, logo, icons and
+   * pictures stay exactly as they are; only the content changes: the
+   * words, the products (their names, prices and photos, in plan order),
+   * the links and the code. A picture that is not one of the file's own
+   * (it could not be read from the file or a fixed picture host) builds
+   * its section from a library block, with the reason.
+   */
+  keepLook?: boolean
 }
 
 export type SwapResult =
@@ -220,12 +238,33 @@ type Ctx = {
   avail: number
 }
 
+/** The palette of an own design: every colour as it is. */
+const keptPalette = (page: string): PaletteMapper => ({
+  fill: (c) => c,
+  apart: (c) => c,
+  // Kept, unless it cannot be read: then only as much darker or lighter
+  // as it takes (the email's checks refuse words too faint to read).
+  text: (c, behind, size) => nudged(c, behind, neededContrast(size)),
+  button: (c) => c,
+  line: (c) => c,
+  // Only read where the look changes (never in an own design).
+  label: (c) => c as ReturnType<PaletteMapper['label']>,
+  page
+})
+
+/** A picture of the file itself (its placeholder until hosted), else null. */
+const ownPicture =
+  /^https:\/\/email-uploads\.invalid\/\d{1,2}\.(?:png|jpg|gif|webp)$/
+
 export function swapBrand(input: SwapInput): SwapResult {
   const { source, brand, products, rules } = input
-  const pal: PaletteMapper = paletteMapper(brand)
+  const keep = input.keepLook === true
+  const pal: PaletteMapper = keep
+    ? keptPalette(source.page)
+    : paletteMapper(brand)
   // The writers' words may state the email's own products' prices (and
   // their sale prices within the max), besides the facts given.
-  const picker = wordPicker(input.words, {
+  const allowedRules: WordRules = {
     ...rules,
     amounts: [
       ...(rules.amounts ?? []),
@@ -234,7 +273,18 @@ export function swapBrand(input: SwapInput): SwapResult {
         ...(saleWithin(p, rules.maxDiscountPercent) ?? [])
       ])
     ]
-  })
+  }
+  const picker = wordPicker(input.words, allowedRules)
+  /**
+   * DES-ENGINE-003b: words an own design keeps as they are (its menu, its
+   * pictures' alt texts) say no offer, price, percent, code, date or
+   * condition the brand's facts do not give.
+   */
+  const keptWordsOk = (words: string) =>
+    !words.trim() ||
+    // A plain number in a name ("Slice 1", "Autumn 2026") is no offer; a
+    // percent, money, a deadline ("Ships in 2 days") or a condition is.
+    (wordsAllowed(words, allowedRules) && !holdsKeptFacts(words))
   const blocked = new Map<number, string>()
   const block = (s: Section, why: string) => {
     if (!blocked.has(s.ordinal)) blocked.set(s.ordinal, why)
@@ -252,15 +302,18 @@ export function swapBrand(input: SwapInput): SwapResult {
 
   const body = pal.fill(source.body)
 
-  const fontFor = (part: TextPart | ButtonPart) => ({
-    ...part.font,
-    family:
-      part.role === 'headline' ||
-      part.role === 'subheadline' ||
-      part.role === 'eyebrow'
-        ? heading
-        : bodyFont
-  })
+  const fontFor = (part: TextPart | ButtonPart) =>
+    keep
+      ? part.font
+      : {
+          ...part.font,
+          family:
+            part.role === 'headline' ||
+            part.role === 'subheadline' ||
+            part.role === 'eyebrow'
+              ? heading
+              : bodyFont
+        }
 
   const link = (ctx: Ctx) => ctx.product?.url ?? brand.site
 
@@ -432,7 +485,15 @@ export function swapBrand(input: SwapInput): SwapResult {
         break
       }
       case 'nav': {
-        runs = [{ ...style, text: navWords[navCursor++ % navWords.length]! }]
+        // An own design's menu is the brand's own: its words stay.
+        if (keep && !keptWordsOk(words))
+          block(
+            ctx.section,
+            'has menu words with an offer, a price or a condition GROS cannot check against your facts'
+          )
+        runs = keep
+          ? p.runs
+          : [{ ...style, text: navWords[navCursor++ % navWords.length]! }]
         break
       }
       default: {
@@ -443,15 +504,25 @@ export function swapBrand(input: SwapInput): SwapResult {
         } else runs = one(got)
       }
     }
+    // An own design's linked words stay linked, to the brand's own page.
+    const linked =
+      keep &&
+      p.role !== 'legal' &&
+      p.role !== 'footer_text' &&
+      p.runs.some((r) => r.href)
     return {
       ...p,
       font: fontFor(p),
       color,
-      runs: runs.map((r) =>
-        r.color && !r.tag
-          ? { ...r, color: pal.text(r.color, ctx.behind, p.font.size) }
-          : r
-      )
+      runs: runs.map((r) => {
+        const out =
+          r.color && !r.tag
+            ? { ...r, color: pal.text(r.color, ctx.behind, p.font.size) }
+            : r
+        return linked && !out.tag && out.text.trim()
+          ? { ...out, href: link(ctx) }
+          : out
+      })
     }
   }
 
@@ -465,6 +536,43 @@ export function swapBrand(input: SwapInput): SwapResult {
         ? { ...base, src: photo.src, alt: photo.alt || brand.name }
         : { ...base, src: null }
     }
+    // DES-ENGINE-003b: an own design keeps its logo, icons and pictures;
+    // only product photos follow the planned products.
+    if (keep && p.role !== 'product_photo') {
+      // Its own picture; words for when pictures are off where it had
+      // none (or only a file name), as the email's checks need.
+      const alt =
+        p.alt.trim() &&
+        !/^(?:image|picture|photo|img)$|\.(?:png|jpe?g|gif|webp)$/i.test(
+          p.alt.trim()
+        )
+          ? p.alt
+          : brand.name
+      // A picture whose words for when pictures are off state an offer,
+      // a price or a condition the facts do not give is not kept.
+      if (!keptWordsOk(alt))
+        return none(
+          'has a picture whose words state an offer, a price or a condition GROS cannot check against your facts'
+        )
+      const kept = { ...p, alt, href: p.href ? link(ctx) : null }
+      if (p.role === 'logo')
+        return { ...kept, href: p.href ? brand.site : null }
+      if (p.role === 'icon' || p.role === 'social') return { ...p, alt }
+      if (p.src && ownPicture.test(p.src)) return kept
+      return none(
+        p.src
+          ? `has a picture on ${host(p.src) || 'a site'}, a site GROS doesn’t load pictures from`
+          : 'has a picture that could not be read from your file'
+      )
+    }
+    if (
+      keep &&
+      p.role === 'product_photo' &&
+      !ctx.product &&
+      p.src &&
+      ownPicture.test(p.src)
+    )
+      return { ...p, href: p.href ? brand.site : null }
     if (p.role === 'logo') {
       const dark = lightness(ctx.behind) < 0.3
       const logo = (dark && brand.logoOnDark) || brand.logo
@@ -558,9 +666,11 @@ export function swapBrand(input: SwapInput): SwapResult {
   const buttonPart = (p: ButtonPart, ctx: Ctx): ButtonPart => {
     const face = p.background ? pal.button(p.background, ctx.behind) : null
     const label = picker.pick(p.role, p.label.length) ?? 'Shop'
-    const color = face
-      ? pal.label(face)
-      : pal.text(p.color, ctx.behind, p.font.size)
+    const color = keep
+      ? nudged(p.color, p.background ?? ctx.behind, neededContrast(p.font.size))
+      : face
+        ? pal.label(face)
+        : pal.text(p.color, ctx.behind, p.font.size)
     return {
       ...p,
       label: holdsFacts(label)
@@ -571,9 +681,11 @@ export function swapBrand(input: SwapInput): SwapResult {
       color,
       background: face,
       border: p.border
-        ? { ...p.border, color: face ?? pal.line(p.border.color, ctx.behind) }
+        ? keep
+          ? p.border
+          : { ...p.border, color: face ?? pal.line(p.border.color, ctx.behind) }
         : null,
-      ...(brand.radius !== undefined && p.radius > 0
+      ...(!keep && brand.radius !== undefined && p.radius > 0
         ? { radius: Math.min(p.radius, brand.radius, p.height / 2) }
         : {})
     }

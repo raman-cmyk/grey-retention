@@ -19,13 +19,21 @@ import { industryInWords } from '@/features/onboarding/industry'
 import {
   planFromHistory,
   readKlaviyoHistory,
+  windowCampaigns,
   type StoredHistory
 } from '@/features/onboarding/history/read'
+import { resolveSendTimes } from '@/features/onboarding/history/send-times'
+import {
+  readSendTimes,
+  type StoredSendTimes
+} from '@/features/onboarding/history/send-times-store'
 import { sampleStrategyData, type StrategyData } from '@/features/strategy/data'
+import { readOfferPercents } from '@/features/strategy/offer-memory'
 import { addDays } from '@/features/strategy/pulse'
 import { workspaceTimezone } from '@/features/strategy/offers'
 import type { Industry } from '@/features/intelligence/taxonomy'
 import { localDateTime } from '@/lib/local-time'
+import { logger } from '@/lib/logger'
 import type { Database } from '@/lib/supabase/database.types'
 
 /**
@@ -61,6 +69,16 @@ export type OnboardedParts = {
   /** ONB-057c: the owner's corrections (what the brand sells). */
   corrections?: readonly Correction[]
   keyDates: KeyDate[]
+  /**
+   * PICK-97: the best send times the history read counted; missing or
+   * null: none (every email at the usual time).
+   */
+  sendTimes?: StoredSendTimes | null
+  /**
+   * PLN-040b: the percent of the code GROS drafted for a Klaviyo campaign,
+   * by campaign id (`readOfferPercents`); missing: none known.
+   */
+  offerPercents?: ReadonlyMap<string, number>
 }
 
 /** The store's own date of a moment (a launch at 02:00 UTC may be the day before). */
@@ -138,10 +156,11 @@ export function strategyFrom(
   const catalog = parts.catalog.filter((p) => p.featurable)
   if (!history || !historyUsable(history, now) || catalog.length === 0)
     return null
-  const fromHistory = planFromHistory(history.history, {
-    start,
-    days: planDays
-  })
+  const fromHistory = planFromHistory(
+    history.history,
+    { start, days: planDays },
+    parts.offerPercents
+  )
   if (fromHistory.audiences.length === 0) return null
   const industry = industryFrom(parts.findings, {
     live: history.live,
@@ -158,6 +177,21 @@ export function strategyFrom(
     products.find((p) => /^[A-Z]{3}$/.test(p.currency))?.currency ??
     history.history.currency
   const last = addDays(start, planDays - 1)
+  // PICK-97: counted in this timezone from this same kind of read (live or
+  // the sample account); otherwise its hours mean nothing here.
+  const counted =
+    parts.sendTimes &&
+    parts.sendTimes.live === history.live &&
+    parts.sendTimes.timezone === parts.timezone
+      ? parts.sendTimes.entries
+      : null
+  const sendTime = fromHistory.sendTime ?? fallbackSendTime
+  const sendTimes = resolveSendTimes(
+    fromHistory.audiences.map((a) => a.id),
+    counted,
+    fromHistory.sendTime,
+    fallbackSendTime
+  )
   return {
     sample: !history.live,
     own: true,
@@ -202,7 +236,10 @@ export function strategyFrom(
     plan: {
       industry,
       sendsPerWeek: fromHistory.sendsPerWeek,
-      sendTime: fromHistory.sendTime ?? fallbackSendTime,
+      sendTime,
+      // Nothing counted yet: no send times, so no time is changed or
+      // explained (never "not enough history" for a history not counted).
+      ...(sendTimes ? { sendTimes } : {}),
       products: products.map((p) => {
         const launched = day(p.launchedAt, parts.timezone)
         return {
@@ -214,7 +251,8 @@ export function strategyFrom(
       }),
       audiences: fromHistory.audiences,
       blackouts: [],
-      existing: fromHistory.existing
+      existing: fromHistory.existing,
+      ...(fromHistory.saleOffers ? { saleOffers: fromHistory.saleOffers } : {})
     }
   }
 }
@@ -264,16 +302,33 @@ export function onboardedStrategyData(
         synthetic: !history.live
       })
       if (catalog.length === 0) return fallback.load({ tenantId, start })
-      const [findings, corrections, profile] = await Promise.all([
+      const [findings, corrections, profile, sendTimes] = await Promise.all([
         listFindings(db, tenantId, { topic: 'offering' }),
         listCorrections(db, tenantId),
         db
           .from('brand_profiles')
           .select('brand_name')
           .eq('tenant_id', tenantId)
-          .maybeSingle()
+          .maybeSingle(),
+        // PICK-97: a failed read plans at the usual time, never not at all.
+        readSendTimes(db, tenantId, at).catch(() => {
+          logger.warn('Plan: send times unreadable; the usual time is used')
+          return null
+        })
       ])
       if (profile.error) throw profile.error
+      // PLN-040b: the offers GROS drafted for the sends already in
+      // Klaviyo; a failed read plans as before (each sale starts low).
+      const offerPercents = await readOfferPercents(db, tenantId, {
+        campaignIds: windowCampaigns(history.history, {
+          start,
+          days: planDays
+        }),
+        live: history.live
+      }).catch(() => {
+        logger.warn('Plan: drafted offers unreadable; the sale starts low')
+        return new Map<string, number>()
+      })
       const keyDates = await planningKeyDates(db, {
         tenantId,
         timezone,
@@ -298,7 +353,9 @@ export function onboardedStrategyData(
           history,
           findings,
           corrections,
-          keyDates: keyDates.dates
+          keyDates: keyDates.dates,
+          sendTimes,
+          offerPercents
         },
         start,
         at

@@ -1,6 +1,8 @@
 import type { BuiltEmail } from './build'
 import {
+  copiedCount,
   copyInput,
+  uploadCopiedShare,
   copyWords,
   photosFor,
   type LibraryCopyPort
@@ -41,6 +43,11 @@ export async function libraryStep(input: {
   port: LibraryCopyPort
   /** The inspiration email the sections step followed (`competitor_emails.id`). */
   emailId: string
+  /**
+   * DES-ENGINE-003b: instead, the workspace's own uploaded email the build
+   * copies (`email_builds.upload_id`): its own design keeps its look.
+   */
+  uploadId?: string
   store: Pick<Store, 'brand' | 'products' | 'facts' | 'confirmed'>
   draft: Draft
   rules: {
@@ -70,29 +77,73 @@ export async function libraryStep(input: {
           reasonCode: `library_${code}`,
           reason: copyWords[code]
         }
-  const bp = await input.port.blueprint(input.emailId)
-  if (bp.state === 'waiting') return wait('waiting')
-  if (bp.state === 'unusable')
-    return {
-      kind: 'coded',
-      reasonCode: 'library_unusable',
-      reason: copyWords.failed(bp.reason)
+  const upload = input.uploadId
+  let got: Awaited<ReturnType<LibraryCopyPort['copy']>>
+  let design: 'own' | 'other' | undefined
+  if (upload) {
+    if (!input.port.uploadBlueprint || !input.port.copyUpload)
+      return {
+        kind: 'coded',
+        reasonCode: 'library_unusable',
+        reason: copyWords.uploadFailed('copying your own emails is off')
+      }
+    const bp = await input.port.uploadBlueprint(upload)
+    if (bp.state === 'waiting')
+      return waits < libraryWaits
+        ? wait('waiting')
+        : {
+            kind: 'coded',
+            reasonCode: 'library_waiting',
+            reason: copyWords.uploadWaiting
+          }
+    if (bp.state === 'unusable')
+      return {
+        kind: 'coded',
+        reasonCode: 'library_unusable',
+        reason: copyWords.uploadFailed(bp.reason)
+      }
+    design = bp.design
+    // The brand's own design is not checked against itself; another
+    // brand's email is checked as any library email (no names given: the
+    // owner's file names no brand GROS knows).
+    const copyIn = {
+      ...copyInput({
+        store: input.store,
+        draft: input.draft,
+        rules: input.rules,
+        sourceNames: [],
+        mode: 'klaviyo'
+      }),
+      ...(design === 'own' ? { keepLook: true } : {})
     }
-  // Klaviyo's tags in the footer, as the coded email has them.
-  const copyIn = copyInput({
-    store: input.store,
-    draft: input.draft,
-    rules: input.rules,
-    sourceNames: bp.sourceNames,
-    mode: 'klaviyo'
-  })
-  const got = await input.port.copy(bp.messageId, copyIn, photosFor(copyIn))
+    got = await input.port.copyUpload(upload, copyIn, photosFor(copyIn))
+  } else {
+    const bp = await input.port.blueprint(input.emailId)
+    if (bp.state === 'waiting') return wait('waiting')
+    if (bp.state === 'unusable')
+      return {
+        kind: 'coded',
+        reasonCode: 'library_unusable',
+        reason: copyWords.failed(bp.reason)
+      }
+    // Klaviyo's tags in the footer, as the coded email has them.
+    const copyIn = copyInput({
+      store: input.store,
+      draft: input.draft,
+      rules: input.rules,
+      sourceNames: bp.sourceNames,
+      mode: 'klaviyo'
+    })
+    got = await input.port.copy(bp.messageId, copyIn, photosFor(copyIn))
+  }
   if (got.state === 'queued') return wait('copying')
   if (got.state === 'failed')
     return {
       kind: 'coded',
       reasonCode: 'library_failed',
-      reason: copyWords.failed(got.reason)
+      reason: upload
+        ? copyWords.uploadFailed(got.reason)
+        : copyWords.failed(got.reason)
     }
   const record = got.record
   if (record.leaks.length)
@@ -101,12 +152,31 @@ export async function libraryStep(input: {
       reasonCode: 'library_leaks',
       reason: copyWords.leaks
     }
+  // DES-ENGINE-003b: an upload is copied only when most of it can be: at
+  // least half its sections, else coded blocks (never "your design was
+  // kept" over one section).
+  if (upload) {
+    const { copied, total } = copiedCount(record.sections)
+    if (total && copied / total < uploadCopiedShare)
+      return {
+        kind: 'coded',
+        reasonCode: 'library_too_little',
+        reason: copyWords.uploadTooLittle(copied, total)
+      }
+  }
+  if (design === 'own' && record.look?.length)
+    return {
+      kind: 'coded',
+      reasonCode: 'library_look',
+      reason: copyWords.uploadLook
+    }
   const email: BuiltEmail = {
     ...input.coded,
     html: record.html,
     approach: 'A',
     library: {
-      emailId: input.emailId,
+      emailId: upload ?? input.emailId,
+      ...(design ? { upload: design } : {}),
       sections: record.sections,
       footerAdded: record.footerAdded
     }

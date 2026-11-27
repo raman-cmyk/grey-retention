@@ -31,6 +31,8 @@ export type StrategyData = {
       | 'audiences'
       | 'blackouts'
       | 'existing'
+      | 'saleOffers'
+      | 'sendTimes'
     >
   }>
 }

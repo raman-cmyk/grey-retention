@@ -20,8 +20,10 @@ import { blueprintFrom } from './measure'
  * browser job makes with them. Bumped with any; the app answers a job that
  * measured with another version by trying it again later (a browser job
  * and the app may briefly run different code after a merge).
+ * DES-ENGINE-003: the leak check's hidden marks, and the upload measuring
+ * (.2: marks after a slash are removed too, more invisible characters).
  */
-export const ENGINE_VERSION = '2026-11-25.4'
+export const ENGINE_VERSION = '2026-11-27.1'
 
 /** A web address written in words, blanked letter for letter (its length stays). */
 /**

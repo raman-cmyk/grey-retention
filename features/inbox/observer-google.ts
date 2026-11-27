@@ -3,14 +3,14 @@ import { createSign } from 'node:crypto'
 import { InboundTransportError } from '@/lib/providers/inbound-capture'
 
 /**
- * The Observer Sheet's Google access, shared by the reader of human ratings
- * (read-only scope) and the writer of brand requests (GROS-INS-002, the one
- * "GROS requests" tab). Credentials stay server-side; a token is cached only
- * until shortly before it expires, and every answer is read fresh.
+ * Google access for the writer of brand requests (GROS-INS-002, the one
+ * "GROS requests" tab of the Observer Sheet). The reader of human ratings
+ * (`observer-sheet.ts`) keeps its own read-only sign-in. Credentials stay
+ * server-side; a token is cached only until shortly before it expires, and
+ * every answer is read fresh.
  */
 export type ServiceAccount = { client_email: string; private_key: string }
 
-export const readScope = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 export const writeScope = 'https://www.googleapis.com/auth/spreadsheets'
 
 export const sheetUnavailable = (code = 'observer_sheet_unavailable') =>

@@ -32,10 +32,13 @@ import type { InspirationSelection, InspirationView } from './read-model'
  */
 export function InspirationScreen({
   view,
-  timezone
+  timezone,
+  uploads = false
 }: {
   view: InspirationView
   timezone: string
+  /** DES-ENGINE-003: "Add your own email" is on (`DESIGN_UPLOAD_COPY`). */
+  uploads?: boolean
 }) {
   return (
     <AppPage current="inspiration" title="Inspiration">
@@ -53,6 +56,7 @@ export function InspirationScreen({
             <SuggestionsCard view={view} />
           </CardRow>
           <EmailsCard view={view} timezone={timezone} />
+          {uploads ? <OwnEmailsCard /> : null}
         </>
       )}
     </AppPage>
@@ -60,6 +64,20 @@ export function InspirationScreen({
 }
 
 const inspirationHref: Route = '/inspiration'
+const addOwnHref: Route = '/inspiration/add'
+
+/** DES-ENGINE-003: the workspace's own uploaded emails live on their page. */
+function OwnEmailsCard() {
+  const title = 'Your own emails'
+  return (
+    <Card label={title}>
+      <div className="flex flex-col items-start gap-[var(--space-5)]">
+        <h2 className="type-heading">{title}</h2>
+        <ButtonLink href={addOwnHref} label="Add your own email" />
+      </div>
+    </Card>
+  )
+}
 
 /** A brand's first letter in a thumbnail-sized tile (it has no picture). */
 function BrandThumb({ name }: { name: string }) {

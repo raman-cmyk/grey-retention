@@ -6,6 +6,7 @@ import {
   cut,
   dayMs,
   designOf,
+  designPatch,
   hourMs,
   pausedPatch,
   pullDueAt,
@@ -34,6 +35,10 @@ const row = (over: Partial<ResultRow> = {}): ResultRow => ({
   },
   status: 'draft',
   changed: false,
+  design_changed: false,
+  design_evidence: null,
+  scheduled_for: null,
+  send_strategy: null,
   sent_at: null,
   checked_at: null,
   next_check_at: iso(now),
@@ -630,5 +635,52 @@ describe('a read that could not read everything', () => {
   it('never calls an email that was sending stale', () => {
     const r = row({ status: 'sending', planned: { date: '2026-10-01' } })
     expect(afterStatus(r, seen('draft'), now).patch.status).toBe('draft')
+  })
+})
+
+describe('a design difference marks the email edited only when seen twice (PICK-99)', () => {
+  const m = {
+    variation: 'VarA01',
+    recorded: 'a'.repeat(16),
+    current: 'b'.repeat(16)
+  }
+  const at = Date.parse('2026-11-20T12:00:00Z')
+  const evidence = {
+    ...m,
+    firstSeenAt: '2026-11-20T11:00:00.000Z',
+    lastSeenAt: '2026-11-20T11:00:00.000Z',
+    checks: 1
+  }
+  it('keeps the first sight as evidence, marks the same difference seen again', () => {
+    expect(
+      designPatch({ design_changed: false, design_evidence: null }, m, at)
+    ).toEqual({
+      design_evidence: {
+        ...m,
+        firstSeenAt: '2026-11-20T12:00:00.000Z',
+        lastSeenAt: '2026-11-20T12:00:00.000Z',
+        checks: 1
+      }
+    })
+    expect(
+      designPatch({ design_changed: false, design_evidence: evidence }, m, at)
+    ).toEqual({
+      design_changed: true,
+      design_evidence: {
+        ...evidence,
+        lastSeenAt: '2026-11-20T12:00:00.000Z',
+        checks: 2
+      }
+    })
+  })
+
+  it('clears the evidence when the design is as left; unknown or already marked changes nothing', () => {
+    const r = { design_changed: false, design_evidence: evidence }
+    expect(designPatch(r, false, at)).toEqual({ design_evidence: null })
+    expect(designPatch({ ...r, design_evidence: null }, false, at)).toEqual({})
+    expect(designPatch(r, null, at)).toEqual({})
+    expect(designPatch(r, undefined, at)).toEqual({})
+    expect(designPatch({ ...r, design_changed: true }, false, at)).toEqual({})
+    expect(designPatch({ ...r, design_changed: true }, m, at)).toEqual({})
   })
 })

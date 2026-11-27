@@ -6,6 +6,7 @@ import { firstDraftWorkspace } from '@/features/drafts/data'
 import { startDraftPath } from '@/features/drafts/href'
 import { UseDesignScreen } from '@/features/drafts/use-screen'
 import { draftStartView } from '@/features/drafts/use-view'
+import { readUseUpload } from '@/features/email-uploads/use-read'
 import { readUseEmail } from '@/features/inspiration/use-read'
 import { UseEmailScreen } from '@/features/inspiration/use-screen'
 import { inspirationUseView } from '@/features/inspiration/use-view'
@@ -31,13 +32,28 @@ export default async function UseDesignPage({
 }: {
   searchParams: Promise<{
     reference?: string | string[]
+    upload?: string | string[]
     imported?: string | string[]
     attempt?: string | string[]
   }>
 }) {
   const params = await searchParams
   const reference = id.safeParse(params.reference).data
+  const upload = id.safeParse(params.upload).data
   const imported = id.safeParse(params.imported).data
+  // DES-ENGINE-003b: one of the workspace's own uploaded emails.
+  if (upload && !reference && !imported) {
+    const context = await requireRequestContext('client')
+    const chosen = z.uuid().safeParse(upload)
+    return (
+      <UseEmailScreen
+        view={inspirationUseView(
+          await readUseUpload(context, chosen.success ? chosen.data : null)
+        )}
+        timezone={context.timezone}
+      />
+    )
+  }
   if (reference && !imported) {
     const context = await requireRequestContext('client')
     const chosen = z.uuid().safeParse(reference)
