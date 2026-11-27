@@ -29,7 +29,7 @@ vi.mock('@/features/strategy/load', () => load)
 
 import { redirect } from 'next/navigation'
 import type { PlanRun, EmailBuildView } from '@/features/strategy/load'
-import { createAllEmails } from './actions'
+import { createAllEmails, createEmail } from './actions'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
 const runId = '00000000-0000-4000-8000-0000000000aa'
@@ -214,7 +214,8 @@ describe('Create all emails (PICK-102)', () => {
         'build-0',
         'build-2'
       ])
-      for (const d of runs) expect(d.deadline).toBe(claimBy)
+      // Inside a build the worker's own checks run against the click's end.
+      for (const d of runs) expect(d.deadline).toBe(end)
       // No push request starts past the click's end.
       expect(pushers.draftPusherFor).toHaveBeenCalledTimes(3)
       for (const [, options] of pushers.draftPusherFor.mock.calls)
@@ -226,6 +227,41 @@ describe('Create all emails (PICK-102)', () => {
       clock = claimBy
       await after.mock.calls[0]![0]()
       expect(worker.runEmailBuilds).not.toHaveBeenCalled()
+    })
+
+    it('gives one click’s agent steps the whole click, as before Create all', async () => {
+      // The worker's rule (worker.ts): with the agents on, a step is
+      // claimed only while a whole step (50 s) fits before its deadline.
+      const stepBudgetMs = 50_000
+      const steps = ['sections', 'content', 'copy', 'design', 'push']
+      const ran: string[] = []
+      worker.runEmailBuilds.mockImplementation(async (...args) => {
+        const deps = args[1] as { deadline: number }
+        for (const step of steps) {
+          if (Date.now() + stepBudgetMs > deps.deadline) break
+          ran.push(step)
+          clock += 15_000
+        }
+        return { ran: ran.length }
+      })
+      // One "Create email" click, then one email by Create all.
+      await createEmail({}, form({ run: runId, slot: '1' }))
+      await after.mock.calls[0]![0]()
+      expect(ran).toEqual(steps)
+      ran.length = 0
+      clock = start
+      load.latestPlanRun.mockResolvedValue({
+        ok: true,
+        run: planRun(
+          Object.fromEntries(
+            [0, 2, 3].map((s) => [s, built(`b${s}`, 'build_queued')])
+          )
+        )
+      })
+      await createAllEmails({}, form({ run: runId }))
+      await after.mock.calls[1]![0]()
+      // Steps start at 0, 15, 30, 45 and 60 s: all five fit in the click.
+      expect(ran).toEqual(steps)
     })
 
     it('goes on to the next build when one throws', async () => {

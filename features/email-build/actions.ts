@@ -34,9 +34,11 @@ export type CreateEmailState = { error?: string; message?: string }
  */
 const clickBudgetMs = 110_000
 /**
- * PICK-102 review: kept for a draft push at the end (its 30 s budget and a
- * little more). No build and no step is claimed inside it, and no push
- * request goes past the click's end, so a click ends inside its 120 s.
+ * PICK-102 review: "Create all" starts no new build in the click's last
+ * 35 s (a push's 30 s budget and a little). Inside a build the worker's
+ * own rule holds, as for one click: an agent step only while a whole step
+ * fits before the click's end, and the pusher's deadline (the click's end)
+ * caps every Klaviyo request, so a click ends inside its 120 s.
  */
 const pushMarginMs = pushBudgetMs + 5_000
 
@@ -54,6 +56,8 @@ function buildSoon(started: number, ...builds: string[]) {
     const service = createServiceClient()
     if (!service) return
     for (const build of builds) {
+      // A new build only while a push still fits (the claim's own checks
+      // then run against the click's end).
       if (Date.now() >= claimBy) break
       try {
         // The fake draft pusher unless the owner's write switch is on
@@ -61,7 +65,7 @@ function buildSoon(started: number, ...builds: string[]) {
         // push request starts past the click's end.
         await runEmailBuilds(service, {
           build,
-          deadline: claimBy,
+          deadline: end,
           pusher: draftPusherFor(service, { deadline: end })
         })
       } catch (error) {
