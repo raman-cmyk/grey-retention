@@ -216,7 +216,7 @@ export function rank(b: LibraryBlock, input: ScratchInput): number {
     0.5 * Math.log1p(b.brands) +
     (b.emailTypes.some((t) => labels.includes(t)) ? 1 : 0) +
     (b.yours ? 0.5 : 0) -
-    (input.recent.has(b.id) ? 2 : 0) +
+    (input.recent.has(b.id) ? 3 : 0) +
     shake(input.seed, b.id)
   )
 }
