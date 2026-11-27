@@ -953,7 +953,9 @@ describe('planning the next 15 days', () => {
     expect(fallbacks.entries().map((e) => e.reasonCode)).toEqual([
       'brief_agent_failed',
       'planner_agent_failed',
-      'critic_agent_failed'
+      'critic_agent_failed',
+      // #40: the plain brief's first offer swapped for the ladder's start.
+      'offer_ladder'
     ])
     // A refused call is not retried.
     expect(ai).toHaveBeenCalledTimes(3)

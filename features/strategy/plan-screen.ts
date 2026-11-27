@@ -51,6 +51,11 @@ export type PlanScreen =
       noAi: boolean
       /** The planner's own notes (a dropped email, an offer left out). */
       notes: string[]
+      /**
+       * #33: the owner's revenue goal as this plan worked back from it
+       * ("$12,400 still needed by 30 November…"); empty without a goal.
+       */
+      goal: { label: string; sentence: string }[]
       startOn: string
       days: PlanDay[]
       emails: PlanEmail[]
@@ -388,6 +393,10 @@ export function planScreen(
     sample: plan.sample === true,
     noAi: plan.source.brief === 'code' && plan.source.planner === 'code',
     notes: plan.notes,
+    goal: (plan.goal ?? []).map((g) => ({
+      label: g.label,
+      sentence: g.plan ? `${g.sentence} ${g.plan}` : g.sentence
+    })),
     startOn: run.startOn,
     days,
     emails,
