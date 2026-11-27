@@ -215,10 +215,17 @@ select is((select count(*)::int from public.library_blocks where tenant_id is nu
 -- Two uploads share a layout; the one its geometry came from is deleted:
 -- the block goes (never left showing a deleted upload's layout), and the
 -- next upload with the layout makes it again.
+-- Only this source's job is due (jobs queued in one transaction share
+-- their time; the claim must not take another one first).
+create function pg_temp.only(subject text) returns void language sql as $$
+  update public.platform_jobs set available_at = case when subject_key = subject then now() - interval '1 second'
+      else now() + interval '1 day' end
+    where kind = 'design.blocks' and status in ('queued', 'retry_wait');
+$$;
 create function pg_temp.upload_blocks(u uuid) returns jsonb language plpgsql as $$
 declare c jsonb;
 begin
-  update public.platform_jobs set available_at = now() where subject_key = 'upload:' || u;
+  perform pg_temp.only('upload:' || u);
   c := pg_temp.claim();
   return public.record_library_blocks((c->>'job')::uuid, (c->>'lease')::uuid, jsonb_build_array(pg_temp.block(1, pg_temp.fp(9))));
 end $$;
@@ -250,7 +257,7 @@ select is((select count(*)::int from public.known_library_blocks(null, array[pg_
 select set_config('test.m4', pg_temp.message(4, 'blocks-a.example')::text, true);
 select pg_temp.assign(current_setting('test.m4')::uuid);
 select pg_temp.ready(current_setting('test.m4')::uuid);
-update public.platform_jobs set available_at = now() where subject_key = 'inbox:' || current_setting('test.m4');
+select pg_temp.only('inbox:' || current_setting('test.m4'));
 select set_config('test.c7', pg_temp.claim()::text, true);
 select public.record_library_blocks((current_setting('test.c7')::jsonb->>'job')::uuid, (current_setting('test.c7')::jsonb->>'lease')::uuid,
   jsonb_build_array(pg_temp.block(1, pg_temp.fp(2))));
@@ -294,7 +301,7 @@ reset role;
 update public.tenants set status = 'active' where id = '00000000-0000-4000-8000-000000000102';
 
 -- Another engine version, or a failed read: handed back, the try given back.
-update public.platform_jobs set available_at = now() where subject_key = 'upload:' || current_setting('test.u3');
+select pg_temp.only('upload:' || current_setting('test.u3'));
 select pg_temp.as_job();
 select set_config('test.c5', pg_temp.claim()::text, true);
 select public.release_library_blocks((current_setting('test.c5')::jsonb->>'job')::uuid, (current_setting('test.c5')::jsonb->>'lease')::uuid, 'read_failed');
