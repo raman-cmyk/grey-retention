@@ -258,7 +258,9 @@ export async function run({
           })),
           footerAdded: made.footerAdded,
           ...(made.look?.length
-            ? { look: made.look.slice(0, 60).map((l) => String(l).slice(0, 300)) }
+            ? {
+                look: made.look.slice(0, 60).map((l) => String(l).slice(0, 300))
+              }
             : {}),
           photos
         }
