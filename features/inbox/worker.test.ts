@@ -141,7 +141,11 @@ describe('pollInbox', () => {
       select: () => ({
         eq: () => ({
           maybeSingle: async () => ({
-            data: { id: 'brand-1', alias_slug: 'northwind' },
+            data: {
+              id: 'brand-1',
+              alias_slug: 'northwind',
+              subscription_status: 'subscribed'
+            },
             error: null
           })
         })
@@ -176,6 +180,63 @@ describe('pollInbox', () => {
       db.calls.find((c) => c.name === 'record_inbox_message')?.args.msg
     ).toMatchObject({ aliasSlug: 'northwind' })
     expect(from).toHaveBeenCalledWith('competitor_captures')
+  })
+  it('marks a requested brand subscribed when its first approved original arrives (GROS-INS-002)', async () => {
+    const db = database(),
+      raw = sampleNewsletter({
+        slug: 'northwind',
+        fromDomain: 'northwind.test',
+        subject: 'Newsletter',
+        day: 1
+      }).raw.replaceAll(
+        'capture+northwind@inbox.example',
+        'capture+greyobserver-12345678901234567890123456789012@gmail.com'
+      )
+    const updates: unknown[] = []
+    const from = vi.fn(() => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: {
+              id: 'brand-1',
+              alias_slug: 'northwind',
+              subscription_status: 'pending'
+            },
+            error: null
+          })
+        })
+      }),
+      update: (values: unknown) => {
+        updates.push(values)
+        return { eq: async () => ({ error: null }) }
+      }
+    }))
+    const transport: InboundCaptureTransport = {
+      kind: 'gmail_imap',
+      mailbox: 'gmail',
+      synthetic: false,
+      base: { local: 'capture', domain: 'gmail.com' },
+      open: async () => ({
+        list: async () => ({
+          uidValidity: 11,
+          messages: [
+            {
+              uid: 1,
+              size: raw.length,
+              transportId: 'observer:email-1',
+              internalDate: '2026-11-01T12:00:00Z'
+            }
+          ]
+        }),
+        fetchRaw: async () => new TextEncoder().encode(raw),
+        captureDomain: () => 'northwind.test',
+        markProcessed: async () => {},
+        close: async () => {}
+      })
+    }
+    const result = await pollInbox({ ...db, from } as unknown as Db, transport)
+    expect(result).toMatchObject({ state: 'done', recorded: 1 })
+    expect(updates).toEqual([{ subscription_status: 'subscribed' }])
   })
   it('advances selected-source gaps without downloading missing originals', async () => {
     const db = database(),

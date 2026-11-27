@@ -66,6 +66,19 @@ describe('brandIndustry (ONB-065a)', () => {
   })
 })
 
+describe('brandIndustry with an admin-chosen niche (GROS-INS-002)', () => {
+  it('a niche chosen from the fixed list outranks the email labels', () => {
+    expect(
+      brandIndustry(brand({ niche: 'supplements', labelled: { home: 5 } }))
+    ).toBe('supplements')
+    expect(brandIndustry(brand({ niche: ' Food_Drink ' }))).toBe('food_drink')
+    // Free words still lose to enough labels.
+    expect(
+      brandIndustry(brand({ niche: 'unclassified', labelled: { pet: 3 } }))
+    ).toBe('pet')
+  })
+})
+
 describe('suggestCompetitors (ONB-065a)', () => {
   it('suggests brands of the same industry, those sending most lately first, with a plain reason', () => {
     const busy = brand({ name: 'Bark Co', recent: 6 })

@@ -3,7 +3,7 @@ select plan(18);
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
 set local role authenticated;
 select lives_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','shared.example','Original shared fixture','Tenant one private prohibition')$$,'owner subscribes fictional shared source');
-select throws_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','real.com','Unavailable real source')$$,'23514',null,'real opt-in/capture unavailable');
+select throws_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','real.com','Unavailable real source')$$,'PT403',null,'a sample store cannot ask for a real source (GROS-INS-002)');
 select throws_ok($$select public.enqueue_reference_job('00000000-0000-4000-8000-000000000101','playbook.synthesize')$$,'23514',null,'incomplete evidence blocks influential playbook');
 select public.enqueue_reference_job('00000000-0000-4000-8000-000000000101','competitors.capture',(select id from public.competitor_subscriptions));
 select public.claim_job('00000000-0000-4000-8000-000000000101');

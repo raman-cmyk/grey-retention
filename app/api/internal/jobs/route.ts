@@ -10,6 +10,7 @@ import { logger } from '@/lib/logger'
 import { createServiceClient } from '@/lib/supabase/service'
 import { runFixtureJobs } from '@/features/integrations/worker'
 import { runInboxStep } from '@/features/inbox/step'
+import { runObserverRequests } from '@/features/inbox/observer-requests'
 import { runStrategyRuns } from '@/features/strategy/worker'
 import { onboardedStrategyData } from '@/features/onboarding/strategy-data'
 import { runEmailBuilds } from '@/features/email-build/worker'
@@ -41,7 +42,9 @@ const noStore = { 'cache-control': 'no-store' }
  * `Authorization: Bearer <CRON_SECRET>`. It first reads the Inspiration inbox
  * once (INB-001: Gmail when `INBOX_IMAP_USER` and `INBOX_IMAP_APP_PASSWORD`
  * are set, otherwise the sample inbox), keeps the images of new emails
- * (INB-002), at most 18 seconds together, then runs due
+ * (INB-002), at most 18 seconds together, then hands brand requests to
+ * Grey Observer through its Sheet (GROS-INS-002, at most 8 seconds, only
+ * with `OBSERVER_SOURCE=sheet`), then runs due
  * jobs for every active workspace in bounded batches through the fixture
  * adapters only, in what is left of the 40-second budget. The inbox does
  * not depend on `ADAPTER_MODE`; the workspace jobs do.
@@ -67,6 +70,9 @@ export async function GET(request: NextRequest) {
   // Never throws and never waits more than 18 s: an inbox problem is
   // reported and the sweep goes on.
   const inbox = await runInboxStep(db)
+  // GROS-INS-002: brands workspaces asked to follow, handed to Grey Observer
+  // (at most 8 s; counts only in the answer).
+  const requests = await runObserverRequests(db)
   // "Plan next 15 days" steps (STR-003 part 2): the code-only path (no AI
   // call, nothing metered), at most 5 s of this sweep; a failure stays
   // queued for the next run.
@@ -112,6 +118,7 @@ export async function GET(request: NextRequest) {
       {
         error: 'Scheduled jobs run only with sample providers in this build.',
         inbox,
+        requests,
         plans,
         emails
       },
@@ -122,7 +129,7 @@ export async function GET(request: NextRequest) {
       code: 'sweep_out_of_time'
     })
     return NextResponse.json(
-      { live: false, skipped: 'out_of_time', inbox, plans, emails },
+      { live: false, skipped: 'out_of_time', inbox, requests, plans, emails },
       { headers: noStore }
     )
   }
@@ -137,7 +144,7 @@ export async function GET(request: NextRequest) {
     })
     logger.info('Scheduled job run finished', run)
     return NextResponse.json(
-      { live: false, ...run, inbox, plans, emails },
+      { live: false, ...run, inbox, requests, plans, emails },
       { headers: noStore }
     )
   } catch (error) {

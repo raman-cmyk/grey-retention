@@ -16,8 +16,10 @@ const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   createServiceClient: vi.fn(),
   requireRequestContext: vi.fn(),
-  revalidatePath: vi.fn()
+  revalidatePath: vi.fn(),
+  nicheEmails: vi.fn()
 }))
+vi.mock('./niche-read', () => ({ nicheEmails: mocks.nicheEmails }))
 vi.mock('@/features/library/reference-library/data', async (original) => ({
   ...(await original<
     typeof import('@/features/library/reference-library/data')
@@ -49,9 +51,10 @@ import { hideBrand } from './actions'
 import {
   inspirationReadModel,
   inspirationView,
+  selectionOf,
   type InspirationInput
 } from './read-model'
-import { InspirationScreen } from './screen'
+import { InspirationScreen, selectionHref } from './screen'
 
 afterEach(cleanup)
 beforeEach(() => vi.resetAllMocks())
@@ -173,6 +176,48 @@ describe('inspirationView (UI-INSa)', () => {
     expect(view.emails).toEqual([])
     // Unknown while unread: no Follow is offered anywhere (UI-INSb review).
     expect(view.slotsLeft).toBe(0)
+  })
+})
+
+describe('inspirationReadModel: Your niche (GROS-INS-002)', () => {
+  const niche = { source: 'niche', show: 'all', brand: null } as const
+
+  it('reads the niche only when asked, and only for the session’s own suggested brands', async () => {
+    const service = { service: true }
+    mocks.createClient.mockResolvedValue({ member: true })
+    mocks.createServiceClient.mockReturnValue(service)
+    mocks.referenceLibrary.mockResolvedValue(library())
+    mocks.readCompetitorSuggestions.mockResolvedValue(suggestions)
+    mocks.nicheEmails.mockResolvedValue([
+      item('n1', '2026-11-14T10:00:00Z', { domain: 'bark.example' })
+    ])
+    await inspirationReadModel(context)
+    expect(mocks.nicheEmails).not.toHaveBeenCalled()
+    const view = await inspirationReadModel(context, niche)
+    expect(mocks.nicheEmails).toHaveBeenCalledWith(
+      service,
+      suggestions.map((s) => ({
+        captureId: s.captureId,
+        domain: s.domain,
+        name: s.name
+      }))
+    )
+    expect(view.emails.map((e) => e.id)).toEqual(['n1'])
+  })
+
+  it('reads no niche without suggestions, and says when it could not be read', async () => {
+    mocks.createClient.mockResolvedValue({ member: true })
+    mocks.createServiceClient.mockReturnValue({})
+    mocks.referenceLibrary.mockResolvedValue(library())
+    mocks.readCompetitorSuggestions.mockRejectedValue(new Error('42501'))
+    const unread = await inspirationReadModel(context, niche)
+    expect(mocks.nicheEmails).not.toHaveBeenCalled()
+    expect(unread.unread).toEqual(['suggestions', 'niche'])
+    mocks.readCompetitorSuggestions.mockResolvedValue(suggestions)
+    mocks.nicheEmails.mockRejectedValue(new Error('sheet down'))
+    expect((await inspirationReadModel(context, niche)).unread).toEqual([
+      'niche'
+    ])
   })
 })
 
@@ -535,9 +580,9 @@ describe('Inspiration states (UI-INSb)', () => {
         })
       )
     render(<InspirationScreen view={empty('staff')} timezone="UTC" />)
-    expect(region('Latest emails')).toHaveTextContent(
-      /^Latest emailsNo emails yet\.$/
-    )
+    // GROS-INS-002: the filters show too; staff get no Follow hint.
+    expect(region('Latest emails')).toHaveTextContent(/No emails yet\.$/)
+    expect(region('Latest emails')).not.toHaveTextContent('Follow a brand')
     cleanup()
     render(<InspirationScreen view={empty('owner')} timezone="UTC" />)
     expect(region('Latest emails')).toHaveTextContent(
@@ -700,5 +745,183 @@ describe('Inspiration answers (UI-INSb review)', () => {
     )
     expect(region('Brands like yours')).not.toHaveTextContent('Wild Paws Also')
     expect(answer).toBeInTheDocument()
+  })
+})
+
+describe('Inspiration sources and filters (GROS-INS-002)', () => {
+  const niche = [
+    item('n1', '2026-11-14T10:00:00Z', {
+      domain: 'bark.example',
+      from: 'Bark Co',
+      format: 'text'
+    }),
+    item('n2', '2026-11-15T10:00:00Z', {
+      domain: 'bark.example',
+      from: 'Bark Co'
+    }),
+    item('n3', '2026-11-09T10:00:00Z', {
+      domain: 'wild.test',
+      from: 'Wild Paws',
+      sample: false
+    })
+  ]
+
+  it('reads the choice from the address and writes it back, defaults left out', () => {
+    expect(selectionOf({})).toEqual({
+      source: 'competitors',
+      show: 'all',
+      brand: null
+    })
+    const chosen = selectionOf({
+      source: 'niche',
+      show: ['TEXT'],
+      brand: ' Bark.Example '
+    })
+    expect(chosen).toEqual({
+      source: 'niche',
+      show: 'text',
+      brand: 'bark.example'
+    })
+    expect(selectionHref(chosen)).toBe(
+      '/inspiration?source=niche&show=text&brand=bark.example'
+    )
+    // Anything unknown is "all": never an error page.
+    expect(
+      selectionOf({ source: 'x', show: 'video', brand: 'not a site' })
+    ).toEqual({ source: 'competitors', show: 'all', brand: null })
+    expect(
+      selectionHref({ source: 'competitors', show: 'all', brand: null })
+    ).toBe('/inspiration')
+  })
+
+  it('splits Email Design from Email Text and lists one brand', () => {
+    const items = [
+      item('d', '2026-11-12T10:00:00Z', { format: 'design' }),
+      item('x', '2026-11-11T10:00:00Z', {
+        format: 'text',
+        domain: 'acme.example',
+        from: 'Acme'
+      })
+    ]
+    const show = (selection: InspirationInput['selection']) =>
+      inspirationView(input({ library: library({ items }), selection }))
+    expect(
+      show({ source: 'competitors', show: 'text', brand: null }).emails.map(
+        (e) => e.id
+      )
+    ).toEqual(['x'])
+    const one = show({
+      source: 'competitors',
+      show: 'all',
+      brand: 'acme.example'
+    })
+    expect(one.emails.map((e) => e.id)).toEqual(['x'])
+    // The brand filter keeps every brand of the source.
+    expect(one.brands).toEqual([
+      { domain: 'acme.example', name: 'Acme', emails: 1 },
+      { domain: 'northwind.example', name: 'Northwind', emails: 1 }
+    ])
+  })
+
+  it('lists the niche: its name, its brands and their emails', () => {
+    const view = inspirationView(
+      input({
+        niche,
+        selection: { source: 'niche', show: 'all', brand: null },
+        observer: true
+      })
+    )
+    expect(view.niche).toBe('Pet')
+    expect(view.emails.map((e) => e.id)).toEqual(['n2', 'n1', 'n3'])
+    expect(view.brands.map((b) => [b.domain, b.emails])).toEqual([
+      ['bark.example', 2],
+      ['wild.test', 1]
+    ])
+    // With the Observer source on, a real brand like the store can be followed.
+    expect(
+      view.suggestions.find((s) => s.domain === 'wild.test')?.followable
+    ).toBe(true)
+    expect(
+      inspirationView(
+        input({
+          niche: null,
+          selection: { source: 'niche', show: 'all', brand: null }
+        })
+      ).unread
+    ).toEqual(['niche'])
+  })
+
+  it('shows the filters, each email as Design or Text, and Follow for a niche brand not followed', () => {
+    render(
+      <InspirationScreen
+        view={inspirationView(
+          input({
+            niche,
+            selection: { source: 'niche', show: 'all', brand: null },
+            observer: true
+          })
+        )}
+        timezone="UTC"
+      />
+    )
+    const emails = region('Latest emails')
+    const whose = within(emails).getByRole('navigation', {
+      name: 'Whose emails'
+    })
+    expect(
+      within(whose).getByRole('link', { name: 'Your niche: Pet' })
+    ).toHaveAttribute('aria-current', 'true')
+    expect(
+      within(whose).getByRole('link', { name: 'Your competitors' })
+    ).toHaveAttribute('href', '/inspiration')
+    expect(
+      within(emails)
+        .getByRole('navigation', { name: 'Kind of email' })
+        .querySelectorAll('a')
+    ).toHaveLength(3)
+    expect(
+      within(emails).getByRole('link', { name: 'Bark Co' })
+    ).toHaveAttribute('href', '/inspiration?source=niche&brand=bark.example')
+    const rows = within(emails).getAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('Design')
+    expect(rows[1]).toHaveTextContent('Text')
+    // Not followed: Follow first, never Use this design.
+    expect(
+      within(rows[0]).getByRole('button', { name: 'Follow: Bark Co' })
+    ).toBeInTheDocument()
+    expect(
+      within(emails).queryByRole('link', { name: 'Use this design' })
+    ).toBeNull()
+  })
+
+  it('says when the niche has no emails yet, and when the choices match none', () => {
+    render(
+      <InspirationScreen
+        view={inspirationView(
+          input({
+            niche: [],
+            selection: { source: 'niche', show: 'all', brand: null }
+          })
+        )}
+        timezone="UTC"
+      />
+    )
+    expect(region('Latest emails')).toHaveTextContent(
+      'No emails from brands like yours yet. As our team adds brands in Pet and rates their emails Exemplary, they appear here.'
+    )
+    cleanup()
+    render(
+      <InspirationScreen
+        view={inspirationView(
+          input({
+            selection: { source: 'competitors', show: 'text', brand: null }
+          })
+        )}
+        timezone="UTC"
+      />
+    )
+    expect(region('Latest emails')).toHaveTextContent(
+      'No emails match these choices. Choose All to see every email.'
+    )
   })
 })

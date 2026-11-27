@@ -149,6 +149,13 @@ export const styles = [
 ] as const
 
 export type Industry = (typeof industries)[number]
+
+/** An industry's name for a person (GROS-INS-002): Supplements, Food and drink. */
+export function industryName(industry: Industry) {
+  const words =
+    industry === 'food_drink' ? 'food and drink' : industry.replaceAll('_', ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
 export type EmailType = (typeof emailTypes)[number]
 export type OfferType = (typeof offerTypes)[number]
 export type Season = (typeof seasons)[number]

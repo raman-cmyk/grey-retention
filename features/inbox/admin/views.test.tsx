@@ -3,7 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./actions', () => ({ inboxAdminAction: vi.fn() }))
 import type { DirectoryBrand, OpsTask } from './data'
-import { AddBrand, BrandDirectory, OpsQueue, taskWords } from './views'
+import {
+  AddBrand,
+  BrandDirectory,
+  NichePicker,
+  OpsQueue,
+  taskWords
+} from './views'
 
 afterEach(cleanup)
 
@@ -217,5 +223,43 @@ describe('AddBrand', () => {
     expect(
       save.closest('form')!.querySelector('input[name="kind"]')
     ).toHaveValue('save_brand')
+  })
+})
+
+describe('NichePicker (GROS-INS-002)', () => {
+  it('offers the fixed niche list, keeps the chosen one and saves only the niche', () => {
+    const { container } = render(<NichePicker brand={northwind} />)
+    const select = screen.getByLabelText('Niche') as HTMLSelectElement
+    expect(select.value).toBe('apparel')
+    // The 18 niches and the "choose" line.
+    expect(select.options).toHaveLength(19)
+    expect([...select.options].map((o) => o.textContent).slice(0, 3)).toEqual([
+      'Choose a niche',
+      'Apparel',
+      'Accessories'
+    ])
+    expect(
+      [...select.options].find((o) => o.value === 'food_drink')?.textContent
+    ).toBe('Food and drink')
+    const hidden = Object.fromEntries(
+      [...container.querySelectorAll('input[type="hidden"]')].map((i) => [
+        (i as HTMLInputElement).name,
+        (i as HTMLInputElement).value
+      ])
+    )
+    expect(hidden).toMatchObject({
+      kind: 'save_brand',
+      domain: 'northwind.com',
+      alias: 'northwind',
+      name: 'Northwind Outdoor'
+    })
+    expect(
+      screen.getByRole('button', { name: 'Save niche: Northwind Outdoor' })
+    ).toBeInTheDocument()
+  })
+
+  it('starts on "choose" for a brand Observer added without a niche', () => {
+    render(<NichePicker brand={{ ...northwind, niche: 'unclassified' }} />)
+    expect((screen.getByLabelText('Niche') as HTMLSelectElement).value).toBe('')
   })
 })

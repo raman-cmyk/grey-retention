@@ -199,6 +199,8 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
           more: false
         }
       },
+      // GROS-INS-002: brand requests for Observer, off without its Sheet.
+      requests: { state: 'off' },
       plans: { ran: 1 },
       emails: { ran: 2 }
     })

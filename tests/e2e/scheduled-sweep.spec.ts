@@ -217,10 +217,13 @@ test('STAB-001 scheduled sweep finishes queued work once per job across workspac
         // STR-003 part 2: "Plan next 15 days" steps run in each sweep.
         'plans',
         'processed',
+        // GROS-INS-002: brand requests for Grey Observer, off without its Sheet.
+        'requests',
         'rounds',
         'tenants'
       ].sort()
     )
+    expect(body.requests).toEqual({ state: 'off' })
     expect(body.plans).toEqual({ ran: expect.any(Number) })
     expect(body.emails).toEqual({ ran: expect.any(Number) })
     // INB-001: each sweep reads the sample inbox first; of three at once,
@@ -578,7 +581,8 @@ test('INB-004 an admin works the inbox queue and keeps the brand directory', asy
     await adminPage.getByLabel('Brand name').fill('Cedar Lane')
     await adminPage.getByLabel('Website domain').fill('cedar-lane.example')
     await adminPage.getByLabel("+alias (the brand's short name)").fill('cedar')
-    await adminPage.getByLabel('Niche').fill('home')
+    // GROS-INS-002: each directory row has its own niche picker too.
+    await adminPage.getByRole('textbox', { name: 'Niche' }).fill('home')
     await adminPage.getByRole('button', { name: 'Save brand' }).click()
     await expect(adminPage.getByText('Saved Cedar Lane.')).toBeVisible()
     await adminPage.reload()

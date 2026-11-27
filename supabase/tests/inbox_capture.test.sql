@@ -180,7 +180,7 @@ select is((select count(*)::int from public.competitor_sender_domains)+(select c
   +(select count(*)::int from public.ops_tasks)+(select count(*)::int from public.platform_jobs),0,'workspace members read no inbox tables');
 select is((select count(*)::int from public.competitor_captures where not synthetic)+(select count(*)::int from public.competitor_emails where not synthetic),0,'workspace members read no real brand and no real email');
 select is((select count(*)::int from storage.objects where bucket_id='inbox-raw'),0,'workspace members read no raw message');
-select throws_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','northwind.test')$$,'23514',null,'a workspace still cannot follow a real brand');
+select throws_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','northwind.test')$$,'23514',null,'a workspace cannot follow a brand holding emails from the earlier inbox');
 select throws_ok($$update public.inbox_mailboxes set paused_until=null$$,'42501',null,'members cannot change a mailbox');
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
 select ok((select count(*) from public.inbox_messages)=12 and (select count(*) from public.ops_tasks)>=6,'platform admins read the inbox and its tasks');

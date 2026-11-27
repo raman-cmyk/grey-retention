@@ -1,4 +1,5 @@
 import 'server-only'
+import { cache } from 'react'
 import { createServiceClient } from '@/lib/supabase/service'
 import { messageKey } from './addresses'
 import {
@@ -13,6 +14,14 @@ type Row = {
   external_id?: string
   synthetic?: boolean
 }
+/**
+ * GROS-INS-002: one read of the human selection per server render, shared
+ * by the library and Your niche (half the Sheets reads on a page). Outside a
+ * render (actions, the worker) every call reads afresh; nothing is ever
+ * kept across requests.
+ */
+const currentSelection = cache(() => observerSelection().read())
+
 /** Recheck on display AND reference use. Derived GROS records never own ratings.
  * Caller has already read rows through workspace membership/follow/hide rules.
  * The service lookup returns only the provenance of those authorized IDs.
@@ -22,7 +31,7 @@ export async function observerAllowed<T extends Row>(
   source?: ObserverSelection
 ): Promise<T[]> {
   if (!source && !observerEnabled()) return rows
-  const selected = await (source ?? observerSelection()).read()
+  const selected = await (source ? source.read() : currentSelection())
   const ids = new Set(selected.map((r) => 'observer:' + r.id))
   const keys = new Set(
     selected
