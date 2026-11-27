@@ -606,3 +606,41 @@ describe('loading an email’s page (UI-EMAIL-a)', () => {
       ).toEqual({ ok: false })
   })
 })
+
+describe('the design reasons on an email’s page (PICK-104)', () => {
+  const reason = (kind: string, text: string) => ({
+    kind,
+    text,
+    facts: [{ from: 'plan', key: 'timing' }]
+  })
+  const layout =
+    'We copy Glow Co’s email “The candle edit” (2 Nov 2026), the email you chose in Inspiration.'
+
+  it('shows the reasons the build stored, each once', () => {
+    const reasons = [
+      reason('layout', layout),
+      reason('product', 'Cedar candle is in this email because it sold 118.'),
+      reason('send_time', 'The suggested send time is 9:00 am.')
+    ]
+    const view = emailScreen(
+      row({ email: email({ reasons }), referenceReason: layout })
+    )
+    if (view.kind !== 'email') throw new Error('not an email')
+    expect(view.reasons).toEqual(reasons.map((r) => r.text))
+    // The inspiration email's reason is said once, as a reason.
+    expect(view.notes).not.toContain(layout)
+  })
+
+  it('shows no reasons for an email built before them, or a stored list it cannot read', () => {
+    const old = emailScreen(row({ referenceReason: layout }))
+    if (old.kind !== 'email') throw new Error('not an email')
+    expect(old.reasons).toEqual([])
+    expect(old.notes).toContain(layout)
+    const odd = emailScreen(
+      row({ email: email({ reasons: [{ kind: 'guess', text: 'Because.' }] }) })
+    )
+    if (odd.kind !== 'email') throw new Error('not an email')
+    expect(odd.reasons).toEqual([])
+    expect(odd.subject).toBe('Our cedar candle is back')
+  })
+})

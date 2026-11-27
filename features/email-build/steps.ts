@@ -40,6 +40,7 @@ import {
 import type { Store } from './ports'
 import type { LibraryCopyPort } from './library-copy'
 import { libraryStep } from './library-step'
+import { reasonsFor } from './reasons'
 import { scratchStep } from './scratch-step'
 import { buildSteps, type BuildStep, type RoundStep } from './step-names'
 
@@ -165,7 +166,13 @@ const progressSaved = z.looseObject({})
 
 export type StepResult =
   | { ok: true; done: Exclude<BuildStep, 'design'>; output: object }
-  | { ok: true; done: 'design'; email: BuiltEmail }
+  | {
+      ok: true
+      done: 'design'
+      email: BuiltEmail
+      /** PICK-104: its design reasons could not be made (it has none). */
+      reasonsFailed?: true
+    }
   /**
    * REL-AI part 2b: the step ran what fitted in its time and saves its
    * rounds so far; the next claim goes on from them.
@@ -330,8 +337,37 @@ export function storeFingerprint(store: Store) {
  * Settings, and a store that changed between sample and real data starts
  * over ("Try again"), as does one read again with other data since the
  * first step (REL-STO, `storeFingerprint`). Never throws for bad data.
+ *
+ * PICK-104: the email the design step made, whichever way it was drawn
+ * (coded, the studio, a library or upload copy, a letter), keeps its
+ * design reasons (`reasonsFor`): from the planned slot's facts and the
+ * saved steps, at the moment the choices are final. Fail-soft: reasons
+ * that cannot be made never fail or retry the step (it may have used paid
+ * AI); the email goes on without them, `reasonsFailed` for the worker's log.
  */
 export async function runBuildStep(
+  ...args: Parameters<typeof runStep>
+): Promise<StepResult> {
+  const made = await runStep(...args)
+  if (!made.ok || !('email' in made)) return made
+  const [, input, ctx] = args
+  try {
+    const reasons = reasonsFor({
+      planned: input.planned,
+      email: made.email,
+      progress: input.progress,
+      // A library or upload copy that did not pass is drawn coded.
+      copyFellBack: !!ctx.library && !made.email.library
+    })
+    return reasons.length
+      ? { ...made, email: { ...made.email, reasons } }
+      : made
+  } catch {
+    return { ...made, reasonsFailed: true }
+  }
+}
+
+async function runStep(
   step: string,
   input: {
     planned: PlannedEmail

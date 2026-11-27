@@ -7,6 +7,7 @@ import { plainFooterTags } from '@/features/letter/render'
 import { builtEmail, type BuiltEmail } from './build'
 import { changeWords, type ChangeKey } from './content'
 import { copiedLines } from './library-copy'
+import { reasonLines } from './reasons'
 import { allSteps } from './step-names'
 import type { StatusKind } from '@/components/gros/status'
 import {
@@ -102,6 +103,11 @@ export type EmailView = {
    * library block (or left out) and why, in plain words. Null otherwise.
    */
   copied: string[] | null
+  /**
+   * PICK-104: why its main choices were made, one sentence each, as the
+   * build stored them (at most five). Empty for emails built before it.
+   */
+  reasons: string[]
 }
 
 /** Open in Klaviyo: Klaviyo's campaigns list, where the draft is by its name. */
@@ -330,7 +336,8 @@ function viewOf(
           }
         ],
     text: email.text ? previewText(email.text) : null,
-    copied: email.library ? copiedLines(email.library) : null
+    copied: email.library ? copiedLines(email.library) : null,
+    reasons: reasonLines(email.reasons)
   }
 }
 
@@ -344,7 +351,12 @@ export function emailScreen(
   const view = email ? viewOf(email, log, row.sampleDraft) : null
   const format = view?.format ?? row.format
   const steps = runSteps(row, format)
-  const notes = notesOf(email, view, log, row.referenceReason)
+  // PICK-104: a line the reasons already say is not said again below.
+  const plain = (line: string) => line.replace(/\s+/g, ' ').trim()
+  const said = new Set((view?.reasons ?? []).map(plain))
+  const notes = notesOf(email, view, log, row.referenceReason).filter(
+    (n) => !said.has(plain(n))
+  )
   const drafted = row.state === 'drafted'
   const klaviyo =
     drafted && !row.sampleDraft && row.klaviyoCampaignId

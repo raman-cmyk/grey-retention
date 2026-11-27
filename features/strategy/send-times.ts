@@ -133,8 +133,8 @@ export function withSendTimes<
   return out
 }
 
-/** "9:00 am" for "09:00". */
-function clock(time: string) {
+/** "9:00 am" for "09:00" (also PICK-104's send time reason). */
+export function clock(time: string) {
   const h = hourOf(time)
   return `${h % 12 === 0 ? 12 : h % 12}:${time.slice(3)} ${h < 12 ? 'am' : 'pm'}`
 }

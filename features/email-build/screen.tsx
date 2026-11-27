@@ -106,11 +106,31 @@ function Body({ view }: { view: View }) {
               {view.status === 'working' && <KeepFresh />}
             </Card>
           </CardRow>
+          {view.reasons.length > 0 && <Reasons lines={view.reasons} />}
           {view.copied && <Copied lines={view.copied} />}
           <Designs email={view} />
         </>
       )
   }
+}
+
+/**
+ * PICK-104: why the email's main choices were made, one plain sentence
+ * each, from the facts the build stored when it made them.
+ */
+function Reasons({ lines }: { lines: readonly string[] }) {
+  return (
+    <Card>
+      <h2 className="type-heading">Why these choices</h2>
+      <ul className="mt-[var(--space-5)] flex flex-col gap-[var(--space-3)]">
+        {lines.map((line) => (
+          <li key={line} className="type-body">
+            {line}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
 }
 
 /**

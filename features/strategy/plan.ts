@@ -23,8 +23,10 @@ import {
 } from '@/features/letter/kind-list'
 import {
   carriedSalePercent,
+  ladderPlaces,
   ladderStartPercent,
-  offerLadder
+  offerLadder,
+  type LadderPlace
 } from '@/features/offers/ladder'
 import { mixKindOf, type MixKind } from '@/features/results/mix'
 
@@ -331,6 +333,11 @@ export type PlannedSlot = {
   letterKind?: LetterKind
   /** PICK-97: why it has its send time; missing: no history was read. */
   timing?: SlotTiming
+  /**
+   * PICK-104: an offer email's place on the offer ladder (#40) that chose
+   * its code; missing on other emails and on plans made before it.
+   */
+  ladder?: LadderPlace
   /** Why this email: the brief's goal and the facts behind it. */
   why: string
   evidence: { id: string; fact: string }[]
@@ -1611,6 +1618,35 @@ export function unusedOffersNote(
   return note(shown).slice(0, 600)
 }
 
+/**
+ * PICK-104: the ladder places `planOutput` gave (`PlannedSlot.ladder`) stay
+ * true only while the plan's offer emails are the ones it placed. When a
+ * guard after it (the worker's `slotsInWindow`, `withoutUnusableOffers`)
+ * drops an offer email or turns one into a story, the places of the others
+ * would be off by one ("the second of 3"): every place is removed, so no
+ * offer reason is said rather than a wrong one. `planned` are the slots as
+ * planned, `kept` the same slots after the guards (unchanged ones by
+ * reference, as the guards keep them).
+ */
+export function ladderKept(
+  planned: readonly PlannedSlot[],
+  kept: readonly PlannedSlot[]
+): PlannedSlot[] {
+  const placed = (s: PlannedSlot) =>
+    s.emailType === 'offer' && s.offer !== null && s.ladder !== undefined
+  const before = planned.filter(placed)
+  const after = kept.filter(placed)
+  const same =
+    before.length === after.length && after.every((s) => before.includes(s))
+  const strip = (s: PlannedSlot): PlannedSlot => {
+    if (!s.ladder) return s
+    const rest = { ...s }
+    delete rest.ladder
+    return rest
+  }
+  return kept.map((s) => (same && placed(s) ? s : strip(s)))
+}
+
 /** The plan as it is saved and shown: facts, prices and codes from code. */
 function planOutput(
   input: PlanInput,
@@ -1629,7 +1665,7 @@ function planOutput(
   const offers = new Map(input.offers.map((o) => [o.id, o]))
   const audiences = new Map(input.audiences.map((a) => [a.id, a]))
   // PICK-97: each email at its audience's best time, kept apart that day.
-  const slotsOut = withSendTimes(kept, input.sendTimes)
+  const sorted = withSendTimes(kept, input.sendTimes)
     .map((s) => {
       const action = actions[s.actionIndex]
       const offer = s.offerId ? offers.get(s.offerId)! : null
@@ -1669,6 +1705,19 @@ function planOutput(
     .sort(
       (a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)
     )
+  // PICK-104: where the ladder put each offer email, kept with the plan.
+  const places = ladderPlaces(
+    sorted.map((s) => ({
+      date: s.date,
+      percent: s.emailType === 'offer' && s.offer ? s.offer.percent : null
+    })),
+    input.offers,
+    carried
+  )
+  const slotsOut = sorted.map((s, i) => {
+    const ladder = places[i]
+    return ladder ? { ...s, ladder } : s
+  })
   const notes: string[] = []
   const left = droppedNote([...skipped, ...dropped])
   if (left) notes.push(left)
