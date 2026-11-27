@@ -1,4 +1,4 @@
-import type { TokenValues } from '@/features/design-engine/tokens'
+import type { SiteTokens } from '@/features/design-engine/tokens'
 
 /**
  * The brand a block is drawn in (BLK-001), with the colour roles of the
@@ -25,11 +25,12 @@ export type BlockBrand = {
   /** Corner radius for buttons and photos, e.g. "8px". */
   radius?: string
   /**
-   * PICK-006: the brand's design tokens (spacing, type scale, corners,
-   * button style), already clamped (`resolveTokens`). Absent: GROS's
-   * defaults, which are the blocks' own look, so nothing changes.
+   * PICK-006: the brand's design tokens its site or owner gave (spacing,
+   * type scale, corners, button style; `givenTokens`), clamped again when
+   * drawn. A token not given is GROS's default, the blocks' own look, so a
+   * brand with none draws exactly as before.
    */
-  tokens?: TokenValues
+  tokens?: SiteTokens
 }
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i

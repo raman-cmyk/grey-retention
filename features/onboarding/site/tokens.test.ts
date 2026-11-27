@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { samplePage, sampleLookOf, sampleLooks } from './sample'
-import { mergeSiteTokens, siteTokens } from './tokens'
+import { maxQuantities, mergeSiteTokens, siteTokens } from './tokens'
 
 const page = (css: string, body = '') =>
   `<!doctype html><html><head><style>${css}</style></head><body>${body}</body></html>`
@@ -179,6 +179,45 @@ describe('siteTokens (PICK-006)', () => {
     })
     expect(t['type.h1']).toBe(34)
     expect(t['radius.card']).toBe(5)
+  })
+})
+
+describe('siteTokens on hostile CSS (PICK-006)', () => {
+  it('works out nested var() in min() and max() once each, fast', () => {
+    // Each level names the one below 50 times: 50^4 reads uncached.
+    const name = (k: number) => `--${'abcdefg'[k]}`
+    let css = `:root{${name(0)}:14px;`
+    for (let k = 1; k <= 6; k++)
+      css += `${name(k)}:min(${Array.from({ length: 50 }, () => `var(${name(k - 1)})`).join(',')});`
+    css += '}'
+    css += Array.from(
+      { length: 1500 },
+      (_, i) =>
+        `.a${i}{padding:var(${name(6)}) var(${name(6)});margin:var(${name(5)})}`
+    ).join('')
+    css += `body{font-size:var(${name(1)})}h1{font-size:max(var(${name(1)}),30px)}`
+    expect(css.length).toBeGreaterThan(60_000)
+    const started = performance.now()
+    const t = siteTokens(page(css))
+    expect(performance.now() - started).toBeLessThan(2_000)
+    expect(t['type.body']).toBe(14)
+    expect(t['type.h1']).toBe(30)
+  })
+
+  it('stops at its budget and leaves the rest to the defaults', () => {
+    // More distinct values than one read works out: the headline is read
+    // first, the spaces after it run out of budget.
+    const css =
+      'h1{font-size:34px}' +
+      Array.from(
+        { length: maxQuantities + 2_000 },
+        (_, i) => `.b${i}{padding:${8 + (i % 7)}.${i}px}`
+      ).join('')
+    const started = performance.now()
+    const t = siteTokens(page(css))
+    expect(performance.now() - started).toBeLessThan(5_000)
+    expect(t['type.h1']).toBe(34)
+    expect(siteTokens(page(css))).toEqual(t)
   })
 })
 

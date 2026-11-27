@@ -1,10 +1,5 @@
 import type { BlockBrand } from '@/features/blocks/brand'
-import {
-  givenTokens,
-  tokenValues,
-  type DesignTokens,
-  type SiteTokens
-} from './tokens'
+import { givenTokens, type DesignTokens, type SiteTokens } from './tokens'
 import {
   blueprintSchema,
   textOf,
@@ -873,7 +868,7 @@ export function swapBrand(input: SwapInput): SwapResult {
       radius: `${Math.min(24, Math.round(brand.radius ?? 8))}px`,
       // PICK-006: a section built from a library block in the brand's
       // tokens too (an own design's blocks in the defaults, as before).
-      ...(!keep && brand.tokens ? { tokens: tokenValues(brand.tokens) } : {})
+      ...(!keep && brand.tokens ? { tokens: given } : {})
     }
   }
 }

@@ -173,6 +173,58 @@ describe('correctBrandBookDesign', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 
+  it('refuses a heading smaller than the text below it, in words, never lifted quietly', async () => {
+    expect(
+      await correctBrandBookDesign(
+        {},
+        form({
+          version: '7',
+          ...shownTexts,
+          ...typedTexts,
+          'type.h1': '28',
+          'type.h2': '30'
+        })
+      )
+    ).toEqual({
+      error:
+        'Headline: make it at least the section heading’s 30 px, or make that smaller too.'
+    })
+    // Both changed together, in order: fine.
+    await correctBrandBookDesign(
+      {},
+      form({
+        version: '7',
+        ...shownTexts,
+        ...typedTexts,
+        'type.h1': '30',
+        'type.h2': '28'
+      })
+    )
+    expect(
+      rpc.mock.calls[0]![1].corrections.map(
+        (c: { section: string }) => c.section
+      )
+    ).toEqual(['tokens.type.h1', 'tokens.type.h2'])
+  })
+
+  it('refuses a form zod cannot read before any write', async () => {
+    expect(
+      await correctBrandBookDesign({}, form({ ...shownTexts, ...typedTexts }))
+    ).toEqual({ error: 'Open the Brand book again, then correct it.' })
+    expect(
+      await correctBrandBookDesign(
+        {},
+        form({
+          version: '7',
+          ...shownTexts,
+          ...typedTexts,
+          'type.h1': '4'.repeat(41)
+        })
+      )
+    ).toEqual({ error: 'Keep each value short.' })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
   it('is the owner’s only', async () => {
     auth.requireRequestContext.mockResolvedValue({
       tenantId: tenant,

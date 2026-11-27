@@ -161,15 +161,14 @@ describe('the store’s design tokens', () => {
     })
     expect(store.tokens?.['type.h1']).toEqual({ value: 36, source: 'site' })
     expect(store.brand.tokens?.['radius.button']).toBe(16)
-    expect(store.brand.tokens?.['radius.card']).toBe(
-      tokenDefaults['radius.card']
-    )
+    // Only what the site or the owner gave; a default is the blocks' own.
+    expect(store.brand.tokens?.['radius.card']).toBeUndefined()
   })
 
   it('gives the defaults when the site read kept none', () => {
     const store = storeFrom(storeParts())
     expect(store.tokens).toEqual(resolveTokens({}))
-    expect(store.brand.tokens).toEqual(tokenDefaults)
+    expect(store.brand.tokens).toEqual({})
   })
 })
 

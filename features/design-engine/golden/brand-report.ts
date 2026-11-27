@@ -6,7 +6,7 @@ import type { CopyResult } from '../copy'
 import type { Leak } from '../leaks'
 import { blueprintFrom } from '../measure'
 import { forStorage } from '../stored'
-import type { Cropper, SwapProduct } from '../swap'
+import type { Cropper, SwapBrand, SwapProduct } from '../swap'
 import { libraryCopy, withCutsInline } from '../library-copy'
 import type { PhotoTools } from '../photos'
 import {
@@ -80,7 +80,12 @@ async function sideBySide(
 }
 
 /** A gate run's own photo tools and products (the noisy photo over a loopback server). */
-export type GateExtra = { tools?: PhotoTools; products?: SwapProduct[] }
+export type GateExtra = {
+  tools?: PhotoTools
+  products?: SwapProduct[]
+  /** PICK-006: the brand copied for (the test brand with design tokens). */
+  brand?: SwapBrand
+}
 
 /** One library email copied for the test brand. */
 export async function brandCopy(
@@ -100,7 +105,7 @@ export async function brandCopy(
     source: stored,
     sourceHtml: email.html,
     sourceNames: goldenStoreNames,
-    brand: testBrand,
+    brand: extra.brand ?? testBrand,
     products: extra.products ?? testProducts,
     words: testWords,
     rules: testRules,

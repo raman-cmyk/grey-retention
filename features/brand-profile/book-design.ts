@@ -97,7 +97,8 @@ export function tokenHelp(key: TokenKey): string {
     return 'As written, or capitals'
   if (key === 'button.style') return 'Filled, or outline'
   if (key === 'button.weight') return '400 to 800, like 700 for bold'
-  if (key === 'type.lineHeight') return 'From 1.2 to 1.8, like 1.5'
+  if (key === 'type.lineHeight')
+    return 'From 1.2 to 1.8 in steps of 0.05, like 1.5'
   const range = tokenLimits[key as keyof typeof tokenLimits]
   return `Whole px from ${range.min} to ${range.max}`
 }

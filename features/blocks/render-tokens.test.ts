@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  givenTokens,
   resolveTokens,
   tokenDefaults,
-  tokenValues
+  tokenValues,
+  type SiteTokens
 } from '@/features/design-engine/tokens'
 import { renderEmail, themeOf } from './render'
 import { sampleBlocks, sampleBrand } from './samples'
@@ -51,20 +53,25 @@ const soft = tokenValues(
   })
 )
 const blocks = Object.values(sampleBlocks)
-const draw = (tokens?: typeof calm) =>
+const draw = (tokens?: SiteTokens) =>
   renderEmail({
     blocks,
     brand: tokens ? { ...sampleBrand, tokens } : sampleBrand
   })
 
 describe('coded blocks with design tokens (PICK-006)', () => {
-  it('draws the defaults as the blocks’ own look', () => {
+  it('draws a brand whose site gave nothing byte for byte as before', () => {
     const plain = draw()
-    const withDefaults = draw(tokenDefaults)
-    // Only the code's box takes the (default) card corners.
-    expect(
-      withDefaults.replace('border-radius:8px;font-family', 'font-family')
-    ).toBe(plain)
+    // A store with no site tokens: every token a default, none given.
+    expect(draw(givenTokens(resolveTokens({})))).toBe(plain)
+    expect(draw({})).toBe(plain)
+    // The default values given as the site's draw the blocks' own look
+    // too, but for the card corners now named on the code's box.
+    expect(draw(tokenDefaults)).not.toBe(plain)
+    expect(draw(tokenDefaults)).toContain('dashed #')
+    expect(draw(tokenDefaults)).toMatch(
+      /dashed #[0-9a-f]{6};border-radius:8px;/
+    )
   })
 
   it('draws two brands’ tokens visibly differently on the same blocks', () => {

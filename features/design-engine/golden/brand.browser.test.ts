@@ -8,6 +8,11 @@ import { runBrandGate } from './brand-report'
 import { libraryEmails } from './library'
 import { noisyPng, photoServer } from './noisy'
 import { photoTools } from '../photos'
+import { resolveTokens } from '../tokens'
+import type { SwapBrand } from '../swap'
+import { samplePage } from '@/features/onboarding/site/sample'
+import { siteTokens } from '@/features/onboarding/site/tokens'
+import { testBrand } from './brand'
 
 /**
  * DES-ENGINE-002's gate (owner plan of 25 November 2026, step 2 "Library
@@ -53,89 +58,114 @@ describe.skipIf(!on)('library 1:1 gate', () => {
       : libraryEmails
   ).map((e) => ({ ...e, shape: 'library' as const }))
 
-  it(`copies at least ${brandGateTarget} of the 20 library emails for a brand, with no leak`, async () => {
-    if (!only.length) expect(libraryEmails).toHaveLength(20)
-    const rows = await runBrandGate(
-      browser,
-      emails,
-      join(out, 'library-brand'),
-      testCropper
-    )
-    expect(
-      rows.filter((r) => r.error).map((r) => `${r.id}: ${r.error}`)
-    ).toEqual([])
-    expect(
-      rows.flatMap((r) => r.leaks.map((l) => `${r.id}: ${l.kind} ${l.value}`))
-    ).toEqual([])
-    if (!only.length)
-      expect(rows.filter((r) => r.pass).length).toBeGreaterThanOrEqual(
-        brandGateTarget
+  /**
+   * The three runs for a brand: the test brand as it was (no tokens), and
+   * PICK-006's token gate for Copy: the same 20 emails for the test brand
+   * with each sample site's design tokens (calm: square filled capitals;
+   * soft: outline pills), held to the same floors with no leak, the
+   * structure 1:1 (only corners and the button's look change).
+   */
+  const gate = (name: string, brand: SwapBrand, dir: string) => {
+    it(`${name}copies at least ${brandGateTarget} of the 20 library emails for a brand, with no leak`, async () => {
+      if (!only.length) expect(libraryEmails).toHaveLength(20)
+      const rows = await runBrandGate(
+        browser,
+        emails,
+        join(out, `library-brand${dir}`),
+        testCropper,
+        { brand }
       )
-  }, 600_000)
-
-  it(`without a cropper, at least ${noCropFloor} copy fully; the other sections are built from a block and say why, with no leak`, async () => {
-    const rows = await runBrandGate(
-      browser,
-      emails,
-      join(out, 'library-brand-no-crop'),
-      null
-    )
-    expect(
-      rows.filter((r) => r.error).map((r) => `${r.id}: ${r.error}`)
-    ).toEqual([])
-    expect(rows.flatMap((r) => r.leaks)).toEqual([])
-    for (const r of rows)
-      for (const s of r.sections)
-        if (s.result !== 'copied')
-          expect(s.fallback?.reason).toMatch(/^Section \d+ \(/)
-    if (!only.length)
-      expect(rows.filter((r) => r.pass).length).toBeGreaterThanOrEqual(
-        noCropFloor
-      )
-  }, 600_000)
-
-  it(`with the real centre cut (a canvas in the locked browser), at least ${canvasFloor} copy fully, with no leak`, async () => {
-    // The first product's photo is a detailed, noisy 1,600 × 1,000 photo
-    // on Shopify's photo host, served by a loopback server in pieces with
-    // no length (its JPEG cut is far larger than a blueprint keeps).
-    const server = await photoServer({
-      '/s/files/test/noisy-green.png': noisyPng(1600, 1000)
-    })
-    const products = testProducts.map((p, i) =>
-      i === 0
-        ? {
-            ...p,
-            photo: {
-              src: 'https://cdn.shopify.com/s/files/test/noisy-green.png',
-              width: 0,
-              height: 0,
-              alt: p.title
-            }
-          }
-        : p
-    )
-    const rows = await runBrandGate(
-      browser,
-      emails,
-      join(out, 'library-brand-canvas'),
-      'canvas',
-      { tools: photoTools(browser, { open: server.open }), products }
-    ).finally(server.close)
-    expect(
-      rows.filter((r) => r.error).map((r) => `${r.id}: ${r.error}`)
-    ).toEqual([])
-    expect(rows.flatMap((r) => r.leaks)).toEqual([])
-    // The noisy photo was cut and used (no section says it could not be).
-    expect(
-      rows.flatMap((r) =>
-        r.sections.filter((x) =>
-          /photo that could not be used/.test(x.fallback?.reason ?? '')
+      expect(
+        rows.filter((r) => r.error).map((r) => `${r.id}: ${r.error}`)
+      ).toEqual([])
+      expect(
+        rows.flatMap((r) => r.leaks.map((l) => `${r.id}: ${l.kind} ${l.value}`))
+      ).toEqual([])
+      if (!only.length)
+        expect(rows.filter((r) => r.pass).length).toBeGreaterThanOrEqual(
+          brandGateTarget
         )
+    }, 600_000)
+
+    it(`${name}without a cropper, at least ${noCropFloor} copy fully; the other sections are built from a block and say why, with no leak`, async () => {
+      const rows = await runBrandGate(
+        browser,
+        emails,
+        join(out, `library-brand-no-crop${dir}`),
+        null,
+        { brand }
       )
-    ).toEqual([])
-    if (!only.length)
-      expect(rows.filter((r) => r.pass).length).toBeGreaterThanOrEqual(
-        canvasFloor
+      expect(
+        rows.filter((r) => r.error).map((r) => `${r.id}: ${r.error}`)
+      ).toEqual([])
+      expect(rows.flatMap((r) => r.leaks)).toEqual([])
+      for (const r of rows)
+        for (const s of r.sections)
+          if (s.result !== 'copied')
+            expect(s.fallback?.reason).toMatch(/^Section \d+ \(/)
+      if (!only.length)
+        expect(rows.filter((r) => r.pass).length).toBeGreaterThanOrEqual(
+          noCropFloor
+        )
+    }, 600_000)
+
+    it(`${name}with the real centre cut (a canvas in the locked browser), at least ${canvasFloor} copy fully, with no leak`, async () => {
+      // The first product's photo is a detailed, noisy 1,600 × 1,000 photo
+      // on Shopify's photo host, served by a loopback server in pieces with
+      // no length (its JPEG cut is far larger than a blueprint keeps).
+      const server = await photoServer({
+        '/s/files/test/noisy-green.png': noisyPng(1600, 1000)
+      })
+      const products = testProducts.map((p, i) =>
+        i === 0
+          ? {
+              ...p,
+              photo: {
+                src: 'https://cdn.shopify.com/s/files/test/noisy-green.png',
+                width: 0,
+                height: 0,
+                alt: p.title
+              }
+            }
+          : p
       )
-  }, 600_000)
+      const rows = await runBrandGate(
+        browser,
+        emails,
+        join(out, `library-brand-canvas${dir}`),
+        'canvas',
+        { tools: photoTools(browser, { open: server.open }), products, brand }
+      ).finally(server.close)
+      expect(
+        rows.filter((r) => r.error).map((r) => `${r.id}: ${r.error}`)
+      ).toEqual([])
+      expect(rows.flatMap((r) => r.leaks)).toEqual([])
+      // The noisy photo was cut and used (no section says it could not be).
+      expect(
+        rows.flatMap((r) =>
+          r.sections.filter((x) =>
+            /photo that could not be used/.test(x.fallback?.reason ?? '')
+          )
+        )
+      ).toEqual([])
+      if (!only.length)
+        expect(rows.filter((r) => r.pass).length).toBeGreaterThanOrEqual(
+          canvasFloor
+        )
+    }, 600_000)
+  }
+
+  gate('', testBrand, '')
+  for (const [look, domain] of [
+    ['calm', 'fernhill.example'],
+    ['soft', 'birchwood.example']
+  ] as const)
+    gate(
+      `tokens ${look}: `,
+      {
+        ...testBrand,
+        tokens: resolveTokens({ site: siteTokens(samplePage(domain, '/')!) })
+      },
+      `-tokens-${look}`
+    )
 })

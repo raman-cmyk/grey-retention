@@ -28,7 +28,7 @@ returns boolean language sql immutable set search_path = '' as $$
     when 'type.h1' then n between 24 and 48 and n % 1 = 0
     when 'type.h2' then n between 18 and 36 and n % 1 = 0
     when 'type.h3' then n between 16 and 28 and n % 1 = 0
-    when 'type.lineHeight' then n between 1.2 and 1.8 and (n * 100) % 1 = 0
+    when 'type.lineHeight' then n between 1.2 and 1.8 and (n * 20) % 1 = 0
     when 'radius.button' then n between 0 and 24 and n % 1 = 0
     when 'radius.card' then n between 0 and 24 and n % 1 = 0
     when 'radius.image' then n between 0 and 24 and n % 1 = 0
@@ -38,7 +38,7 @@ returns boolean language sql immutable set search_path = '' as $$
     else false
   end
 $$;
-revoke all on function private.token_number_ok(text, numeric) from public, anon, authenticated;
+revoke all on function private.token_number_ok(text, numeric) from public, anon, authenticated, service_role;
 
 -- Whether a scale of spaces is whole px from 2 to 64, 2 to 10 of them,
 -- each once, smallest first.
@@ -48,7 +48,7 @@ returns boolean language sql immutable set search_path = '' as $$
     and not exists (select 1 from unnest(steps) s where s is null or s % 1 <> 0 or s not between 2 and 64)
     and steps = (select array_agg(distinct s order by s) from unnest(steps) s)
 $$;
-revoke all on function private.token_steps_ok(numeric[]) from public, anon, authenticated;
+revoke all on function private.token_steps_ok(numeric[]) from public, anon, authenticated, service_role;
 
 -- Whether a set of tokens has the shape the Site reader keeps (`SiteTokens`):
 -- an object of known tokens only, each in its range.
@@ -73,7 +73,7 @@ begin
   end loop;
   return true;
 end $$;
-revoke all on function private.site_tokens_ok(jsonb) from public, anon, authenticated;
+revoke all on function private.site_tokens_ok(jsonb) from public, anon, authenticated, service_role;
 
 create table public.brand_tokens (
   tenant_id uuid primary key references public.tenants(id),
@@ -137,23 +137,24 @@ language sql immutable set search_path = '' as $$
 $$;
 revoke all on function private.brand_token_sections() from public, anon, authenticated, service_role;
 
--- What the owner's value of a token may be, as the app writes it
--- (`tokenText`): a whole number ("8"), a line height ("1.5"), the spaces
--- as a list ("4, 8, 16, 24"), or one of its words. Null (a removal) is
--- always fine.
+-- What the owner's value of a token may be, exactly as the app writes it
+-- (`tokenText`, one spelling a value): a whole number with no leading zero
+-- ("8"), a line height in steps of 0.05 with no trailing zero ("1.5",
+-- "1.55"), the spaces as a list ("4, 8, 16, 24"), or one of its words.
+-- Null (a removal) is fine for a known token only.
 create or replace function private.brand_token_ok(book_section text, book_value text)
 returns boolean language sql immutable set search_path = '' as $$
   select case
+    when book_section is null or not (book_section = any(private.brand_token_sections())) then false
     when book_value is null then true
-    when not (book_section = any(private.brand_token_sections())) then false
     when book_section in ('tokens.type.headingCase', 'tokens.button.case') then book_value in ('none', 'uppercase')
     when book_section = 'tokens.button.style' then book_value in ('filled', 'outline')
     when book_section = 'tokens.spacing.steps' then
-      book_value ~ '^[0-9]{1,2}(, [0-9]{1,2}){1,9}$'
+      book_value ~ '^[1-9][0-9]?(, [1-9][0-9]?){1,9}$'
       and private.token_steps_ok(string_to_array(book_value, ', ')::numeric[])
     when book_section = 'tokens.type.lineHeight' then
-      book_value ~ '^[0-9](\.[0-9]{1,2})?$' and private.token_number_ok('type.lineHeight', book_value::numeric)
-    else book_value ~ '^[0-9]{1,3}$'
+      book_value ~ '^1(\.[0-9]?[1-9])?$' and private.token_number_ok('type.lineHeight', book_value::numeric)
+    else book_value ~ '^(0|[1-9][0-9]{0,2})$'
       and private.token_number_ok(substr(book_section, length('tokens.') + 1), book_value::numeric)
   end
 $$;
@@ -198,7 +199,10 @@ alter table public.brand_book_corrections
   add constraint brand_book_corrections_fact_shape check (
     (section not like 'facts.%' and section not like 'tokens.%') or (original is null and action <> 'add')),
   add constraint brand_book_corrections_line_shape check (
-    section like 'facts.%' or section like 'tokens.%' or action = 'add' or original is not null);
+    section like 'facts.%' or section like 'tokens.%' or action = 'add' or original is not null),
+  -- A token's value is always one the command checks.
+  add constraint brand_book_corrections_token_value check (
+    section not like 'tokens.%' or private.brand_token_ok(section, value));
 
 -- ONB-058's checked command (090073, owner only since 090095), with a
 -- token's section read like a fact's. Otherwise unchanged.

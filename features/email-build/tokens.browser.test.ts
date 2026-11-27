@@ -11,7 +11,7 @@ import {
   phoneWindow,
   pictureOf
 } from '@/features/design-engine/browser'
-import { resolveTokens, tokenValues } from '@/features/design-engine/tokens'
+import { givenTokens, resolveTokens } from '@/features/design-engine/tokens'
 import { samplePage } from '@/features/onboarding/site/sample'
 import { siteTokens } from '@/features/onboarding/site/tokens'
 
@@ -122,7 +122,7 @@ describe.skipIf(!on)('token gate: coded blocks (PICK-006)', () => {
       ['calm', 'fernhill.example'],
       ['soft', 'birchwood.example']
     ] as const) {
-      const tokens = tokenValues(
+      const tokens = givenTokens(
         resolveTokens({ site: siteTokens(samplePage(domain, '/')!) })
       )
       const html = renderEmail({

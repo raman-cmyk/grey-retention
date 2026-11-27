@@ -4,6 +4,7 @@ import { memoryFallbackLog } from '@/features/fallback/log'
 import type { PlannedEmail } from './build'
 import { sampleOffersFrom, sampleStoreFrom, type Store } from './ports'
 import { runBuildStep, storeFingerprint } from './steps'
+import { resolveTokens, tokenValues } from '@/features/design-engine/tokens'
 
 /**
  * REL-STO: a build's steps read the store fresh, so the first step saves
@@ -110,6 +111,31 @@ describe('the store a build started from (REL-STO)', () => {
         ok: true,
         done: 'content'
       })
+  })
+
+  it('goes on when the brand’s design tokens arrive or the owner corrects one mid-build (PICK-006)', async () => {
+    // Saved before the deploy: a store with no tokens at all.
+    const progress = await savedUpTo('content')
+    const s = await store()
+    expect(s.tokens).toBeUndefined()
+    const site = resolveTokens({ site: { 'radius.button': 4 } })
+    const corrected = resolveTokens({
+      site: { 'radius.button': 4 },
+      owner: { 'radius.button': 12 }
+    })
+    for (const tokens of [resolveTokens({}), site, corrected])
+      for (const step of ['content', 'copy', 'design'] as const) {
+        const saved = await savedUpTo(step)
+        const now: Store = {
+          ...s,
+          tokens,
+          brand: { ...s.brand, tokens: tokenValues(tokens) }
+        }
+        expect(storeFingerprint(now)).toBe(storeFingerprint(s))
+        const made = await run(step, now, saved)
+        expect(made).toMatchObject({ ok: true })
+      }
+    expect(progress.sections).toMatchObject({ store: storeFingerprint(s) })
   })
 
   it('a build saved before this goes on as before (no store saved)', async () => {

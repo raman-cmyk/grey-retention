@@ -142,6 +142,21 @@ function readCss(css: string, f: Found) {
 type Quantity = { n: number; px: boolean }
 
 /**
+ * The page's custom properties, with one read's work budget: each value
+ * is worked out once (`cache`), and a read works out at most
+ * `maxQuantities` values in all, so nested `var()`s in `min()` and `max()`
+ * can never make a stylesheet slow. Spent: nothing more is read, and the
+ * tokens not read yet stay the defaults.
+ */
+type Vars = {
+  get(name: string): string | undefined
+  left: number
+  cache: Map<string, Quantity | null>
+}
+/** The most values one read works out (a page's styles take a few thousand). */
+export const maxQuantities = 20_000
+
+/**
  * A CSS value as one quantity: a length in px (`rem` at `root`, `em` at
  * 16, `pt`), a plain number, or `%` of `percentOf` px; through `var()`
  * (four hops), `calc()` with + - * /, `clamp()` (its largest: an email is
@@ -149,10 +164,27 @@ type Quantity = { n: number; px: boolean }
  */
 function quantity(
   raw: string,
-  props: ReadonlyMap<string, string>,
+  props: Vars,
   root: number,
   percentOf: number | null = null,
   hops = 0
+): Quantity | null {
+  const key = `${root}|${percentOf}|${hops}|${raw}`
+  const known = props.cache.get(key)
+  if (known !== undefined) return known
+  if (props.left <= 0) return null
+  props.left--
+  const got = worked(raw, props, root, percentOf, hops)
+  props.cache.set(key, got)
+  return got
+}
+
+function worked(
+  raw: string,
+  props: Vars,
+  root: number,
+  percentOf: number | null,
+  hops: number
 ): Quantity | null {
   const s = raw.trim().toLowerCase()
   if (!s || s.length > 500 || hops > 4) return null
@@ -270,7 +302,7 @@ function quantity(
 /** A value's px, or null. */
 const pxOf = (
   value: string,
-  props: ReadonlyMap<string, string>,
+  props: Vars,
   root: number,
   percentOf: number | null = null
 ) => {
@@ -290,7 +322,7 @@ const noFill =
 function borderLine(
   name: string,
   value: string,
-  props: ReadonlyMap<string, string>,
+  props: Vars,
   root: number
 ): boolean | null {
   const v = value.trim().toLowerCase()
@@ -401,7 +433,11 @@ function read(html: string, sheets: readonly Sheet[]): SiteTokens {
     for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]!)
   }
   for (const sheet of sheets) readCss(sheet.css, f)
-  const props = f.props
+  const props: Vars = {
+    get: (name) => f.props.get(name),
+    left: maxQuantities,
+    cache: new Map()
+  }
   // The page's root size (`html { font-size: 62.5% }` makes 1rem 10 px).
   let root = 16
   for (const e of f.entries)

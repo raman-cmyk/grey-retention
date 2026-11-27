@@ -1,5 +1,5 @@
 begin;
-select no_plan();
+select plan(102);
 
 -- PICK-006: the brand's design tokens, kept by the Site reader's job, and
 -- the owner's corrections of them in the Brand book. Owner ...01 and staff
@@ -82,6 +82,13 @@ select throws_ok(format('select pg_temp.keep(%L,%L)',current_setting('test.new')
     ('{"type.h1":49}'::jsonb, 'a headline over 48 px'),
     ('{"type.lineHeight":1.9}'::jsonb, 'a line height over 1.8'),
     ('{"type.lineHeight":1.234}'::jsonb, 'a line height of three decimals'),
+    ('{"type.lineHeight":1.53}'::jsonb, 'a line height off the 0.05 steps'),
+    ('{"type.h2":37}'::jsonb, 'a section heading over 36 px'),
+    ('{"type.h3":15}'::jsonb, 'a small heading under 16 px'),
+    ('{"button.paddingX":11}'::jsonb, 'button side space under 12 px'),
+    ('{"button.paddingX":49}'::jsonb, 'button side space over 48 px'),
+    ('{"button.weight":300}'::jsonb, 'a weight under 400'),
+    ('{"spacing.base":1}'::jsonb, 'a unit under 2 px'),
     ('{"type.body":"16"}'::jsonb, 'a size that is not a number'),
     ('{"button.weight":650}'::jsonb, 'a weight off the hundreds'),
     ('{"button.paddingY":21}'::jsonb, 'button space over 20 px'),
@@ -167,6 +174,13 @@ select throws_ok(format($$select public.correct_brand_book_at('00000000-0000-400
     ('[{"section":"tokens.button.case","action":"replace","value":"Capitals"}]', 'a case the app never writes'),
     ('[{"section":"tokens.spacing.steps","action":"replace","value":"16, 8"}]', 'a scale not smallest first'),
     ('[{"section":"tokens.spacing.steps","action":"replace","value":"8,16"}]', 'a scale the app never writes'),
+    ('[{"section":"tokens.spacing.steps","action":"replace","value":"08, 16"}]', 'a space with a leading zero'),
+    ('[{"section":"tokens.radius.button","action":"replace","value":"012"}]', 'a number with a leading zero'),
+    ('[{"section":"tokens.type.lineHeight","action":"replace","value":"1.50"}]', 'a line height with a trailing zero'),
+    ('[{"section":"tokens.type.lineHeight","action":"replace","value":"1.53"}]', 'a line height off the 0.05 steps'),
+    ('[{"section":"tokens.type.h2","action":"replace","value":"40"}]', 'a section heading over 36 px'),
+    ('[{"section":"tokens.button.paddingY","action":"replace","value":"7"}]', 'button space under 8 px'),
+    ('[{"section":"tokens.radius.corner","action":"remove"}]', 'taking back an unknown token'),
     ('[{"section":"tokens.radius.corner","action":"replace","value":"4"}]', 'an unknown token'),
     ('[{"section":"tokens.radius.button","action":"add","value":"4"}]', 'an added token line'),
     ('[{"section":"tokens.radius.button","original":"12","action":"replace","value":"4"}]', 'a token named by its words'),
@@ -185,7 +199,21 @@ select is(public.correct_brand_book_at('00000000-0000-4000-8000-000000000101',cu
   '[{"section":"tokens.button.style","action":"remove"}]'::jsonb),1,'he takes the button style back to the site''s');
 select is((select action from public.brand_book_corrections where tenant_id='00000000-0000-4000-8000-000000000101'
   and section='tokens.button.style' and withdrawn_at is null),'remove','recorded as a removal');
--- Staff and another workspace's owner cannot.
+-- A book version newer than the one shown refuses a token correction.
+select throws_ok(format($$select public.correct_brand_book_at('00000000-0000-4000-8000-000000000101',%s,
+  '[{"section":"tokens.radius.button","action":"replace","value":"4"}]'::jsonb)$$,current_setting('test.v')::int + 1),'PT409',null,
+  'a stale book version refuses it');
+-- He takes a token correction back: the site's value returns.
+select lives_ok(format($$select public.withdraw_brand_book_correction_at('00000000-0000-4000-8000-000000000101',%s,%L)$$,
+  current_setting('test.v'),(select id from public.brand_book_corrections where tenant_id='00000000-0000-4000-8000-000000000101'
+    and section='tokens.radius.button' and withdrawn_at is null)),'he takes the corner correction back');
+select is((select count(*)::integer from public.brand_book_corrections where tenant_id='00000000-0000-4000-8000-000000000101'
+  and section='tokens.radius.button' and withdrawn_at is null),0,'no live corner correction is left');
+-- Staff, an admin and another workspace's owner cannot.
+select pg_temp.as_member('00000000-0000-4000-8000-000000000006');
+select throws_ok(format($$select public.correct_brand_book_at('00000000-0000-4000-8000-000000000101',%s,
+  '[{"section":"tokens.radius.button","action":"replace","value":"4"}]'::jsonb)$$,current_setting('test.v')),'42501',null,
+  'an admin cannot correct a token');
 select pg_temp.as_member('00000000-0000-4000-8000-000000000005');
 select throws_ok(format($$select public.correct_brand_book_at('00000000-0000-4000-8000-000000000101',%s,
   '[{"section":"tokens.radius.button","action":"replace","value":"4"}]'::jsonb)$$,current_setting('test.v')),'42501',null,
@@ -203,7 +231,14 @@ select is((select e.detail from public.workspace_events e join public.brand_book
 -- A line of what GROS saw is corrected as before.
 select ok(not private.brand_fact_ok('facts.returnDays','4000') and private.brand_fact_ok('facts.returnDays','30')
   and private.brand_fact_ok('voice','Calm.') and private.brand_fact_ok('tokens.radius.card',null),
-  'facts are checked as before, a line freely, a removal always');
+  'facts are checked as before, a line freely, a known token''s removal');
+select ok(not private.brand_token_ok('tokens.radius.corner',null) and not private.brand_token_ok(null,'4')
+  and private.brand_token_ok('tokens.spacing.steps','4, 8, 64') and private.brand_token_ok('tokens.type.lineHeight','1.2')
+  and private.brand_token_ok('tokens.radius.card','0') and private.brand_token_ok('tokens.button.weight','800'),
+  'an unknown token is refused even when taken back; the bounds are kept');
+select throws_ok($$insert into public.brand_book_corrections(tenant_id,section,original,action,value)
+  values('00000000-0000-4000-8000-000000000101','tokens.radius.card',null,'replace','99')$$,'23514',null,
+  'the table never holds a token value the command would refuse');
 select throws_ok($$insert into public.brand_book_corrections(tenant_id,section,original,action,value)
   values('00000000-0000-4000-8000-000000000101','tokens.radius.card','4','replace','8')$$,'23514',null,
   'the table never holds a token named by its words');

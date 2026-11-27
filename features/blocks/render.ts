@@ -134,13 +134,16 @@ export function themeOf(brand: BlockBrand): Theme {
   const accent = safeColor(brand.accent, '#1a1a1a')
   const dark = safeColor(brand.dark, '#1a1a1a')
   const { tokens: t, ...scale } = tokenTheme(brand)
-  const own = brand.tokens !== undefined
+  // Corners only where the site or the owner gave them: otherwise the
+  // brand's radius, as before (and no card corners at all).
+  const given = (k: 'radius.image' | 'radius.button' | 'radius.card') =>
+    brand.tokens?.[k] !== undefined ? `${t[k]}px` : null
   return {
     ...scale,
     font: fontStack(brand.font),
-    radius: own ? `${t['radius.image']}px` : safeRadius(brand.radius),
-    buttonRadius: own ? `${t['radius.button']}px` : safeRadius(brand.radius),
-    cardRadius: own ? `${t['radius.card']}px` : null,
+    radius: given('radius.image') ?? safeRadius(brand.radius),
+    buttonRadius: given('radius.button') ?? safeRadius(brand.radius),
+    cardRadius: given('radius.card'),
     page: safeColor(brand.background, '#fafafa'),
     ink: readableOn(safeColor(brand.ink, '#121212'), WHITE),
     muted: '#555555',

@@ -362,7 +362,7 @@ export function DesignForm({
                     >
                       {tokenHelp(key)}.
                       {own.includes(key)
-                        ? ' Leave it empty to use your website’s value again.'
+                        ? ' Leave it empty to go back to your website’s value, or the default when your website has none.'
                         : ''}
                     </p>
                   </div>

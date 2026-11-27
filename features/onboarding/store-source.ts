@@ -16,8 +16,8 @@ import {
 } from '@/features/onboarding/brand-book-corrections'
 import { brandTokens } from '@/features/onboarding/brand-tokens'
 import {
+  givenTokens,
   resolveTokens,
-  tokenValues,
   type SiteTokens
 } from '@/features/design-engine/tokens'
 import { copyFacts, trueFacts } from '@/features/onboarding/brand-facts'
@@ -266,7 +266,7 @@ export function storeFrom(parts: OwnStoreParts): Store {
         logo: emailLogo(logos?.onLight),
         logoOnDark: emailLogo(logos?.onDark)
       }),
-      tokens: tokenValues(tokens)
+      tokens: givenTokens(tokens)
     },
     tokens,
     industry,
