@@ -21,11 +21,17 @@ import {
   readKlaviyoHistory,
   type StoredHistory
 } from '@/features/onboarding/history/read'
+import { resolveSendTimes } from '@/features/onboarding/history/send-times'
+import {
+  readSendTimes,
+  type StoredSendTimes
+} from '@/features/onboarding/history/send-times-store'
 import { sampleStrategyData, type StrategyData } from '@/features/strategy/data'
 import { addDays } from '@/features/strategy/pulse'
 import { workspaceTimezone } from '@/features/strategy/offers'
 import type { Industry } from '@/features/intelligence/taxonomy'
 import { localDateTime } from '@/lib/local-time'
+import { logger } from '@/lib/logger'
 import type { Database } from '@/lib/supabase/database.types'
 
 /**
@@ -61,6 +67,11 @@ export type OnboardedParts = {
   /** ONB-057c: the owner's corrections (what the brand sells). */
   corrections?: readonly Correction[]
   keyDates: KeyDate[]
+  /**
+   * PICK-97: the best send times the history read counted; missing or
+   * null: none (every email at the usual time).
+   */
+  sendTimes?: StoredSendTimes | null
 }
 
 /** The store's own date of a moment (a launch at 02:00 UTC may be the day before). */
@@ -158,6 +169,21 @@ export function strategyFrom(
     products.find((p) => /^[A-Z]{3}$/.test(p.currency))?.currency ??
     history.history.currency
   const last = addDays(start, planDays - 1)
+  // PICK-97: counted in this timezone from this same kind of read (live or
+  // the sample account); otherwise its hours mean nothing here.
+  const counted =
+    parts.sendTimes &&
+    parts.sendTimes.live === history.live &&
+    parts.sendTimes.timezone === parts.timezone
+      ? parts.sendTimes.entries
+      : null
+  const sendTime = fromHistory.sendTime ?? fallbackSendTime
+  const sendTimes = resolveSendTimes(
+    fromHistory.audiences.map((a) => a.id),
+    counted,
+    fromHistory.sendTime,
+    fallbackSendTime
+  )
   return {
     sample: !history.live,
     own: true,
@@ -202,7 +228,10 @@ export function strategyFrom(
     plan: {
       industry,
       sendsPerWeek: fromHistory.sendsPerWeek,
-      sendTime: fromHistory.sendTime ?? fallbackSendTime,
+      sendTime,
+      // Nothing counted yet: no send times, so no time is changed or
+      // explained (never "not enough history" for a history not counted).
+      ...(sendTimes ? { sendTimes } : {}),
       products: products.map((p) => {
         const launched = day(p.launchedAt, parts.timezone)
         return {
@@ -264,14 +293,19 @@ export function onboardedStrategyData(
         synthetic: !history.live
       })
       if (catalog.length === 0) return fallback.load({ tenantId, start })
-      const [findings, corrections, profile] = await Promise.all([
+      const [findings, corrections, profile, sendTimes] = await Promise.all([
         listFindings(db, tenantId, { topic: 'offering' }),
         listCorrections(db, tenantId),
         db
           .from('brand_profiles')
           .select('brand_name')
           .eq('tenant_id', tenantId)
-          .maybeSingle()
+          .maybeSingle(),
+        // PICK-97: a failed read plans at the usual time, never not at all.
+        readSendTimes(db, tenantId, at).catch(() => {
+          logger.warn('Plan: send times unreadable; the usual time is used')
+          return null
+        })
       ])
       if (profile.error) throw profile.error
       const keyDates = await planningKeyDates(db, {
@@ -298,7 +332,8 @@ export function onboardedStrategyData(
           history,
           findings,
           corrections,
-          keyDates: keyDates.dates
+          keyDates: keyDates.dates,
+          sendTimes
         },
         start,
         at

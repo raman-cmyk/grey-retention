@@ -40,7 +40,9 @@ export function sentEmail(email: EmailResult): SentEmail | null {
     return null
   const totals = numbers(email.results)
   if (!totals || totals.clickRate === null) return null
-  const edited = email.changed || email.designChanged
+  // A design difference first seen at the send check (stored, never
+  // confirmed by a second check) counts as his edit too.
+  const edited = email.changed || email.designChanged || email.designEvidence
   const known = email.results.some(
     (r) => typeof r.statistics.unsubscribe_uniques === 'number'
   )

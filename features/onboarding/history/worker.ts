@@ -51,6 +51,8 @@ import {
   type HistorySnapshot
 } from './facts'
 import { historianInput, readHistory, type HistorianRead } from './historian'
+import { sendSamples, sendTimes, type SendTimeEntry } from './send-times'
+import { recordSendTimes } from './send-times-store'
 import {
   readOwnerVoice,
   samplesToKeep,
@@ -491,6 +493,45 @@ export async function readBrandHistory(
     })
   }
 
+  // PICK-97: the best send time per list and segment, from the sent
+  // emails' results and their campaigns' audiences (an extra, as the
+  // voice: a failure leaves the audiences out, never the history read).
+  // An email without results (no report read) is counted as left out;
+  // a store with no sends keeps only its (empty) store row.
+  let sentAudiences: CampaignAudience[] = []
+  const sentIds = [
+    ...new Set(
+      sent.flatMap((e) =>
+        e.campaignId && e.recipients !== null ? [e.campaignId] : []
+      )
+    )
+  ]
+  if (sentIds.length && more())
+    try {
+      const read = await readCampaignAudiences(deps.client, sentIds, more)
+      sentAudiences = read.records
+      // A campaign whose audiences were not read counts for the store only.
+      if (!read.complete || read.skipped)
+        logger.warn('History read: send-time audiences read in part', {
+          asked: sentIds.length,
+          read: read.records.length,
+          skipped: read.skipped,
+          complete: read.complete
+        })
+    } catch (error) {
+      // The store-wide row still counts every send read.
+      logger.warn('History read: send times per audience left out', {
+        code: codeOf(error),
+        name: nameOf(error),
+        kind: error instanceof KlaviyoError ? error.kind : 'none'
+      })
+    }
+  const times: SendTimeEntry[] = sendTimes(
+    sendSamples(sent, sentAudiences),
+    timezone,
+    started
+  )
+
   // PIC-23 part 2b: the owner's voice from the emails they sent, while
   // time is left (an extra: it never stops the history read).
   let voice: VoiceRead | null = null
@@ -678,6 +719,25 @@ export async function readBrandHistory(
         name: nameOf(error)
       })
     }
+  // PICK-97: kept before the history (whose write ends the lease).
+  try {
+    const kept = await recordSendTimes(
+      db,
+      { id: job.id, lease: job.lease_token! },
+      timezone,
+      times
+    )
+    logger.info('History read: send times', {
+      audiences: times.length - 1,
+      withTime: times.filter((t) => t.bestHour !== null).length,
+      kept
+    })
+  } catch (error) {
+    logger.error('History read: send times not kept', {
+      code: codeOf(error),
+      name: nameOf(error)
+    })
+  }
   const stored = await db.rpc('record_klaviyo_history', {
     job: job.id,
     lease: job.lease_token!,
