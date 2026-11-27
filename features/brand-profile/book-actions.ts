@@ -7,6 +7,7 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { rewriteBrandBookSoon } from '@/features/onboarding/brand-book-writes'
 import { createClient } from '@/lib/supabase/server'
 import { factInput, factKeys, type FactKey } from './book-facts'
+import { tokenInput, tokenKeys, tokenLabels } from './book-design'
 
 /**
  * The owner's corrections typed into the Brand book (UI-BRAND-2). A
@@ -209,6 +210,99 @@ const factCorrection = (key: FactKey, value: string | null): Correction => ({
   action: value === null ? 'remove' : 'replace',
   value
 })
+
+/**
+ * PICK-006: the design form as zod reads it: the version shown, and for
+ * each token the typed value, the value shown (`was_<token>`) and whether
+ * it was the owner's (`own_<token>`), each a short text.
+ */
+const field = z.string().max(40, 'Keep each value short.').default('')
+const designForm = z.object({
+  version,
+  ...Object.fromEntries(
+    tokenKeys.flatMap((k) => [
+      [k, field],
+      [`was_${k}`, field],
+      [`own_${k}`, z.enum(['1']).optional()]
+    ])
+  )
+})
+
+/** Headings from the largest down: each at least the size below it. */
+const headingOrder = [
+  ['type.h1', 'type.h2'],
+  ['type.h2', 'type.h3'],
+  ['type.h3', 'type.body']
+] as const
+
+/**
+ * PICK-006: corrects the brand's design tokens. Each token the owner
+ * changed becomes his (checked against its email-safe range here and in
+ * the database); an emptied field takes his own correction back, so the
+ * website's value (or the default) returns. `was_<token>` holds the value
+ * the form showed and `own_<token>` whether it was his, so unchanged
+ * tokens are left alone. A heading he makes smaller than the text below it
+ * is refused in words (the book would show it lifted to that size).
+ */
+export async function correctBrandBookDesign(
+  _state: ActionResult,
+  form: FormData
+): Promise<ActionResult> {
+  const parsed = designForm.safeParse(Object.fromEntries(form))
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    return {
+      error:
+        issue?.path[0] === 'version'
+          ? 'Open the Brand book again, then correct it.'
+          : (issue?.message ?? 'Check the values.')
+    }
+  }
+  const data = parsed.data as Record<string, string | undefined> & {
+    version: number
+  }
+  const corrections: Correction[] = []
+  const typedSizes = new Map<string, number>()
+  const changed = new Set<string>()
+  for (const key of tokenKeys) {
+    const typed = tokenInput(key, data[key] ?? '')
+    if ('error' in typed) return { error: typed.error }
+    if (typed.value !== null && key.startsWith('type.'))
+      typedSizes.set(key, Number(typed.value))
+    const was = tokenInput(key, data[`was_${key}`] ?? '')
+    if ('value' in was && was.value === typed.value) continue
+    // Emptied: only his own correction can be taken back.
+    if (typed.value === null && data[`own_${key}`] !== '1') continue
+    changed.add(key)
+    corrections.push({
+      section: `tokens.${key}`,
+      original: null,
+      action: typed.value === null ? 'remove' : 'replace',
+      value: typed.value
+    })
+  }
+  for (const [above, below] of headingOrder) {
+    const a = typedSizes.get(above)
+    const b = typedSizes.get(below)
+    if (
+      a !== undefined &&
+      b !== undefined &&
+      a < b &&
+      (changed.has(above) || changed.has(below))
+    )
+      return {
+        error: `${tokenLabels[above]}: make it at least the ${tokenLabels[below].toLowerCase()}’s ${b} px, or make that smaller too.`
+      }
+  }
+  if (!corrections.length) return { error: 'Change a value first.' }
+  if (corrections.length > 10)
+    return { error: 'Change at most 10 values at a time.' }
+  return correct(
+    data.version,
+    corrections,
+    'Design saved. Rewriting the Brand book.'
+  )
+}
 
 const withdrawForm = z.object({
   version,

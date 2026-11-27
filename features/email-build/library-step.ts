@@ -48,7 +48,10 @@ export async function libraryStep(input: {
    * copies (`email_builds.upload_id`): its own design keeps its look.
    */
   uploadId?: string
-  store: Pick<Store, 'brand' | 'products' | 'facts' | 'confirmed'>
+  store: Pick<
+    Store,
+    'brand' | 'products' | 'facts' | 'confirmed' | 'fonts' | 'tokens'
+  >
   draft: Draft
   rules: {
     maxDiscountPercent: number

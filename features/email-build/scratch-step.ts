@@ -60,7 +60,10 @@ export async function scratchStep(input: {
   /** The build, for the email's own variety. */
   buildId: string
   emailType: EmailType
-  store: Pick<Store, 'brand' | 'products' | 'facts' | 'confirmed' | 'fonts'>
+  store: Pick<
+    Store,
+    'brand' | 'products' | 'facts' | 'confirmed' | 'fonts' | 'tokens'
+  >
   draft: Draft
   rules: {
     maxDiscountPercent: number

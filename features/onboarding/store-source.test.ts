@@ -621,10 +621,18 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       ['brand_photo_sets', 'eq', 'tenant_id', tenantId],
       // Pick #3: the website's fonts (`brandFonts` checks the website).
       ['brand_profiles', 'eq', 'tenant_id', tenantId],
-      ['brand_fonts', 'eq', 'tenant_id', tenantId]
+      ['brand_fonts', 'eq', 'tenant_id', tenantId],
+      // PICK-006: the website's design tokens (`brandTokens` checks it too).
+      ['brand_profiles', 'eq', 'tenant_id', tenantId],
+      ['brand_tokens', 'eq', 'tenant_id', tenantId]
     ])
     // None kept: the brand kit's font, as before.
     expect(store.fonts).toBeUndefined()
+    // None kept: GROS's defaults, each marked so.
+    expect(store.tokens?.['radius.button']).toEqual({
+      value: 8,
+      source: 'default'
+    })
   })
 
   it('carries the website’s kept fonts for the studio, and builds without them when they cannot be read (pick #3)', async () => {

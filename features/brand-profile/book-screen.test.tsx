@@ -7,6 +7,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock('./book-actions', () => ({
   correctBrandBookLine: vi.fn(async () => ({ message: 'Saved.' })),
   correctBrandBookFacts: vi.fn(async () => ({ message: 'Facts saved.' })),
+  correctBrandBookDesign: vi.fn(async () => ({ message: 'Design saved.' })),
   withdrawBrandBookCorrection: vi.fn(async () => ({ message: 'Taken back.' })),
   retryBrandBookRewrite: vi.fn(async () => ({ message: 'Rewriting.' }))
 }))
@@ -22,7 +23,9 @@ vi.mock('@/features/onboarding/actions', () => ({
   onboardingAction: vi.fn(async () => ({}))
 }))
 
+import { resolveTokens } from '@/features/design-engine/tokens'
 import {
+  correctBrandBookDesign,
   correctBrandBookFacts,
   correctBrandBookLine,
   retryBrandBookRewrite,
@@ -481,5 +484,67 @@ describe('BrandBookScreen corrections', () => {
       'The rewrite did not finishYour brand and its corrections are saved. Ask the owner to try again.'
     )
     expect(screen.queryByRole('button')).toBeNull()
+  })
+  it('shows the design tokens with their sources, and lets the owner correct them (PICK-006)', async () => {
+    const designed = brandBookView(
+      {
+        version: 6,
+        written_by: 'brand-book@2',
+        created_at: '2026-11-24T15:00:00Z',
+        content: {
+          brand: { name: 'Cedar Lane' },
+          design: resolveTokens({
+            site: { 'radius.button': 4, 'button.style': 'outline' },
+            owner: { 'type.h1': 40 }
+          })
+        }
+      },
+      [],
+      { allParts: true }
+    )!
+    render(<BrandBookScreen view={ready({ book: designed })} />)
+    const design = card('Design')
+    expect(within(design).getByText('Corners')).toBeTruthy()
+    expect(design.textContent).toContain('Button corners4 pxFrom your website')
+    expect(design.textContent).toContain('Headline40 pxYour correction')
+    expect(design.textContent).toContain('Card corners8 pxGROS default')
+    expect(design.textContent).toContain('Button styleOutline')
+    await userEvent.click(
+      within(design).getByRole('button', { name: 'Correct design' })
+    )
+    expect(within(design).getByLabelText('Button corners')).toHaveValue('4')
+    await userEvent.clear(within(design).getByLabelText('Card corners'))
+    await userEvent.type(within(design).getByLabelText('Card corners'), '12')
+    const save = within(design).getByRole('button', { name: 'Save design' })
+    expect(formOf(save)).toMatchObject({
+      version: '6',
+      'radius.card': '12',
+      'was_radius.card': '8',
+      'own_type.h1': '1'
+    })
+    await userEvent.click(save)
+    expect(vi.mocked(correctBrandBookDesign)).toHaveBeenCalledOnce()
+  })
+
+  it('gives staff the design without the correction button', () => {
+    const designed = brandBookView({
+      version: 6,
+      written_by: 'brand-book@2',
+      created_at: '2026-11-24T15:00:00Z',
+      content: { design: resolveTokens({}) }
+    })!
+    render(<BrandBookScreen view={ready({ owner: false, book: designed })} />)
+    const design = card('Design')
+    expect(design.textContent).toContain('GROS default')
+    expect(
+      within(design).queryByRole('button', { name: 'Correct design' })
+    ).toBeNull()
+  })
+
+  it('says a book written before tokens has none yet', () => {
+    render(<BrandBookScreen view={ready()} />)
+    expect(card('Design').textContent).toContain(
+      'Not in this version yet. The next rewrite adds them.'
+    )
   })
 })

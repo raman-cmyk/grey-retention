@@ -12,6 +12,7 @@ import type { SwapBrand } from '@/features/design-engine/swap'
 vi.mock('server-only', () => ({}))
 vi.mock('./actions', () => ({ setLayoutHidden: vi.fn() }))
 vi.mock('@/lib/supabase/service', () => ({ createServiceClient: () => null }))
+import { resolveTokens } from '@/features/design-engine/tokens'
 const { drawInBrand, previewWords, readLibraryScreen } =
   await import('./screen-read')
 const { LibraryScreen } = await import('./screen')
@@ -55,6 +56,39 @@ describe('the block library screen (DES-ENGINE-004b)', () => {
     expect(html).not.toMatch(/example\.com/)
     // Blanked words never reach the screen either.
     expect(html).not.toMatch(/\bXxxx\b/)
+  })
+
+  it('draws a block in the brand’s design tokens, as Scratch would (PICK-006)', () => {
+    const source = blueprint({
+      sections: [section({ items: [...section().items.slice(1)] })]
+    })
+    const [hero] = cutBlocks(source).blocks
+    const product = {
+      id: 'p1',
+      title: 'Hill green',
+      price: '$14.00',
+      url: 'https://fernhill.example/p/1',
+      photo: null
+    }
+    const plain = drawInBrand(hero!.blueprint, brand, [product])!
+    const soft = drawInBrand(
+      hero!.blueprint,
+      {
+        ...brand,
+        tokens: resolveTokens({
+          site: {
+            'button.style': 'outline',
+            'radius.button': 24,
+            'type.h1': 44
+          }
+        })
+      },
+      [product]
+    )!
+    expect(soft).not.toBe(plain)
+    expect(soft).toMatch(/border:2px solid #[0-9a-f]{6}/)
+    expect(soft).toContain('font-size:44px')
+    expect(plain).not.toContain('font-size:44px')
   })
 
   it('writes preview words from the brand’s name and products', () => {

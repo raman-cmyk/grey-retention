@@ -103,6 +103,7 @@ describe('readBrandSite keeps the photos (ONB-059b)', () => {
     })
     expect(calls.map((c) => c.name)).toEqual([
       'record_site_photos',
+      'record_site_tokens',
       'record_site_findings'
     ])
     expect(calls[0]!.args).toMatchObject({ job: 'job-1', lease: 'lease-1' })
