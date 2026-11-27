@@ -227,7 +227,20 @@ export type StoredRule = {
   key: string
   status: 'active' | 'expired' | 'retired'
   confidence: number
+  /** The owner removed it on Learned (`retired_by`): never brought back. */
+  removedByOwner?: boolean
 }
+
+/**
+ * #76: the "don'ts" about how people take a kind of email (spam, then
+ * unsubscribes). One of these that faded comes back when the pattern does,
+ * as a new rule (a stored rule never comes back to life), and while one is
+ * found a "do" for the same kind of email is retired.
+ */
+const deliverability = new Set<Dimension>(['spam_complaints', 'unsubscribes'])
+
+/** A rule's key without its return count (`…:dont#2`). */
+const baseKey = (key: string) => key.replace(/#\d+$/, '')
 
 export type RuleWrite =
   | {
@@ -256,7 +269,10 @@ export const ruleKey = (
  * a pattern still there has its confidence moved to the evidence; a rule
  * whose pattern turned the other way is retired at once; one whose pattern
  * faded is retired once `retireAfter` sends of that kind were read since,
- * and otherwise left to expire.
+ * and otherwise left to expire. #76: a spam or unsubscribe "don't" found
+ * for a kind of email retires an active "do" for that kind (`turned`); one
+ * that faded or expired is added again under its key with a return count
+ * (`…:dont#2`) when the pattern returns, unless the owner removed it.
  */
 export function planWrites(input: {
   tenantId: string
@@ -270,18 +286,28 @@ export function planWrites(input: {
     input.patterns.map((p) => [ruleKey(input.tenantId, p), p])
   )
   const active = input.stored.filter((r) => r.status === 'active')
-  const storedKeys = new Set(input.stored.map((r) => r.key))
-  for (const [key, pattern] of found)
-    if (!storedKeys.has(key))
+  const expiresAt = new Date(input.now + ruleDays * 86_400_000).toISOString()
+  for (const [key, pattern] of found) {
+    const before = input.stored.filter((r) => baseKey(r.key) === key)
+    if (!before.length) {
+      writes.push({ op: 'add', key, pattern, expiresAt })
+      continue
+    }
+    // #76: a deliverability "don't" that faded comes back as a new rule.
+    if (
+      deliverability.has(pattern.dimension) &&
+      !before.some((r) => r.status === 'active' || r.removedByOwner)
+    )
       writes.push({
         op: 'add',
-        key,
+        key: `${key}#${before.length + 1}`.slice(0, 200),
         pattern,
-        expiresAt: new Date(input.now + ruleDays * 86_400_000).toISOString()
+        expiresAt
       })
+  }
   const emails = usable(input.emails, input.now)
   for (const rule of active) {
-    const pattern = found.get(rule.key)
+    const pattern = found.get(baseKey(rule.key))
     if (pattern) {
       if (Math.abs(pattern.confidence - rule.confidence) >= 0.05)
         writes.push({
@@ -294,7 +320,7 @@ export function planWrites(input: {
         })
       continue
     }
-    const parts = rule.key.split(':')
+    const parts = baseKey(rule.key).split(':')
     // results:<tenant>:<dimension>:<value>:<kind>
     const [dimension, kind] = [parts[2], parts[parts.length - 1]]
     const value = parts.slice(3, -1).join(':')
@@ -303,7 +329,16 @@ export function planWrites(input: {
       value,
       kind: kind === 'do' ? 'dont' : 'do'
     })
-    if (found.has(opposite)) {
+    // #76: people marking a kind as spam, or leaving over it, turns its "do".
+    const deliveryDont =
+      dimension === 'email_type' &&
+      kind === 'do' &&
+      [...deliverability].some((d) =>
+        found.has(
+          ruleKey(input.tenantId, { dimension: d, value, kind: 'dont' })
+        )
+      )
+    if (found.has(opposite) || deliveryDont) {
       writes.push({
         op: 'update',
         id: rule.id,
@@ -337,6 +372,8 @@ export type LearnedRow = {
   status: 'active' | 'expired' | 'retired'
   createdAt: string
   updatedAt: string
+  /** The owner removed it on Learned: not something GROS retired. */
+  removedByOwner?: boolean
 }
 
 /**
@@ -356,7 +393,10 @@ export function weeklyLearning(rows: readonly LearnedRow[], now: number) {
   const retired = rows
     .filter(
       (r) =>
-        r.status !== 'active' && inWeek(r.updatedAt) && !inWeek(r.createdAt)
+        r.status !== 'active' &&
+        !r.removedByOwner &&
+        inWeek(r.updatedAt) &&
+        !inWeek(r.createdAt)
     )
     .map((r) => r.rule)
   const count = (n: number, one: string, many: string) =>

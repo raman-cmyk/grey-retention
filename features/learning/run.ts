@@ -100,7 +100,7 @@ export async function learnFromResults(
   )
   const { data, error } = await db
     .from('agent_memory_rules')
-    .select('id,revision,idempotency_key,status,confidence')
+    .select('id,revision,idempotency_key,status,confidence,retired_by')
     .eq('tenant_id', tenantId)
     .eq('source', 'results')
     .limit(500)
@@ -110,7 +110,8 @@ export async function learnFromResults(
     revision: r.revision,
     key: r.idempotency_key,
     status: r.status as StoredRule['status'],
-    confidence: Number(r.confidence)
+    confidence: Number(r.confidence),
+    removedByOwner: r.retired_by != null
   }))
   const patterns = findPatterns(emails, now)
   const writes = planWrites({ tenantId, patterns, stored, emails, now })
@@ -228,7 +229,7 @@ export async function weeklyLearningFor(
   const since = new Date(now - 7 * 86_400_000).toISOString()
   const { data, error } = await db
     .from('agent_memory_rules')
-    .select('kind,rule,status,created_at,updated_at')
+    .select('kind,rule,status,created_at,updated_at,retired_by')
     .eq('tenant_id', tenantId)
     .or(`created_at.gte.${since},updated_at.gte.${since}`)
     .limit(200)
@@ -238,7 +239,8 @@ export async function weeklyLearningFor(
     rule: r.rule,
     status: r.status as LearnedRow['status'],
     createdAt: r.created_at,
-    updatedAt: r.updated_at
+    updatedAt: r.updated_at,
+    removedByOwner: r.retired_by != null
   }))
   return weeklyLearning(rows, now)
 }
