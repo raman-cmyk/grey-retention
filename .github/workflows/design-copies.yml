@@ -18,6 +18,12 @@ name: Design copies
 # out in the same locked browser with no request at all, its blueprint
 # reported. The app hands them out only with DESIGN_UPLOAD_COPY=on.
 #
+# DES-ENGINE-004: then the block library (scripts/design-blocks.mjs): each
+# stored Inspiration blueprint (and each ready upload) is cut into blocks by
+# the app; this job draws back the sections whose structure the library does
+# not have yet, in the same locked browser with no request at all, and
+# reports a pass or fail per section. No AI, nothing sent.
+#
 # Off until turned on, exactly like the scheduled jobs
 # (docs/SCHEDULED_JOBS_RUNBOOK.md): the same CRON_SECRET repository secret
 # and the same SCHEDULED_JOBS_ENABLED=true repository variable. When no
@@ -91,10 +97,19 @@ jobs:
           copies=$(jq -r '(.waiting | numbers) // 0' peek.json)
           call '/api/internal/design/uploads?peek=1' uploads.json 30 || exit 1
           uploads=$(jq -r '(.waiting | numbers) // 0' uploads.json)
-          echo "Copies waiting: $copies. Uploads waiting: $uploads."
+          # DES-ENGINE-004: a blocks peek that fails never stops the copies
+          # and uploads: it counts as nothing waiting.
+          if call '/api/internal/design/blocks?peek=1' blocks.json 30; then
+            blocks=$(jq -r '(.waiting | numbers) // 0' blocks.json)
+          else
+            echo "::warning::The library blocks could not be peeked at; they wait for the next run."
+            blocks=0
+          fi
+          echo "Copies waiting: $copies. Uploads waiting: $uploads. Block sources waiting: $blocks."
           echo "copies=$copies" >> "$GITHUB_OUTPUT"
           echo "uploads=$uploads" >> "$GITHUB_OUTPUT"
-          echo "waiting=$((copies + uploads))" >> "$GITHUB_OUTPUT"
+          echo "blocks=$blocks" >> "$GITHUB_OUTPUT"
+          echo "waiting=$((copies + uploads + blocks))" >> "$GITHUB_OUTPUT"
       - if: steps.peek.outputs.waiting != '0'
         uses: actions/checkout@v4
         with:
@@ -129,3 +144,10 @@ jobs:
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: node --import ./scripts/ts-register.mjs scripts/design-uploads.mjs
+      # DES-ENGINE-004: after the uploads (their blocks are queued when they
+      # are measured), even when an earlier step failed.
+      - name: Check the library blocks
+        if: steps.peek.outputs.waiting != '0' && steps.peek.outputs.blocks != '0' && !cancelled()
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: node --import ./scripts/ts-register.mjs scripts/design-blocks.mjs
