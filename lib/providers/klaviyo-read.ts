@@ -119,6 +119,43 @@ export type KlaviyoMetric = {
 
 export type DailyRevenue = { date: string; revenue: Money }
 
+/**
+ * PICK-101 (list hygiene): when a person last did something. An ISO time;
+ * `never` when Klaviyo has the data and it shows none; `unknown` when
+ * there is no data to tell (never read as "never").
+ */
+export type LastSeen = string | 'never' | 'unknown'
+
+/** Why Klaviyo will not email a person (it skips them by itself). */
+export type Suppression =
+  | 'hard_bounce'
+  | 'invalid_email'
+  | 'spam_complaint'
+  | 'unsubscribed'
+  | 'user_suppressed'
+
+/** What is known about one person's email life, for list hygiene. */
+export type ProfileFacts = {
+  /** Null: Klaviyo can email this person. */
+  suppression: Suppression | null
+  /** The first marketing email this person received. */
+  firstEmail: LastSeen
+  /** When marketing emails reached this person, newest first; `unknown` without data. */
+  emails: readonly string[] | 'unknown'
+  lastClick: LastSeen
+  /** The last open Klaviyo did not mark as an Apple privacy (machine) open. */
+  lastOpen: LastSeen
+  /** The last open Klaviyo marked as an Apple privacy open: never engagement. */
+  lastPrivacyOpen: LastSeen
+  /** `unknown` when the store does not track site visits. */
+  lastSiteVisit: LastSeen
+  /** `unknown` when the store has no order data in Klaviyo. */
+  lastOrder: LastSeen
+}
+
+/** `count` people who share the same facts (sample data comes grouped). */
+export type ProfileGroup = { facts: ProfileFacts; count: number }
+
 export type KlaviyoSnapshot = {
   account: KlaviyoAccount
   lists: KlaviyoList[]
@@ -130,6 +167,11 @@ export type KlaviyoSnapshot = {
   daily: DailyRevenue[]
   activeSubscribers: { count: number; changePercent: number }
   abandonedCheckouts30d: number
+  /**
+   * PICK-101: the store's people grouped by what is known about them, so
+   * list hygiene can count who it leaves out. Missing: not read.
+   */
+  profileGroups?: ProfileGroup[]
   /** When the snapshot was last synced from Klaviyo; null for sample data. */
   syncedAt: string | null
 }

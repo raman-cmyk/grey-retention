@@ -4,6 +4,11 @@ import { logger } from '@/lib/logger'
 import { fingerprints, norm, seen } from './fingerprints'
 import { shownOf, shownText, stillOurs, type Shown } from './shown'
 import {
+  exclusionRefused,
+  hygieneExclusion,
+  type HygieneStore
+} from './hygiene'
+import {
   KlaviyoError,
   type KlaviyoClient
 } from '@/lib/providers/klaviyo/client'
@@ -304,6 +309,11 @@ function timed(
 type Deps = {
   source: PushSource
   store: PushStore
+  /**
+   * PICK-101: list hygiene's exclusion segment, made or reused before the
+   * campaign; missing: the campaign leaves nobody out.
+   */
+  hygiene?: HygieneStore
   now?: () => Date
   /** The longest one push may take (default 30 s), each request at most `callMs`. */
   budgetMs?: number
@@ -831,18 +841,57 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       else if (ago(p.createStartedAt) < showMs) throw new Wait()
     }
     if (!p.campaignId) {
+      // 4a. PICK-101: list hygiene's segment, which the campaign leaves out.
+      // It never holds the email back: any trouble gives no exclusion.
+      const hygieneRef = {
+        tenantId: input.tenantId,
+        build: ref.build,
+        lease: ref.lease
+      }
+      const hygiene = deps.hygiene
+        ? await hygieneExclusion(client, hygieneRef, deps.hygiene, {
+            now,
+            rethrow: (error) => error instanceof TimeUp
+          })
+        : { excluded: [] }
+      if (hygiene === 'wait') throw new Wait()
       fits(1)
       if (!p.createStartedAt)
         await save({
           createStartedAt: now().toISOString(),
           audienceId: input.audienceId
         })
-      const campaignId = await createCampaign(client, {
-        name: input.name,
-        description: pushMark(ref.key),
-        audienceId: input.audienceId,
-        timezone: await deps.source.timezone(input.tenantId)
-      })
+      const timezone = await deps.source.timezone(input.tenantId)
+      const make = (excluded: string[]) =>
+        createCampaign(client, {
+          name: input.name,
+          description: pushMark(ref.key),
+          audienceId: input.audienceId,
+          timezone,
+          excluded
+        })
+      let campaignId: string
+      try {
+        campaignId = await make(hygiene.excluded)
+      } catch (error) {
+        // Klaviyo refused the campaign (nothing was made): once more
+        // without the exclusion, so hygiene never stops the draft.
+        if (
+          !hygiene.excluded.length ||
+          !(error instanceof KlaviyoError) ||
+          error.kind !== 'rejected' ||
+          !deps.hygiene
+        )
+          throw error
+        logger.warn('List hygiene: Klaviyo refused the exclusion', {
+          build: ref.build,
+          status: error.details.status ?? 0
+        })
+        fits(1)
+        campaignId = await make([])
+        // Only now is the exclusion to blame (a second refusal is not it).
+        await exclusionRefused(hygieneRef, deps.hygiene)
+      }
       await save({ campaignId, audienceId: input.audienceId })
     }
   }

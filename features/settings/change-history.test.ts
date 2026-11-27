@@ -7,6 +7,29 @@ import {
 } from './change-history'
 
 describe('a recorded change in plain words', () => {
+  it('says list hygiene changes (PICK-101)', () => {
+    const say = (detail: Record<string, unknown>) =>
+      changeText('list_hygiene_changed', detail)
+    expect(
+      say({ from_enabled: true, from_days: 180, to_enabled: true, to_days: 90 })
+    ).toBe('List hygiene set to 90 days')
+    expect(
+      say({ from_enabled: true, from_days: 90, to_enabled: false, to_days: 90 })
+    ).toBe('List hygiene turned off')
+    expect(
+      say({
+        from_enabled: false,
+        from_days: 90,
+        to_enabled: true,
+        to_days: 120
+      })
+    ).toBe('List hygiene turned on: 120 days')
+    expect(say({ to_enabled: true, to_days: 'x' })).toBeNull()
+    expect(changeText('list_hygiene_retried', { rows: 1 })).toBe(
+      'Asked for the list hygiene segment to be made again'
+    )
+  })
+
   it.each([
     ['max_discount_changed', { from: null, to: 20 }, 'Max discount set to 20%'],
     [

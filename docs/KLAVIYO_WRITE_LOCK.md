@@ -30,6 +30,10 @@ Everything else is refused with the error `write_locked`, **before any network c
 
 A push of a draft ("Create email" with `KLAVIYO_DRAFT_PUSH=live`) stops before it even reads the workspace's key, and the email's build fails as refused (it is not tried again).
 
+## What the app may write once unlocked
+
+Even with the lock released, the client writes only what makes or changes a draft campaign (the campaign, its message and variations, templates and imported pictures) and, since PICK-101, **one kind of segment: the store's list-hygiene segment** (`POST /api/segments`). The client checks every segment write against `isHygieneSegmentCreate` (`lib/providers/klaviyo/hygiene-segment.ts`): a name like `List hygiene · 180 days · v1 · 3fa9c2d1` (no product name: white label), never starred, and a definition shaped exactly as the app builds it (5 to 24 groups of one `profile-metric` count each, `equals 0` or `at least 1–100`, `in the last` or `before` 30 to 730 days, no other filter than the Apple privacy one). The definition is built inside the provider from typed inputs, so no caller can pass Klaviyo JSON. It is made once per rule, account and set of metrics and reused; the app never changes or deletes a segment, and never makes any other one. Nothing it can write schedules or sends.
+
 ## How it is enforced (twice)
 
 1. **In the client** (`lib/providers/klaviyo/client.ts`): every request goes through `send()`, which checks the method and the address it is about to send before calling the transport. `write()` checks it first too, so a write of any kind says `write_locked`.

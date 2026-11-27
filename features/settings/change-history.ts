@@ -16,7 +16,9 @@ export const changeKinds = [
   'klaviyo_key_saved',
   'klaviyo_key_refused',
   'brand_book_corrected',
-  'brand_book_correction_withdrawn'
+  'brand_book_correction_withdrawn',
+  'list_hygiene_changed',
+  'list_hygiene_retried'
 ] as const
 
 /** What a Brand book line was about, in plain words (ONB-058). */
@@ -172,6 +174,18 @@ export function changeText(
             ? 'changed'
             : null
     return did ? `Brand book: line about ${about} ${did}` : null
+  }
+  if (kind === 'list_hygiene_retried')
+    return 'Asked for the list hygiene segment to be made again'
+  if (kind === 'list_hygiene_changed') {
+    const on = detail.to_enabled
+    const days = detail.to_days
+    if (on === false) return 'List hygiene turned off'
+    if (on === true && typeof days === 'number' && Number.isInteger(days))
+      return detail.from_enabled === false
+        ? `List hygiene turned on: ${days} days`
+        : `List hygiene set to ${days} days`
+    return null
   }
   if (kind === 'max_discount_changed') {
     const to = percent(detail.to)

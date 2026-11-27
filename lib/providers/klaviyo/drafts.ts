@@ -254,7 +254,8 @@ export async function audienceExists(client: KlaviyoClient, id: string) {
 }
 
 /**
- * A draft campaign to one list or segment, with no message yet (Step 0:
+ * A draft campaign to one list or segment, leaving out `excluded` (GROS's
+ * list-hygiene segment, PICK-101), with no message yet (Step 0:
  * messages are made apart). `description` carries our mark, so a create
  * whose answer was lost is found again (`findOwnCampaign`).
  */
@@ -265,9 +266,12 @@ export async function createCampaign(
     description: string
     audienceId: string
     timezone: string
+    /** PICK-101: lists or segments the campaign leaves out (list hygiene). */
+    excluded?: readonly string[]
   }
 ) {
   kid.parse(draft.audienceId)
+  const excluded = (draft.excluded ?? []).map((id) => kid.parse(id))
   const body = await client.write(
     'POST',
     '/api/campaigns',
@@ -287,7 +291,7 @@ export async function createCampaign(
             {
               temporary_id: 'audience',
               included: [draft.audienceId],
-              excluded: []
+              excluded
             }
           ]
         }

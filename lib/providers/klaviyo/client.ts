@@ -1,6 +1,7 @@
 import 'server-only'
 import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import { klaviyoPrivateKeyPattern } from './key-shape'
+import { isHygieneSegmentCreate } from './hygiene-segment'
 
 /**
  * The live Klaviyo client (KLV-001): JSON:API requests to Klaviyo's one
@@ -10,7 +11,8 @@ import { klaviyoPrivateKeyPattern } from './key-shape'
  * recorded transport instead of the network.
  *
  * Writes (PSH-001) go only to the addresses that make or change a draft
- * campaign, its variations, templates and images: nothing this client can
+ * campaign, its variations, templates and images, and to make GROS's own
+ * list-hygiene segment (PICK-101): nothing this client can
  * call schedules or sends an email (D17: the owner schedules in Klaviyo).
  * And none is made at all while the write lock is on (KLV-LOCK-001, the
  * default): only reads and the read-only report questions go out.
@@ -214,10 +216,14 @@ export type KlaviyoWriteMethod = 'POST' | 'PATCH' | 'DELETE'
 const kid = '[A-Za-z0-9_-]{1,64}'
 /**
  * Every write this client makes: a draft campaign, its message's test
- * settings, its variations, templates and images. Never a schedule, a send
- * job, a list, a segment, a profile or a campaign deletion.
+ * settings, its variations, templates and images, and (PICK-101) the
+ * store's list-hygiene segment (`isHygieneSegmentCreate`: a name and a
+ * definition shaped exactly as the app builds them), never changed or deleted. Never a
+ * schedule, a send job, a list, any other segment, a profile or a campaign
+ * deletion.
  */
 const draftWrites: { method: KlaviyoWriteMethod; path: RegExp }[] = [
+  { method: 'POST', path: /^\/api\/segments\/?$/ },
   { method: 'POST', path: /^\/api\/campaigns\/?$/ },
   { method: 'POST', path: /^\/api\/campaign-messages\/?$/ },
   { method: 'PATCH', path: new RegExp(`^/api/campaign-messages/${kid}/?$`) },
@@ -393,6 +399,8 @@ export function klaviyoClient(
         url.origin !== klaviyoHost ||
         url.search !== '' ||
         !isDraftWrite(method, url.pathname) ||
+        (/^\/api\/segments\/?$/.test(url.pathname) &&
+          !isHygieneSegmentCreate(body)) ||
         (method === 'DELETE') !== (body === null) ||
         carriesSchedule(body)
       )

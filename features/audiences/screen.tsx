@@ -5,6 +5,8 @@ import { Card } from '@/components/gros/card'
 import { ListRow, RowList } from '@/components/gros/list-row'
 import { AppPage, CardRow } from '@/components/gros/nav'
 import { EmptyState, ErrorState } from '@/components/gros/states'
+import { HygieneCard } from './hygiene-card'
+import type { HygieneView } from './hygiene-view'
 import type { AudienceRow, AudiencesProblem, AudiencesView } from './read-model'
 
 // Klaviyo is connected on the Klaviyo card of the GROS Settings (UI-AUDc).
@@ -24,13 +26,22 @@ export const listHref = (id: string) =>
  */
 export function AudiencesScreen({
   view,
-  owner
+  owner,
+  hygiene
 }: {
   view: AudiencesView
   owner: boolean
+  /** PICK-101: who every email leaves out (missing: not shown). */
+  hygiene?: HygieneView
 }) {
   return (
     <AppPage current="audiences" title="Audiences">
+      {/* PICK-101: shown once Klaviyo is connected (or read live). */}
+      {hygiene &&
+      view.state !== 'not_connected' &&
+      view.state !== 'reconnect' ? (
+        <HygieneCard view={hygiene} owner={owner} />
+      ) : null}
       {view.state !== 'ready' ? (
         <AudiencesProblemCard
           problem={view}
