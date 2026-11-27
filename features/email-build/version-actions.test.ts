@@ -231,7 +231,7 @@ describe('Use this version (PICK-106)', () => {
   })
 
   it('refuses a broken form, another workspace’s email and a version it cannot use', async () => {
-    for (const over of [
+    for (const over of <Record<string, string>[]>[
       { build: 'x' },
       { version: '0' },
       { version: 'one' },
