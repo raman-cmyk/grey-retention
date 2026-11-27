@@ -5210,6 +5210,56 @@ export type Database = {
           }
         ]
       }
+      klaviyo_hygiene_segments: {
+        Row: {
+          claim_build: string | null
+          counted_at: string | null
+          create_started_at: string | null
+          created_at: string
+          profile_count: number | null
+          reason: string | null
+          rule_key: string
+          segment_id: string | null
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          claim_build?: string | null
+          counted_at?: string | null
+          create_started_at?: string | null
+          created_at?: string
+          profile_count?: number | null
+          reason?: string | null
+          rule_key: string
+          segment_id?: string | null
+          state: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          claim_build?: string | null
+          counted_at?: string | null
+          create_started_at?: string | null
+          created_at?: string
+          profile_count?: number | null
+          reason?: string | null
+          rule_key?: string
+          segment_id?: string | null
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'klaviyo_hygiene_segments_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       klaviyo_key_checks: {
         Row: {
           checked_at: string
@@ -5508,6 +5558,48 @@ export type Database = {
             columns: ['tenant_id']
             isOneToOne: false
             referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      list_hygiene_settings: {
+        Row: {
+          days: number
+          enabled: boolean
+          revision: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          days: number
+          enabled: boolean
+          revision?: number
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          days?: number
+          enabled?: boolean
+          revision?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'list_hygiene_settings_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'list_hygiene_settings_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
             referencedColumns: ['id']
           }
         ]
@@ -9140,6 +9232,10 @@ export type Database = {
         }
         Returns: Json
       }
+      save_hygiene_segment: {
+        Args: { build: string; lease: string; rule: string; step: Json }
+        Returns: undefined
+      }
       save_klaviyo_push: {
         Args: { build: string; lease: string; step: Json }
         Returns: undefined
@@ -9203,6 +9299,15 @@ export type Database = {
       set_holiday_country: {
         Args: { country: string; t: string }
         Returns: undefined
+      }
+      set_list_hygiene: {
+        Args: {
+          expected_revision: number
+          hygiene_days: number
+          hygiene_on: boolean
+          t: string
+        }
+        Returns: number
       }
       set_margin_floor: {
         Args: {
