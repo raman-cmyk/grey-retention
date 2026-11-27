@@ -23,6 +23,11 @@ name: Design engine
 # Klaviyo's footer, alt text, the max discount, spam, accessibility); at
 # least 18 must pass. The copy job loads the engine as the blueprint job.
 #
+# PICK-006: the token gate. The library 1:1 gate also runs for the test
+# brand with each sample site's design tokens (library-brand*-tokens-*,
+# same floors, no leak); Scratch's step draws the same layouts for both
+# looks (design-golden/tokens) and the coded blocks get their own step.
+#
 # DES-ENGINE-003: the uploaded emails. The 20 upload-shaped emails are made
 # ready as an owner's upload is (their pictures kept as empty drawings of
 # their own size) and measured as the upload job measures them, as the
@@ -54,6 +59,12 @@ on:
       - 'features/email-build/hard-checks.ts'
       - 'features/email-build/scratch.ts'
       - 'features/email-build/scratch.browser.test.ts'
+      - 'features/email-build/tokens.browser.test.ts'
+      - 'features/onboarding/site/tokens.ts'
+      - 'features/onboarding/site/sample.ts'
+      - 'features/email-build/copy-jobs.ts'
+      - 'features/email-build/library-step.ts'
+      - 'features/email-build/scratch-step.ts'
       - 'scripts/design-blocks.mjs'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -74,6 +85,11 @@ on:
       - 'features/email-build/library-copy.ts'
       - 'features/email-build/hard-checks.ts'
       - 'features/email-build/scratch.ts'
+      - 'features/onboarding/site/tokens.ts'
+      - 'features/onboarding/site/sample.ts'
+      - 'features/email-build/copy-jobs.ts'
+      - 'features/email-build/library-step.ts'
+      - 'features/email-build/scratch-step.ts'
       - 'scripts/design-blocks.mjs'
   workflow_dispatch:
 
@@ -135,6 +151,13 @@ jobs:
           DESIGN_ENGINE_BROWSER: 'on'
           DESIGN_GOLDEN_OUT: design-golden
         run: pnpm exec vitest run features/email-build/scratch.browser.test.ts
+      # PICK-006: the token gate's coded-block half (the Scratch half runs
+      # above); pictures in design-golden/tokens.
+      - name: Design tokens on the coded blocks
+        env:
+          DESIGN_ENGINE_BROWSER: 'on'
+          DESIGN_GOLDEN_OUT: design-golden
+        run: pnpm exec vitest run features/email-build/tokens.browser.test.ts
       - name: Uploaded emails measured as the upload job measures them
         env:
           DESIGN_ENGINE_BROWSER: 'on'

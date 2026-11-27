@@ -36,6 +36,18 @@ import { hardProblems } from './hard-checks'
 import { copyPhotoPath } from './library-copy'
 import { withPhotoLinks } from './library-copy-live'
 import { composeScratch, planScratch, type LibraryBlock } from './scratch'
+import {
+  blueprintHeight,
+  partsOf,
+  type ButtonPart,
+  type TextPart
+} from '@/features/design-engine/blueprint'
+import {
+  resolveTokens,
+  type DesignTokens
+} from '@/features/design-engine/tokens'
+import { samplePage, sampleLookOf } from '@/features/onboarding/site/sample'
+import { siteTokens } from '@/features/onboarding/site/tokens'
 
 /**
  * DES-ENGINE-004b's gate (owner plan of 25 November 2026, step 4 "Scratch
@@ -96,18 +108,15 @@ const goals: { type: EmailType; offer: boolean; products: number }[] = [
 ]
 export const scratchTarget = 10
 
-describe.skipIf(!on)('Scratch from the real library', () => {
-  let browser: Browser
-  beforeAll(async () => {
-    const { chromium } = await import('@playwright/test')
-    browser = await launch(chromium)
-  })
-  afterAll(async () => {
-    await browser?.close()
-  })
+type Library = {
+  library: (LibraryBlock & { blueprint: Blueprint })[]
+  sources: Map<string, Set<string>>
+}
+let built: Promise<Library> | null = null
 
-  it(`builds ${scratchTarget} Scratch emails of different goals from the library, each in the brand's look, 0 leaks, every hard check, a fake Klaviyo draft`, async () => {
-    // The library, as the block job builds it.
+/** The library, as the block job builds it (once per run, shared by the gates). */
+function libraryOf(browser: Browser): Promise<Library> {
+  built ??= (async () => {
     const all: {
       email: string
       html: string
@@ -144,6 +153,23 @@ describe.skipIf(!on)('Scratch from the real library', () => {
         blueprint: block.blueprint
       })
     }
+    return { library, sources }
+  })()
+  return built
+}
+
+describe.skipIf(!on)('Scratch from the real library', () => {
+  let browser: Browser
+  beforeAll(async () => {
+    const { chromium } = await import('@playwright/test')
+    browser = await launch(chromium)
+  })
+  afterAll(async () => {
+    await browser?.close()
+  })
+
+  it(`builds ${scratchTarget} Scratch emails of different goals from the library, each in the brand's look, 0 leaks, every hard check, a fake Klaviyo draft`, async () => {
+    const { library, sources } = await libraryOf(browser)
     const htmlOf = new Map(goldenEmails.map((e) => [e.id, e.html]))
     const pusher = fakeDraftPusher()
     const dir = join(out, 'scratch')
@@ -273,5 +299,163 @@ describe.skipIf(!on)('Scratch from the real library', () => {
       passed + rows.filter((r) => r.includes('FAIL')).length
     )
     expect(passed).toBeGreaterThanOrEqual(scratchTarget)
+  }, 900_000)
+
+  it('token gate (PICK-006): two brands with different tokens draw the same Scratch layouts with visibly different spacing, corners and buttons, both inside the email-safe limits, through every check, and nothing breaks on a phone', async () => {
+    const { library, sources } = await libraryOf(browser)
+    const htmlOf = new Map(goldenEmails.map((e) => [e.id, e.html]))
+    const dir = join(out, 'tokens')
+    mkdirSync(dir, { recursive: true })
+    const emailProducts = products.slice(0, 2)
+    const plan = planScratch(library, {
+      emailType: 'launch',
+      products: emailProducts.length,
+      productPhotos: emailProducts.filter((p) => p.photo).length,
+      offer: false,
+      logo: !!brand.logo,
+      photos: brand.photos?.length ?? 0,
+      recent: new Set(),
+      seed: 'token-gate'
+    })
+    if (!plan.ok) throw new Error(plan.reason)
+    const sourceEmails = [
+      ...new Set(plan.blocks.flatMap((b) => [...sources.get(b.id)!]))
+    ]
+    // The two sample sites' looks, read as the Site reader reads them.
+    const looks = [
+      { look: 'calm', domain: 'fernhill.example' },
+      { look: 'soft', domain: 'birchwood.example' }
+    ] as const
+    const drawn: {
+      look: string
+      height: number
+      buttons: ButtonPart[]
+      html: string
+      tokens: DesignTokens
+    }[] = []
+    const rows: string[] = []
+    for (const { look, domain } of looks) {
+      expect(sampleLookOf(domain)).toBe(look)
+      const tokens = resolveTokens({
+        site: siteTokens(samplePage(domain, '/')!)
+      })
+      const source = composeScratch(
+        plan.blocks.map((b) => library.find((l) => l.id === b.id)!.blueprint),
+        tokens
+      )
+      const got = await libraryCopy(browser, {
+        source,
+        sourceHtml: htmlOf.get(sourceEmails[0]!)!,
+        leakSources: sourceEmails.map((e) => ({
+          html: htmlOf.get(e)!,
+          names: goldenStoreNames
+        })),
+        sourceNames: goldenStoreNames,
+        brand: { ...brand, tokens },
+        products: emailProducts,
+        words: testWords,
+        rules: { ...testRules, offer: null },
+        vocabulary: testVocabulary,
+        crop: 'canvas',
+        tools,
+        mode: 'klaviyo'
+      })
+      if (!got.ok) throw new Error(`${look}: ${got.error}`)
+      const links = new Map(
+        got.cuts.map((_, n) => [
+          n,
+          `https://project.supabase.co/storage/v1/object/sign/email-copies/${copyPhotoPath('t', 'b', 'l', n)}?token=x`
+        ])
+      )
+      const html = withPhotoLinks(got.html, links)
+      const problems = hardProblems(html, {
+        maxDiscountPercent: testRules.maxDiscountPercent,
+        known: [testBrand.name, ...testProducts.map((p) => p.title)],
+        storeHosts: [new URL(testBrand.site).hostname],
+        subject: 'Fresh from Fernhill',
+        preheader: 'New this week',
+        brandName: testBrand.name,
+        storeText: []
+      })
+      let view = withCutsInline(got.html, got.cuts)
+      for (const [src, p] of inline) view = view.split(src).join(p.src)
+      // Nothing wider than a phone at 375 px.
+      const context = await browser.newContext({
+        viewport: { width: phoneWindow, height: 900 }
+      })
+      await context.route('**/*', (r) =>
+        r.request().url().startsWith('data:') ? r.continue() : r.abort()
+      )
+      const page = await context.newPage()
+      await page.setContent(view, { waitUntil: 'domcontentloaded' })
+      const phoneWidth = await page.evaluate(
+        () => document.documentElement.scrollWidth
+      )
+      await context.close()
+      const buttons = got.drawn.sections
+        .flatMap((sec) => partsOf(sec.items))
+        .filter((p): p is ButtonPart => p.type === 'button')
+      const texts = got.drawn.sections
+        .flatMap((sec) => partsOf(sec.items))
+        .filter((p): p is TextPart => p.type === 'text')
+      rows.push(
+        `${look}: ${
+          got.pass
+            ? 'every section drawn from the library'
+            : got.sections
+                .filter((x) => x.result !== 'copied')
+                .map(
+                  (x) =>
+                    `${x.ordinal}: ${x.fallback?.reason ?? x.problems[0] ?? ''}`
+                )
+                .join('; ')
+        }, ${got.leaks.length} leaks, ${problems.length ? problems.map((p) => p.problem).join('; ') : 'every hard check passed'}, ${Math.round(blueprintHeight(got.drawn))} px tall, phone width ${phoneWidth} px, buttons ${buttons.map((b) => `${b.background ? 'filled' : 'outline'} r${b.radius}`).join(', ')}`
+      )
+      expect(got.pass, `${look}: every section drawn`).toBe(true)
+      expect(got.leaks).toEqual([])
+      expect(problems, look).toEqual([])
+      expect(phoneWidth, `${look}: fits a phone`).toBeLessThanOrEqual(
+        phoneWindow
+      )
+      // Inside the email-safe limits.
+      for (const b of buttons) expect(b.radius).toBeLessThanOrEqual(24)
+      for (const t of texts) expect(t.font.size).toBeGreaterThanOrEqual(10)
+      try {
+        const [desk, phone] = await Promise.all([
+          pictureOf(browser, view, desktopWindow),
+          pictureOf(browser, view, phoneWindow)
+        ])
+        writeFileSync(join(dir, `${look}.jpg`), desk)
+        writeFileSync(join(dir, `${look}.phone.jpg`), phone)
+      } catch {
+        // A picture that cannot be taken leaves the row without one.
+      }
+      drawn.push({
+        look,
+        height: blueprintHeight(got.drawn),
+        buttons,
+        html,
+        tokens
+      })
+    }
+    const summary = `# Token gate: the same ${plan.blocks.length} Scratch layouts for two brands' design tokens\n\n${rows.map((r) => `- ${r}`).join('\n')}\n`
+    writeFileSync(join(dir, 'summary.md'), summary)
+    console.log(summary)
+    const [calm, soft] = drawn
+    // Spacing: the same layouts in two rhythms, visibly apart.
+    expect(Math.abs(calm!.height - soft!.height)).toBeGreaterThanOrEqual(24)
+    // Corners and buttons: filled and square-ish, or an outline pill.
+    expect(calm!.buttons.length).toBeGreaterThan(0)
+    for (const b of calm!.buttons) {
+      expect(b.background).not.toBeNull()
+      expect(b.radius).toBeLessThanOrEqual(calm!.tokens['radius.button'].value)
+      expect(b.font.transform).toBe('uppercase')
+    }
+    for (const b of soft!.buttons) {
+      expect(b.background).toBeNull()
+      expect(b.border?.width).toBe(2)
+      expect(b.radius).toBeGreaterThan(calm!.tokens['radius.button'].value)
+    }
+    expect(soft!.html).toMatch(/border:2px solid #[0-9a-f]{6}/)
   }, 900_000)
 })

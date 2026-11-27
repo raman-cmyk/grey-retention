@@ -20,8 +20,25 @@
  * hold yet (`pending`: made after it was written).
  */
 import type { Correction } from '@/features/onboarding/brand-book-corrections'
-import { factValue } from '@/features/onboarding/brand-book-corrections'
+import {
+  factValue,
+  tokenOfSection
+} from '@/features/onboarding/brand-book-corrections'
+import {
+  clampToken,
+  tokenKeys,
+  tokenText,
+  type TokenKey,
+  type TokenSource
+} from '@/features/design-engine/tokens'
 import { factKeys, factLabels, factText, type FactKey } from './book-facts'
+import {
+  correctionWords,
+  designGroups,
+  sourceText,
+  tokenLabels,
+  tokenWords
+} from './book-design'
 
 export type BookRow = {
   version: number
@@ -50,6 +67,18 @@ export type SeenGroup = {
   section: LineSection
   lines: OwnLine[]
 }
+
+/** PICK-006: one design token as the owner reads it. */
+export type DesignLine = {
+  key: TokenKey
+  label: string
+  /** "8 px", "Capitals". */
+  value: string
+  source: TokenSource
+  /** "From your website", "GROS default", "Your correction". */
+  sourceText: string
+}
+export type DesignGroup = { label: string; lines: DesignLine[] }
 
 /** One of the owner's live corrections, in words. */
 export type CorrectionLine = {
@@ -99,6 +128,14 @@ export type BrandBookView = {
   corrected: string[]
   /** The owner's live corrections, oldest first. */
   corrections: CorrectionLine[]
+  /**
+   * PICK-006: the brand's design tokens by group (spacing, type, corners,
+   * buttons), each with its source; null in a book written before them.
+   */
+  design: DesignGroup[] | null
+  /** Each token as the words the owner edits, and whether it is his. */
+  designTexts: Record<TokenKey, string>
+  designOwn: TokenKey[]
   /** The strategist's reading; null until it has read this version. */
   reading: {
     positioning: string | null
@@ -158,7 +195,11 @@ const sectionWords: Record<string, string> = {
   'facts.free_shipping': 'Free shipping',
   'facts.returns': 'Returns',
   'facts.guarantee': 'Money-back guarantee',
-  'facts.delivery_days': 'Delivery time'
+  'facts.delivery_days': 'Delivery time',
+  // PICK-006: the design tokens.
+  ...Object.fromEntries(
+    Object.entries(tokenLabels).map(([k, label]) => [`tokens.${k}`, label])
+  )
 }
 
 /** The confirmed facts in plain words (only those the book states). */
@@ -219,6 +260,16 @@ function correctionLine(
   writtenAt: string
 ): CorrectionLine {
   const pending = Date.parse(c.createdAt) > Date.parse(writtenAt)
+  const token = tokenOfSection(c.section)
+  if (token)
+    return {
+      id: c.id,
+      label: tokenLabels[token],
+      text:
+        (c.action === 'remove' ? null : correctionWords(token, c.value)) ??
+        'Back to your website’s value, or the default',
+      pending
+    }
   if (c.section.startsWith('facts.')) {
     const fact = c.section.slice('facts.'.length) as FactKey
     const value =
@@ -244,6 +295,47 @@ function correctionLine(
   }
 }
 
+const sources = new Set<TokenSource>(['site', 'default', 'owner'])
+
+/** The book's tokens read defensively: each one that reads, in groups. */
+function designOf(value: unknown, assistant: string) {
+  const design = record(value)
+  const read = new Map<TokenKey, { value: unknown; source: TokenSource }>()
+  for (const key of tokenKeys) {
+    const t = record(design[key])
+    const v = clampToken(key, t.value)
+    if (v !== undefined && sources.has(t.source as TokenSource))
+      read.set(key, { value: v, source: t.source as TokenSource })
+  }
+  if (!read.size) return null
+  return {
+    groups: designGroups.flatMap((g) => {
+      const lines = g.keys.flatMap((key): DesignLine[] => {
+        const t = read.get(key)
+        return t
+          ? [
+              {
+                key,
+                label: tokenLabels[key],
+                value: tokenWords(key, t.value),
+                source: t.source,
+                sourceText: sourceText(t.source, assistant)
+              }
+            ]
+          : []
+      })
+      return lines.length ? [{ label: g.label, lines }] : []
+    }),
+    texts: Object.fromEntries(
+      tokenKeys.map((k) => [
+        k,
+        read.has(k) ? tokenText(k, read.get(k)!.value) : ''
+      ])
+    ) as Record<TokenKey, string>,
+    own: tokenKeys.filter((k) => read.get(k)?.source === 'owner')
+  }
+}
+
 const lines = (label: string, value: unknown): BookLines[] => {
   const list = strings(value)
   return list.length ? [{ label, lines: list }] : []
@@ -258,7 +350,10 @@ const lines = (label: string, value: unknown): BookLines[] => {
 export function brandBookView(
   row: BookRow | null,
   corrections: readonly Correction[] = [],
-  { allParts = false }: { allParts?: boolean } = {}
+  {
+    allParts = false,
+    assistant = 'GROS'
+  }: { allParts?: boolean; assistant?: string } = {}
 ): BrandBookView | null {
   if (!row) return null
   const book = record(row.content)
@@ -275,6 +370,7 @@ export function brandBookView(
   const currency = text(brand.currency)
   const perWeek = count(sending?.sendsPerWeek)
   const facts = record(book.facts)
+  const design = designOf(book.design, assistant)
   // A line is the owner's when a live correction of its part says it.
   const ownWords = new Map<string, Set<string>>()
   for (const c of corrections)
@@ -383,6 +479,14 @@ export function brandBookView(
     corrections: corrections.map((c) =>
       correctionLine(c, currency, row.created_at)
     ),
+    design: design?.groups ?? null,
+    designTexts:
+      design?.texts ??
+      (Object.fromEntries(tokenKeys.map((k) => [k, ''])) as Record<
+        TokenKey,
+        string
+      >),
+    designOwn: design?.own ?? [],
     reading: strategy
       ? {
           positioning: text(strategy.positioning),

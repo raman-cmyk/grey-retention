@@ -74,6 +74,10 @@ function database(
     shown?: Record<string, string | null>
     /** PICK-99: `shown` when read again after a check (a push ran meanwhile). */
     shownAfter?: Record<string, string | null>
+    /** PICK-106: a push under way (its `target`), by build. */
+    target?: Record<string, string | null>
+    /** PICK-106: `written` when read again after the check (a push ended meanwhile). */
+    writtenAfter?: Record<string, string | null>
     refuse?: Record<string, string>
   } = {}
 ) {
@@ -97,10 +101,15 @@ function database(
           data:
             found && table === 'klaviyo_draft_pushes'
               ? {
+                  ...found,
                   shown:
                     options.shownAfter && build in options.shownAfter
                       ? options.shownAfter[build]
-                      : found.shown
+                      : found.shown,
+                  written:
+                    options.writtenAfter && build in options.writtenAfter
+                      ? options.writtenAfter[build]
+                      : found.written
                 }
               : found,
           error: null
@@ -157,6 +166,7 @@ function database(
                 options.written && r.build_id in options.written
                   ? options.written[r.build_id]
                   : null,
+              target: options.target?.[r.build_id] ?? null,
               shown: options.shown?.[r.build_id] ?? null
             }))
       )
@@ -587,6 +597,42 @@ describe('the hourly results run', () => {
       send_strategy: null,
       next_check_at: iso(now + hourMs)
     })
+  })
+
+  it('never takes a restore’s own write, mid-push, for the owner’s edit (PICK-106)', async () => {
+    // The push is taking the draft to new words (its target is set) and the
+    // draft shows them: they may be ours, so nothing is marked changed.
+    for (const options of [
+      { written: { b1: 'f'.repeat(16) }, target: { b1: written() } },
+      // The push ended while we looked: its record is not what we read.
+      { written: { b1: 'f'.repeat(16) }, writtenAfter: { b1: written() } }
+    ]) {
+      const a = account('Draft')
+      const { db, saved } = database([[row()]], options)
+      await run(db, live(recordedResultsTransport({ rest: a.transport })))
+      expect(saved[0]!.patch).not.toHaveProperty('changed')
+      expect(saved[0]!.patch.status).toBe('draft')
+    }
+    // With no push under way and the record unchanged it is the owner's.
+    const a = account('Draft')
+    const { db, saved } = database([[row()]], {
+      written: { b1: 'f'.repeat(16) }
+    })
+    await run(db, live(recordedResultsTransport({ rest: a.transport })))
+    expect(saved[0]!.patch).toMatchObject({ changed: true })
+  })
+
+  it('still sees the owner’s edit after a restore stopped part way (PICK-106)', async () => {
+    // The restore's push left its target (other words than the draft
+    // shows) and our last write; the owner then changed the words in
+    // Klaviyo: neither ours, so it is his edit, seen at once.
+    const a = account('Draft')
+    const { db, saved } = database([[row()]], {
+      written: { b1: 'f'.repeat(16) },
+      target: { b1: 'e'.repeat(16) }
+    })
+    await run(db, live(recordedResultsTransport({ rest: a.transport })))
+    expect(saved[0]!.patch).toMatchObject({ changed: true })
   })
 
   it('ends with a draft deleted in Klaviyo, also after a results read', async () => {

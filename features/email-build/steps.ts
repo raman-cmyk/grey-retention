@@ -240,7 +240,7 @@ function storeWords(store: Store, code?: string | null) {
 }
 
 /** DST-005: the hard checks on an email as drawn, before it is stored. */
-const checksFor =
+export const checksFor =
   (store: Store, rules: SectionsOutput['rules']) =>
   (
     html: string,
@@ -311,16 +311,22 @@ function canonical(value: unknown): string {
  * timezone and the customers' words, since later steps use the ones the
  * steps before saved. A catalog read again between two steps with other
  * products, prices or pictures gives another hash.
+ * PICK-006: the brand's design tokens are left out too. No step before
+ * the design reads them, and the design step reads them fresh, so a build
+ * saved before tokens existed (the deploy) or before the owner corrected
+ * one goes on, drawn in the newest tokens, never `store_changed`.
  */
 export function storeFingerprint(store: Store) {
   const products = [...store.products].sort((a, b) =>
     a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   )
+  const brand = { ...store.brand }
+  delete brand.tokens
   return createHash('sha256')
     .update(
       canonical({
         sample: store.sample,
-        brand: store.brand,
+        brand,
         industry: store.industry,
         facts: store.facts,
         products

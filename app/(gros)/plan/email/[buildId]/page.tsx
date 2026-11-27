@@ -16,11 +16,17 @@ export const metadata: Metadata = { title: 'Your email' }
 
 /** An email's own page (UI-EMAIL-b), for a designed or a text email. */
 export default async function PlannedEmailPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ buildId: string }>
+  searchParams: Promise<{ version?: string | string[] }>
 }) {
   const { buildId } = await params
+  // PICK-106: the version whose preview is shown (the newest by default).
+  const asked = (await searchParams).version
+  const shown =
+    typeof asked === 'string' && /^\d{1,6}$/.test(asked) ? Number(asked) : null
   if (!z.uuid().safeParse(buildId).success) notFound()
   const context = await requireRequestContext('client')
   // PICK-99: the page shows what the sync stored, and asks Klaviyo how its
@@ -33,7 +39,8 @@ export default async function PlannedEmailPage({
         db,
         context.tenantId,
         buildId,
-        validTimezone(context.timezone)
+        validTimezone(context.timezone),
+        shown
       )
     : ({ ok: false } as const)
   if (loaded.ok && !loaded.screen) notFound()
@@ -47,5 +54,11 @@ export default async function PlannedEmailPage({
         />
       </AppPage>
     )
-  return <EmailScreen view={loaded.screen} />
+  return (
+    <EmailScreen
+      view={loaded.screen}
+      versions={loaded.versions ?? null}
+      owner={context.tenantRole === 'owner'}
+    />
+  )
 }

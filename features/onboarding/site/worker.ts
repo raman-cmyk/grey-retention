@@ -17,6 +17,8 @@ import { pagesToRead, readPage, type ReadPage } from './pages'
 import { photoKey, sitePhotos, type SitePhoto } from './photos'
 import { readSitePage } from './reader'
 import { mergeSiteFonts, pageFonts, sheetReader } from './site-fonts'
+import { mergeSiteTokens, pageTokens } from './tokens'
+import type { SiteTokens } from '@/features/design-engine/tokens'
 
 type Db = SupabaseClient<Database>
 type Job = Database['public']['Tables']['job_runs']['Row']
@@ -46,6 +48,8 @@ export type SiteRun = {
   photos?: number
   /** How many font families were kept (FONT-b); absent when none were looked for. */
   fonts?: number
+  /** How many design tokens were kept (PICK-006); absent when none were looked for. */
+  tokens?: number
 }
 
 export type PickedLogos = { onLight: string | null; onDark: string | null }
@@ -298,6 +302,18 @@ export async function readBrandSite(
     )
       fontPages[n] = pageFonts(page, sheets, () => now() > deadline)
   }
+  // Each page's design tokens, in page order (PICK-006): from its own
+  // styles and, on a live read, its theme's stylesheets (the fonts' shared
+  // reader). The sample site's are its own styles; under the same limits.
+  const tokenPages: Promise<SiteTokens | null>[] = []
+  const tokensOf = (n: number, page: { html: string; url: string }) => {
+    if (page.html.length <= maxPhotoPage && now() + callMs <= deadline)
+      tokenPages[n] = pageTokens(
+        page,
+        sheets ?? undefined,
+        () => now() > deadline
+      )
+  }
   const home = homeUrl(domain)
   if (!home) skip(`https://${domain || 'unknown'}/`, 'home', 'no_domain')
   else if (!ask) skip(home, 'home', 'no_model')
@@ -308,6 +324,7 @@ export async function readBrandSite(
       const homePage = readPage(first.html, first.url, 'home')
       photosOf(0, first, 'home')
       fontsOf(0, first)
+      tokensOf(0, first)
       // The logos are looked for while the other pages are read.
       const picture = fetcher.picture?.bind(fetcher)
       if (fetcher.live && picture)
@@ -334,6 +351,7 @@ export async function readBrandSite(
         if (!fetched.ok) return { ...target, reason: fetched.failure }
         photosOf(n + 1, fetched, target.kind)
         fontsOf(n + 1, fetched)
+        tokensOf(n + 1, fetched)
         const outcome = await read(
           readPage(fetched.html, fetched.url, target.kind),
           n + 1
@@ -426,6 +444,22 @@ export async function readBrandSite(
     // False: a newer read of the site already kept its own.
     else if (kept.data === true) run.fonts = fonts.length
   }
+  const pageTokensFound = await Promise.all(tokenPages)
+  // None: no page could be read with its styles, so the tokens kept
+  // earlier stay (as the fonts do).
+  if (pageTokensFound.some((t) => t)) {
+    // One set for the site: each token from the first page that set it.
+    const tokens = mergeSiteTokens(pageTokensFound)
+    const kept = await db.rpc('record_site_tokens', {
+      job: job.id,
+      lease: job.lease_token!,
+      tokens: tokens as unknown as Json
+    })
+    if (kept.error)
+      logger.warn('Site tokens not kept', { code: kept.error.code })
+    // False: a newer read of the site already kept its own.
+    else if (kept.data === true) run.tokens = Object.keys(tokens).length
+  }
   const recorded = await db.rpc('record_site_findings', {
     job: job.id,
     lease: job.lease_token!,
@@ -451,7 +485,8 @@ export async function readBrandSite(
     logoOnLight: run.logos?.onLight ?? null,
     logoOnDark: run.logos?.onDark ?? null,
     photos: run.photos ?? null,
-    fonts: run.fonts ?? null
+    fonts: run.fonts ?? null,
+    tokens: run.tokens ?? null
   })
   return run
 }

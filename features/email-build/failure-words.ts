@@ -44,7 +44,15 @@ export const buildFailureWords = {
     'Klaviyo did not accept the connection. Check it on the Connections page.',
   klaviyo_rejected: 'Klaviyo, or the last check before Klaviyo, refused it.',
   klaviyo_rate_limited: 'Klaviyo was busy for too long. Try again later.',
-  klaviyo_unavailable: 'Klaviyo could not be reached. Try again later.'
+  klaviyo_unavailable: 'Klaviyo could not be reached. Try again later.',
+  // PICK-106: the draft is in Klaviyo, and putting emails there is off.
+  push_switched_off:
+    'Putting emails into Klaviyo is switched off right now, so its draft in Klaviyo was left as it is.',
+  // PICK-106: a restored version no longer passes the checks of today.
+  restore_unchecked:
+    'This version could not be checked just now, so its draft was left as it is. Try again.',
+  restore_unsafe:
+    'This version no longer passes today’s checks (its code, offer, words or Klaviyo state), so its draft was left as it is.'
 } as const satisfies Record<string, string>
 
 /**

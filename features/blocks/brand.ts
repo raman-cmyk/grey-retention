@@ -1,3 +1,5 @@
+import type { SiteTokens } from '@/features/design-engine/tokens'
+
 /**
  * The brand a block is drawn in (BLK-001), with the colour roles of the
  * Step 0 reference kit (docs/step0/example_spec.json): `ink` for text,
@@ -22,6 +24,13 @@ export type BlockBrand = {
   dark: string
   /** Corner radius for buttons and photos, e.g. "8px". */
   radius?: string
+  /**
+   * PICK-006: the brand's design tokens its site or owner gave (spacing,
+   * type scale, corners, button style; `givenTokens`), clamped again when
+   * drawn. A token not given is GROS's default, the blocks' own look, so a
+   * brand with none draws exactly as before.
+   */
+  tokens?: SiteTokens
 }
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i

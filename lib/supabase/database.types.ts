@@ -1346,6 +1346,45 @@ export type Database = {
           }
         ]
       }
+      brand_tokens: {
+        Row: {
+          domain: string
+          read_at: string
+          run_id: string
+          tenant_id: string
+          tokens: Json
+        }
+        Insert: {
+          domain: string
+          read_at?: string
+          run_id: string
+          tenant_id: string
+          tokens: Json
+        }
+        Update: {
+          domain?: string
+          read_at?: string
+          run_id?: string
+          tenant_id?: string
+          tokens?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_tokens_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_tokens_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       brand_versions: {
         Row: {
           created_at: string
@@ -3314,6 +3353,10 @@ export type Database = {
           progress: Json
           push_key: string
           reference_id: string | null
+          restore_campaign_id: string | null
+          restore_email: Json | null
+          restore_push: Json | null
+          restore_version: string | null
           run_id: string
           sample_draft: boolean
           slot: number
@@ -3339,6 +3382,10 @@ export type Database = {
           progress?: Json
           push_key?: string
           reference_id?: string | null
+          restore_campaign_id?: string | null
+          restore_email?: Json | null
+          restore_push?: Json | null
+          restore_version?: string | null
           run_id: string
           sample_draft?: boolean
           slot: number
@@ -3364,6 +3411,10 @@ export type Database = {
           progress?: Json
           push_key?: string
           reference_id?: string | null
+          restore_campaign_id?: string | null
+          restore_email?: Json | null
+          restore_push?: Json | null
+          restore_version?: string | null
           run_id?: string
           sample_draft?: boolean
           slot?: number
@@ -4185,6 +4236,86 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'tenants'
             referencedColumns: ['id']
+          }
+        ]
+      }
+      email_versions: {
+        Row: {
+          build_id: string
+          created_at: string
+          created_by: string | null
+          email: Json
+          failure: string | null
+          how: string
+          id: string
+          number: number
+          outcome: string | null
+          restored_from: number | null
+          run_id: string
+          slot: number
+          subject: string
+          tenant_id: string
+        }
+        Insert: {
+          build_id: string
+          created_at?: string
+          created_by?: string | null
+          email: Json
+          failure?: string | null
+          how: string
+          id?: string
+          number: number
+          outcome?: string | null
+          restored_from?: number | null
+          run_id: string
+          slot: number
+          subject: string
+          tenant_id: string
+        }
+        Update: {
+          build_id?: string
+          created_at?: string
+          created_by?: string | null
+          email?: Json
+          failure?: string | null
+          how?: string
+          id?: string
+          number?: number
+          outcome?: string | null
+          restored_from?: number | null
+          run_id?: string
+          slot?: number
+          subject?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_versions_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_versions_tenant_id_build_id_fkey'
+            columns: ['tenant_id', 'build_id']
+            isOneToOne: false
+            referencedRelation: 'email_builds'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'email_versions_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_versions_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'strategy_runs'
+            referencedColumns: ['tenant_id', 'id']
           }
         ]
       }
@@ -9268,6 +9399,10 @@ export type Database = {
         Args: { job: string; lease: string; photos: Json }
         Returns: boolean
       }
+      record_site_tokens: {
+        Args: { job: string; lease: string; tokens: Json }
+        Returns: boolean
+      }
       record_voice_samples: {
         Args: { job: string; lease: string; samples: Json }
         Returns: number
@@ -9444,6 +9579,10 @@ export type Database = {
           result: string
           t: string
         }
+        Returns: number
+      }
+      restore_email_version: {
+        Args: { build: string; shown: number; t: string; version: number }
         Returns: number
       }
       retire_discount_code: { Args: { code_id: string }; Returns: undefined }

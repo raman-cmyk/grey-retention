@@ -1,3 +1,4 @@
+import type { DesignTokens } from '@/features/design-engine/tokens'
 import type { FounderVoice } from '@/features/letter/voice/profile'
 import type { PastSubject } from './subject-traits'
 import type { BlockBrand } from '@/features/blocks/brand'
@@ -107,6 +108,13 @@ export type Store = {
    * used, as before.
    */
   fonts?: WebFont[]
+  /**
+   * PICK-006: the brand's design tokens with their sources (the owner's
+   * corrections over the Site reader's values over GROS's defaults,
+   * `resolveTokens`); `brand.tokens` carries their values for the coded
+   * blocks. Absent for the sample store (the defaults).
+   */
+  tokens?: DesignTokens
 }
 
 /**
