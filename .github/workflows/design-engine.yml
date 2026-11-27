@@ -52,6 +52,9 @@ on:
       - 'features/email-build/library-copy.ts'
       - 'features/email-build/library-copy.browser.test.ts'
       - 'features/email-build/hard-checks.ts'
+      - 'features/email-build/scratch.ts'
+      - 'features/email-build/scratch.browser.test.ts'
+      - 'scripts/design-blocks.mjs'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/design-engine.yml'
@@ -70,6 +73,8 @@ on:
       - 'features/email-uploads/**'
       - 'features/email-build/library-copy.ts'
       - 'features/email-build/hard-checks.ts'
+      - 'features/email-build/scratch.ts'
+      - 'scripts/design-blocks.mjs'
   workflow_dispatch:
 
 permissions:
@@ -82,7 +87,7 @@ concurrency:
 jobs:
   golden:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -123,6 +128,13 @@ jobs:
         env:
           DESIGN_ENGINE_BROWSER: 'on'
         run: pnpm exec vitest run features/email-build/library-copy.browser.test.ts
+      # DES-ENGINE-004b: 10 Scratch emails of different goals built from the
+      # block library of the golden emails (pictures in design-golden/scratch).
+      - name: Scratch emails from the block library
+        env:
+          DESIGN_ENGINE_BROWSER: 'on'
+          DESIGN_GOLDEN_OUT: design-golden
+        run: pnpm exec vitest run features/email-build/scratch.browser.test.ts
       - name: Uploaded emails measured as the upload job measures them
         env:
           DESIGN_ENGINE_BROWSER: 'on'
