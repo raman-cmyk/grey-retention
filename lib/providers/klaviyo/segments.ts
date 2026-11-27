@@ -2,15 +2,21 @@ import 'server-only'
 import { z } from 'zod'
 import { metricsPath, readPages, type MorePages } from './catalog'
 import { KlaviyoError, type KlaviyoClient } from './client'
-import { grosSegmentNamePattern } from './segment-name'
+import {
+  hygieneSegmentDefinition,
+  hygieneSegmentName,
+  hygieneSegmentNamePattern,
+  type HygieneSegmentSpec
+} from './hygiene-segment'
 
 /**
- * PICK-101 (list hygiene): the Klaviyo calls behind GROS's own exclusion
- * segment, in the shapes revision 2026-10-15 publishes. Reads: the metrics
- * the rule needs, a segment by its exact name, a segment's size. One write:
- * making the segment (`POST /api/segments`), which the client allows only
- * for a GROS list-hygiene name and only with the write lock released.
- * Nothing here changes or deletes a segment.
+ * PICK-101 (list hygiene): the Klaviyo calls behind the store's exclusion
+ * segment, in the shapes revision 2026-10-15 publishes. Reads: the
+ * account's id, the metrics the rule needs, segments by exact name, one
+ * segment's definition and size. One write: making the segment, built here
+ * from typed inputs (`createHygieneSegment`); the client lets it through
+ * only for a definition shaped as the app builds it, and only with the
+ * write lock released. Nothing here changes or deletes a segment.
  */
 
 const kid = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/)
@@ -21,13 +27,34 @@ const gone = (error: unknown) =>
   error.kind === 'rejected' &&
   (error.details.status === 404 || error.details.status === 410)
 
-/** The metrics the rule reads, by their id in this account (null: missing). */
+/** The account the key belongs to (a reconnect may be another account). */
+export async function readAccountId(client: KlaviyoClient) {
+  const parsed = z
+    .object({
+      data: z.array(z.object({ type: z.literal('account'), id: kid })).min(1)
+    })
+    .safeParse(
+      await client.get(
+        '/api/accounts?fields[account]=timezone',
+        'accounts:read'
+      )
+    )
+  if (!parsed.success) throw invalid('/api/accounts')
+  return parsed.data.data[0]!.id
+}
+
+/** The metrics the rule reads, by their id in this account. */
 export type HygieneMetrics = {
+  /** Klaviyo's own email metrics (null: not in the account). */
   receivedEmail: string | null
   clickedEmail: string | null
   openedEmail: string | null
-  activeOnSite: string | null
-  placedOrder: string | null
+  /** Every Active on Site metric, whichever integration sends it. */
+  activeOnSite: string[]
+  /** Every Placed Order metric, whichever integration sends it. */
+  placedOrders: string[]
+  /** False when not every page was read: then nothing is certain. */
+  complete: boolean
 }
 
 const metricRecord = z.object({
@@ -39,19 +66,13 @@ const metricRecord = z.object({
   })
 })
 
-/** At most this many pages of metrics (Klaviyo's 200 a page). */
+/** At most this many pages of metrics. */
 const maxMetricPages = 5
 
-/**
- * The account's email metrics (Klaviyo's own), its Active on Site and its
- * Placed Order (a store platform's first, one sent through the API last).
- * `complete` is false when not every page was read: a missing metric then
- * means "not seen", not "not there".
- */
 export async function readHygieneMetrics(
   client: KlaviyoClient,
   more: MorePages = () => true
-): Promise<HygieneMetrics & { complete: boolean }> {
+): Promise<HygieneMetrics> {
   const read = await readPages(
     client,
     metricsPath,
@@ -75,19 +96,18 @@ export async function readHygieneMetrics(
     read.records.find(
       (m) => m.attributes.name === name && source(m) === 'klaviyo'
     )?.id ?? null
-  const orders = read.records
-    .filter((m) => m.attributes.name === 'Placed Order')
-    .sort(
-      (a, b) =>
-        Number(source(a) === 'api' || !source(a)) -
-        Number(source(b) === 'api' || !source(b))
-    )
+  const all = (name: string) =>
+    [
+      ...new Set(
+        read.records.filter((m) => m.attributes.name === name).map((m) => m.id)
+      )
+    ].sort()
   return {
     receivedEmail: klaviyos('Received Email'),
     clickedEmail: klaviyos('Clicked Email'),
     openedEmail: klaviyos('Opened Email'),
-    activeOnSite: klaviyos('Active on Site'),
-    placedOrder: orders[0]?.id ?? null,
+    activeOnSite: all('Active on Site'),
+    placedOrders: all('Placed Order'),
     complete: read.complete && read.skipped === 0
   }
 }
@@ -104,13 +124,9 @@ const segmentRecord = z.object({
 /** At most this many pages when looking a segment up by name. */
 const maxNamePages = 3
 
-/**
- * Our segments with exactly this name, oldest first (a create whose answer
- * was lost shows here; more than one is our earlier lost ones). Only a
- * GROS name is ever looked up.
- */
+/** Segments with exactly this list-hygiene name, oldest first. */
 export async function findSegmentsByName(client: KlaviyoClient, name: string) {
-  if (!grosSegmentNamePattern.test(name)) throw invalid('/api/segments')
+  if (!hygieneSegmentNamePattern.test(name)) throw invalid('/api/segments')
   const query = new URLSearchParams({
     'fields[segment]': 'name,created',
     filter: `equals(name,"${name}")`
@@ -139,42 +155,18 @@ export async function findSegmentsByName(client: KlaviyoClient, name: string) {
     .map((s) => s.id)
 }
 
-/** Makes GROS's segment (never starred); its id. */
-export async function createSegment(
-  client: KlaviyoClient,
-  name: string,
-  definition: Record<string, unknown>
-) {
-  const body = await client.write(
-    'POST',
-    '/api/segments',
-    {
-      data: {
-        type: 'segment',
-        attributes: { name, definition, is_starred: false }
-      }
-    },
-    'segments:write'
-  )
-  const parsed = z
-    .object({ data: z.object({ type: z.literal('segment'), id: kid }) })
-    .safeParse(body)
-  if (!parsed.success) throw invalid('/api/segments')
-  return parsed.data.data.id
-}
-
 /**
- * How many people the segment holds now (Klaviyo counts it by itself, so
- * a new one may say null for a while); `gone` when Klaviyo no longer has it.
+ * One segment's definition and size (Klaviyo counts it by itself, so a new
+ * one may say null for a while); `gone` when Klaviyo no longer has it.
  */
-export async function segmentSize(
+export async function readSegment(
   client: KlaviyoClient,
   id: string
-): Promise<number | null | 'gone'> {
+): Promise<{ definition: unknown; profileCount: number | null } | 'gone'> {
   let body: unknown
   try {
     body = await client.get(
-      `/api/segments/${kid.parse(id)}?fields[segment]=name&additional-fields[segment]=profile_count`,
+      `/api/segments/${kid.parse(id)}?fields[segment]=name,definition&additional-fields[segment]=profile_count`,
       'segments:read'
     )
   } catch (error) {
@@ -186,11 +178,44 @@ export async function segmentSize(
       data: z.object({
         type: z.literal('segment'),
         attributes: z.object({
+          definition: z.unknown().optional(),
           profile_count: z.number().int().min(0).max(1e12).nullish()
         })
       })
     })
     .safeParse(body)
   if (!parsed.success) throw invalid('/api/segments/')
-  return parsed.data.data.attributes.profile_count ?? null
+  return {
+    definition: parsed.data.data.attributes.definition ?? null,
+    profileCount: parsed.data.data.attributes.profile_count ?? null
+  }
+}
+
+/** Makes the list-hygiene segment for `spec` (never starred); its id. */
+export async function createHygieneSegment(
+  client: KlaviyoClient,
+  spec: HygieneSegmentSpec
+) {
+  const definition = hygieneSegmentDefinition(spec)
+  if (!definition) throw invalid('/api/segments')
+  const body = await client.write(
+    'POST',
+    '/api/segments',
+    {
+      data: {
+        type: 'segment',
+        attributes: {
+          name: hygieneSegmentName(spec),
+          definition,
+          is_starred: false
+        }
+      }
+    },
+    'segments:write'
+  )
+  const parsed = z
+    .object({ data: z.object({ type: z.literal('segment'), id: kid }) })
+    .safeParse(body)
+  if (!parsed.success) throw invalid('/api/segments')
+  return parsed.data.data.id
 }

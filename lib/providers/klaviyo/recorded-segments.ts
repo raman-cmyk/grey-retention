@@ -15,8 +15,16 @@ export type SegmentFaults = {
   noWriteScope?: boolean
   /** One request to this path prefix answers 503, once. */
   outage?: string
-  /** Metrics the account does not have. */
+  /** Metrics the account does not have (by name). */
   without?: readonly string[]
+  /** Extra metrics: [id, name, integration]. */
+  extra?: readonly (readonly [string, string, string])[]
+  /** A metrics page holds a record that cannot be read (the read is incomplete). */
+  brokenMetric?: boolean
+  /** These paths ("GET /api/metrics", "GET /api/segments") are refused (400). */
+  refuse?: readonly string[]
+  /** The account's id (a reconnect may be another account). */
+  accountId?: string
 }
 
 export type FakeSegmentAccount = {
@@ -47,7 +55,8 @@ const metricList = [
   ['MetRecv', 'Received Email', 'Klaviyo'],
   ['MetOpen', 'Opened Email', 'Klaviyo'],
   ['MetClick', 'Clicked Email', 'Klaviyo'],
-  ['MetSite', 'Active on Site', 'Klaviyo'],
+  // Klaviyo's onsite tracking reports through its API integration.
+  ['MetSite', 'Active on Site', 'API'],
   ['MetOrdApi', 'Placed Order', 'API'],
   ['MetOrd', 'Placed Order', 'Shopify']
 ] as const
@@ -55,6 +64,7 @@ const metricList = [
 /** Paths the transport knows; anything else is for another fake. */
 export const segmentPaths = (path: string) =>
   path === '/api/metrics' ||
+  path === '/api/accounts' ||
   /^\/api\/segments(\/[A-Za-z0-9_-]+)?\/?$/.test(path)
 
 export function fakeSegmentAccount(
@@ -76,15 +86,30 @@ export function fakeSegmentAccount(
     const { outage } = account.faults
     if (outage && path.startsWith(outage) && firstTime(`outage ${outage}`))
       return refused(503, 'unavailable')
+    if (account.faults.refuse?.includes(`${request.method} ${path}`))
+      return refused(400)
+    if (path === '/api/accounts' && request.method === 'GET')
+      return json(200, {
+        data: [
+          {
+            type: 'account',
+            id: account.faults.accountId ?? 'AcctCedar',
+            attributes: { timezone: 'US/Pacific' }
+          }
+        ]
+      })
     if (path === '/api/metrics' && request.method === 'GET')
       return json(200, {
-        data: metricList
-          .filter(([, name]) => !account.faults.without?.includes(name))
-          .map(([id, name, integration]) => ({
-            type: 'metric',
-            id,
-            attributes: { name, integration: { name: integration } }
-          })),
+        data: [
+          ...[...metricList, ...(account.faults.extra ?? [])]
+            .filter(([, name]) => !account.faults.without?.includes(name))
+            .map(([id, name, integration]) => ({
+              type: 'metric',
+              id,
+              attributes: { name, integration: { name: integration } }
+            })),
+          ...(account.faults.brokenMetric ? [{ type: 'metric' }] : [])
+        ],
         links: { next: null }
       })
     if (path === '/api/segments' && request.method === 'GET') {
@@ -114,7 +139,7 @@ export function fakeSegmentAccount(
         a.definition.condition_groups.length < 1
       )
         return refused(400)
-      const id = `SegGros${String(++n).padStart(3, '0')}`
+      const id = `SegHyg${String(++n).padStart(3, '0')}`
       account.segments.set(id, {
         name: a.name,
         definition: a.definition,
@@ -135,11 +160,16 @@ export function fakeSegmentAccount(
         data: {
           type: 'segment',
           id: one[1],
-          attributes: { name: s.name, profile_count: s.profileCount }
+          attributes: {
+            name: s.name,
+            definition: s.definition,
+            profile_count: s.profileCount
+          }
         }
       })
     }
     return refused(404, 'not_found')
   }
-  return { ...account, transport }
+  // `faults` is the same object, so a test may change it between calls.
+  return Object.assign(account, { transport })
 }

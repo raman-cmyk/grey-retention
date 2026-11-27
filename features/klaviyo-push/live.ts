@@ -113,7 +113,7 @@ export function databaseHygieneStore(db: Db): HygieneStore {
       const { data, error } = await db
         .from('klaviyo_hygiene_segments')
         .select(
-          'state,segment_id,reason,create_started_at,profile_count,counted_at,updated_at'
+          'state,segment_id,reason,klaviyo_account_id,fingerprint,create_started_at,profile_count,counted_at,updated_at'
         )
         .eq('tenant_id', tenantId)
         .eq('rule_key', ruleKey)
@@ -124,6 +124,8 @@ export function databaseHygieneStore(db: Db): HygieneStore {
             state: data.state as HygieneState,
             segmentId: data.segment_id,
             reason: data.reason,
+            accountId: data.klaviyo_account_id,
+            fingerprint: data.fingerprint,
             createStartedAt: data.create_started_at,
             profileCount: data.profile_count,
             countedAt: data.counted_at,
@@ -137,7 +139,8 @@ export function databaseHygieneStore(db: Db): HygieneStore {
         ['state', 'state'],
         ['segmentId', 'segment_id'],
         ['reason', 'reason'],
-        ['createStartedAt', 'create_started_at'],
+        ['accountId', 'klaviyo_account_id'],
+        ['fingerprint', 'fingerprint'],
         ['profileCount', 'profile_count'],
         ['countedAt', 'counted_at']
       ] as const
@@ -149,7 +152,7 @@ export function databaseHygieneStore(db: Db): HygieneStore {
         rule: ruleKey,
         step: row as Json
       })
-      if (error?.code === 'PT409' && error.message.includes('hygiene'))
+      if (error?.code === 'PT409' && error.message.includes('being made'))
         throw new HygieneBusy()
       if (error) throw error
     }

@@ -2,7 +2,10 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
-vi.mock('./hygiene-actions', () => ({ saveListHygiene: vi.fn() }))
+vi.mock('./hygiene-actions', () => ({
+  saveListHygiene: vi.fn(),
+  retryListHygiene: vi.fn()
+}))
 vi.mock('@/features/klaviyo-data/reader', () => ({ klaviyoData: vi.fn() }))
 
 import { sampleKlaviyoSnapshot } from '@/lib/providers/fake-klaviyo-read'
@@ -33,10 +36,10 @@ describe('hygieneView', () => {
       enabled: true,
       days: 180,
       revision: 2,
-      number: '1,240',
+      number: '850',
       words:
-        '1,240 people left out: 310 bounced, 930 with no clicks, site visits or orders in 180 days',
-      source: 'Sample data: 15,280 of 16,520 people can get an email.'
+        '850 people left out: 310 bounced, 540 with no clicks, opens, site visits or orders in 180 days',
+      source: 'Sample data: 15,670 of 16,520 people can get an email.'
     })
   })
 
@@ -52,7 +55,7 @@ describe('hygieneView', () => {
     ).toMatchObject({
       number: '930',
       words:
-        '930 people with no clicks, site visits or orders in 180 days. Klaviyo also skips everyone who bounced or is suppressed.'
+        '930 people with no clicks, opens, site visits or orders in 180 days. Klaviyo also skips everyone who bounced or is suppressed.'
     })
   })
 
@@ -107,14 +110,16 @@ describe('HygieneCard', () => {
   it('shows the owner the number, the words and the setting', () => {
     render(<HygieneCard view={view} owner />)
     expect(screen.getByRole('heading', { name: 'Left out' })).toBeTruthy()
-    expect(screen.getByText('1,240')).toBeTruthy()
+    expect(screen.getByText('850')).toBeTruthy()
     expect(
       screen.getByText(
-        '1,240 people left out: 310 bounced, 930 with no clicks, site visits or orders in 180 days'
+        '850 people left out: 310 bounced, 540 with no clicks, opens, site visits or orders in 180 days'
       )
     ).toBeTruthy()
     expect(
-      screen.getByText('Apple Mail privacy opens do not count as opens.')
+      screen.getByText(
+        'Every open counts for now, Apple Mail’s automatic opens too.'
+      )
     ).toBeTruthy()
     expect(
       (screen.getByLabelText(/^Days with no clicks/) as HTMLInputElement).value
@@ -125,7 +130,7 @@ describe('HygieneCard', () => {
 
   it('shows staff the words without the setting', () => {
     render(<HygieneCard view={view} owner={false} />)
-    expect(screen.getByText('1,240')).toBeTruthy()
+    expect(screen.getByText('850')).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.getByText('The store’s owner changes this.')).toBeTruthy()
   })
@@ -133,6 +138,41 @@ describe('HygieneCard', () => {
   it('says when it could not be read', () => {
     render(<HygieneCard view={{ state: 'unavailable' }} owner />)
     expect(screen.getByText(/could not be read just now/)).toBeTruthy()
+  })
+
+  it('a segment deleted in Klaviyo is said, and made again only when asked', () => {
+    const deleted = hygieneView({
+      settings: on,
+      revision: 1,
+      data: null,
+      stored: {
+        state: 'deleted',
+        profileCount: null,
+        reason: 'segment_deleted'
+      },
+      now
+    })
+    render(<HygieneCard view={deleted} owner />)
+    expect(screen.getByText(/deleted in Klaviyo/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Make it again' })).toBeTruthy()
+  })
+
+  it('Save days keeps hygiene off when it is off', () => {
+    const off = hygieneView({
+      settings: { enabled: false, days: 90 },
+      revision: 3,
+      data: sample,
+      stored: null,
+      now
+    })
+    const { container } = render(<HygieneCard view={off} owner />)
+    const save = screen.getByRole('button', { name: 'Save days' })
+    const enabled = save
+      .closest('form')!
+      .querySelector('input[name="enabled"]') as HTMLInputElement
+    expect(enabled.value).toBe('off')
+    expect(screen.getByRole('button', { name: 'Turn on' })).toBeTruthy()
+    expect(container).toBeTruthy()
   })
 })
 

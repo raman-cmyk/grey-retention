@@ -10,7 +10,7 @@ vi.mock('@/lib/supabase/server', () => supabase)
 vi.mock('@/lib/env/server', () => ({ getServerEnvironment: () => env.values }))
 
 import { revalidatePath } from 'next/cache'
-import { saveListHygiene } from './hygiene-actions'
+import { retryListHygiene, saveListHygiene } from './hygiene-actions'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
 const form = (values: Record<string, string>) => {
@@ -38,7 +38,7 @@ describe('saveListHygiene', () => {
       )
     ).toEqual({
       message:
-        'Saved. New emails leave out people with no clicks, site visits or orders in 90 days.'
+        'Saved. New emails leave out people with no clicks, opens, site visits or orders in 90 days.'
     })
     expect(rpc).toHaveBeenCalledWith('set_list_hygiene', {
       t: tenant,
@@ -58,7 +58,7 @@ describe('saveListHygiene', () => {
         )
       ).message
     ).toBe(
-      'Saved. New emails leave out only people Klaviyo skips (bounced or suppressed).'
+      'Saved. Hygiene is off: new emails leave out only people Klaviyo skips (bounced or suppressed).'
     )
     expect(rpc).toHaveBeenCalledWith(
       'set_list_hygiene',
@@ -133,5 +133,25 @@ describe('saveListHygiene', () => {
       ).toBe(words)
     }
     expect(revalidatePath).not.toHaveBeenCalled()
+  })
+})
+
+describe('retryListHygiene', () => {
+  it('lets the owner ask for the segment to be made again', async () => {
+    expect((await retryListHygiene()).message).toBe(
+      'Done. GROS makes the segment again with its next email in Klaviyo.'
+    )
+    expect(rpc).toHaveBeenCalledWith('retry_list_hygiene', { t: tenant })
+    expect(revalidatePath).toHaveBeenCalledWith('/audiences')
+  })
+
+  it('refuses anyone but the owner', async () => {
+    for (const role of ['staff', 'admin']) {
+      signedInAs(role)
+      expect((await retryListHygiene()).error).toBe(
+        'Only the store’s owner can change who is left out.'
+      )
+    }
+    expect(rpc).not.toHaveBeenCalled()
   })
 })

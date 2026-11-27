@@ -1,5 +1,5 @@
 begin;
-select plan(43);
+select plan(62);
 
 -- PICK-101: list hygiene. Workspace 101: owner ...01, staff ...05, admin
 -- ...06. Workspace 102: owner ...04.
@@ -68,9 +68,11 @@ select set_eq($$select detail from public.workspace_events where kind='list_hygi
   'each real change is in the change history');
 
 -- The hygiene segment: saved only under a build's exact push lease.
+-- b101 (lease aaaa) and b102 (lease bbbb) wait for their push; b103's
+-- lease ran out; b104 is still building.
 insert into public.strategy_runs (id, tenant_id, start_on, state, pulse, offer_pick, plan, created_by) values
   ('00000000-0000-4000-8000-00000000e101','00000000-0000-4000-8000-000000000101',current_date,'planned','{"offers":[]}','{"mode":"auto"}',
-   '{"slots":[{"date":"2099-01-01","time":"10:00","emailType":"launch"},{"date":"2099-01-02","time":"10:00","emailType":"offer"}]}',
+   '{"slots":[{"date":"2099-01-01","time":"10:00","emailType":"launch"},{"date":"2099-01-02","time":"10:00","emailType":"offer"},{"date":"2099-01-03","time":"10:00","emailType":"offer"},{"date":"2099-01-04","time":"10:00","emailType":"offer"}]}',
    '00000000-0000-4000-8000-000000000001');
 insert into public.email_builds (id, tenant_id, run_id, slot, push_key, state, step, email, lease_token, lease_until, created_by, created_at) values
   ('00000000-0000-4000-8000-00000000b101','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',0,
@@ -78,48 +80,98 @@ insert into public.email_builds (id, tenant_id, run_id, slot, push_key, state, s
    '00000000-0000-4000-8000-000000000001',now()),
   ('00000000-0000-4000-8000-00000000b102','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',1,
    '00000000-0000-4000-8000-00000000c102','push_queued','push','{}','00000000-0000-4000-8000-00000000bbbb',now()+interval '1 minute',
+   '00000000-0000-4000-8000-000000000001',now()),
+  ('00000000-0000-4000-8000-00000000b103','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',2,
+   '00000000-0000-4000-8000-00000000c103','push_queued','push','{}','00000000-0000-4000-8000-00000000cccc',now()-interval '1 second',
+   '00000000-0000-4000-8000-000000000001',now()),
+  ('00000000-0000-4000-8000-00000000b104','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',3,
+   '00000000-0000-4000-8000-00000000c104','build_queued','sections',null,'00000000-0000-4000-8000-00000000dddd',now()+interval '1 minute',
    '00000000-0000-4000-8000-000000000001',now());
-create function pg_temp.save(step jsonb, b text default '00000000-0000-4000-8000-00000000b101',
-    l text default '00000000-0000-4000-8000-00000000aaaa', r text default 'v1-180') returns void language sql as $$
-  select public.save_hygiene_segment(b::uuid, l::uuid, r, step)
+create function pg_temp.save(step jsonb, b text default 'b101', r text default 'v1-180') returns void language sql as $$
+  select public.save_hygiene_segment(('00000000-0000-4000-8000-00000000'||b)::uuid,
+    ('00000000-0000-4000-8000-0000000'||case b when 'b101' then '0aaaa' when 'b102' then '0bbbb' when 'b103' then '0cccc' else '0dddd' end)::uuid,
+    r, step)
+$$;
+create function pg_temp.claim() returns jsonb language sql as $$
+  select '{"state":"creating","klaviyo_account_id":"AcctA","fingerprint":"0123abcd","segment_id":null}'::jsonb
+$$;
+create function pg_temp.row_() returns text language sql as $$
+  select concat_ws('|', state, coalesce(segment_id,''), coalesce(reason,''), coalesce(klaviyo_account_id,''),
+    coalesce(fingerprint,''), coalesce(profile_count::text,''), coalesce(claim_build::text,''))
+  from public.klaviyo_hygiene_segments where rule_key = 'v1-180'
 $$;
 
 set local role service_role;
 select set_config('request.jwt.claims','{}',true);
-select throws_ok($$select pg_temp.save('{"state":"creating"}')$$,'42501',null,'no request role, no save');
+select throws_ok($$select pg_temp.save(pg_temp.claim())$$,'42501',null,'no request role, no save');
 select pg_temp.as_member('00000000-0000-4000-8000-000000000001');
-select throws_ok($$select pg_temp.save('{"state":"creating"}')$$,'42501',null,'an owner''s request cannot save');
+select throws_ok($$select pg_temp.save(pg_temp.claim())$$,'42501',null,'an owner''s request cannot save');
 select pg_temp.as_worker();
-select throws_ok($$select pg_temp.save('{"state":"creating"}','00000000-0000-4000-8000-00000000b101',
-  '00000000-0000-4000-8000-00000000abcd')$$,'PT409',null,'not with another lease');
+select throws_ok($$select public.save_hygiene_segment('00000000-0000-4000-8000-00000000b101'::uuid,
+  '00000000-0000-4000-8000-00000000abcd'::uuid,'v1-180',pg_temp.claim())$$,'PT409',null,'not with another lease');
+select throws_ok($$select pg_temp.save(pg_temp.claim(),'b103')$$,'PT409',null,'not with an expired lease');
+select throws_ok($$select pg_temp.save(pg_temp.claim(),'b104')$$,'PT409',null,'not from a build that is not pushing');
 select throws_ok(format('select pg_temp.save(%L::jsonb)', x),'23514',null,'refused step: '||x)
   from unnest(array['{}','{"state":"done"}','{"state":"ready","segment_id":"bad id!"}','{"mystery":1}',
-    '{"state":"creating","profile_count":-1}','{"state":"creating","create_started_at":"yesterday"}']) x;
-select throws_ok($$select pg_temp.save('{"state":"creating"}',r=>'180')$$,'23514',null,'a rule key is v<version>-<days>');
-select throws_ok($$select pg_temp.save('{"state":"ready"}')$$,'23514',null,'ready needs the segment id');
+    '{"state":"creating","profile_count":-1}','{"state":"creating","create_started_at":"2099-01-01T00:00:00Z"}',
+    '{"state":"creating","fingerprint":"XYZ"}','{"profile_count":5}']) x;
+select throws_ok($$select pg_temp.save(pg_temp.claim(),'b101','180')$$,'23514',null,'a rule key is v<version>-<days>');
+select throws_ok($$select pg_temp.save('{"state":"ready","segment_id":"SegA"}')$$,'23514',null,
+  'a first ready save needs its account and fingerprint');
+select throws_ok($$select pg_temp.save('{"state":"no_data"}')$$,'23514',null,'a first no_data save needs its reason');
 
-select lives_ok($$select pg_temp.save(jsonb_build_object('state','creating','create_started_at',now()))$$,
-  'build b101 starts making the segment');
-select throws_ok($$select pg_temp.save(jsonb_build_object('state','creating','create_started_at',now()),
-  '00000000-0000-4000-8000-00000000b102','00000000-0000-4000-8000-00000000bbbb')$$,
-  'PT409',null,'another push waits while it is being made');
-select lives_ok($$select pg_temp.save('{"state":"ready","segment_id":"SegGros001","reason":null}')$$,
-  'it is saved as ready');
-select throws_ok($$select pg_temp.save(jsonb_build_object('state','creating'),
-  '00000000-0000-4000-8000-00000000b102','00000000-0000-4000-8000-00000000bbbb')$$,
-  'PT409',null,'nobody makes a second one once it is ready');
-select lives_ok($$select pg_temp.save(jsonb_build_object('profile_count',930,'counted_at',now()),
-  '00000000-0000-4000-8000-00000000b102','00000000-0000-4000-8000-00000000bbbb')$$,
+-- First saves of no_data and of ready, whole rows at once (rule keys of their own).
+select lives_ok($$select pg_temp.save('{"state":"no_data","reason":"no_order_metric","klaviyo_account_id":"AcctA","fingerprint":null,"segment_id":null}',
+  'b101','v1-90')$$,'a first no_data save with its reason is kept');
+select lives_ok($$select pg_temp.save('{"state":"ready","segment_id":"SegR","klaviyo_account_id":"AcctA","fingerprint":"0123abcd","reason":null,"profile_count":12,"counted_at":"2026-11-27T12:00:00Z"}',
+  'b101','v1-365')$$,'a first ready save with every field is kept');
+select results_eq($$select rule_key, state, segment_id, profile_count from public.klaviyo_hygiene_segments order by rule_key$$,
+  $$values ('v1-365','ready','SegR',12::bigint), ('v1-90','no_data',null,null::bigint)$$,'both rows are whole');
+
+-- The claim: the database stamps the time, one maker at a time.
+select lives_ok($$select pg_temp.save(pg_temp.claim())$$,'build b101 starts making the segment');
+select ok((select create_started_at = now() and claim_build = '00000000-0000-4000-8000-00000000b101'
+  from public.klaviyo_hygiene_segments where rule_key='v1-180'),'the database stamps the claim, never the caller');
+select throws_ok($$select pg_temp.save(pg_temp.claim(),'b102')$$,'PT409',null,
+  'a second first-time maker is refused with PT409 (never a duplicate key)');
+select throws_ok($$select pg_temp.save('{"state":"failed","reason":"refused"}','b102')$$,'PT409',null,
+  'only the claimant writes a row while its claim is live');
+select lives_ok($$select pg_temp.save(pg_temp.claim())$$,'the same build may claim again');
+reset role;
+update public.klaviyo_hygiene_segments set create_started_at = now() - interval '3 minutes', reason = 'refused'
+  where rule_key = 'v1-180';
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select pg_temp.save(pg_temp.claim(),'b102')$$,'after two minutes another push takes the claim over');
+select is(pg_temp.row_(),'creating|||AcctA|0123abcd||00000000-0000-4000-8000-00000000b102',
+  'the takeover is b102''s claim, with the old reason cleared');
+select lives_ok($$select pg_temp.save('{"state":"ready","segment_id":"SegA","reason":null}','b102')$$,
+  'the claimant saves it as ready');
+select throws_ok($$select pg_temp.save(pg_temp.claim())$$,'PT409',null,
+  'nobody makes a second one for the same account and fingerprint');
+select lives_ok($$select pg_temp.save('{"profile_count":930,"counted_at":"2026-11-27T12:00:00Z"}')$$,
   'another push records its size');
+select lives_ok($$select pg_temp.save(pg_temp.claim() || '{"klaviyo_account_id":"AcctB"}')$$,
+  'a reconnect to another account starts a new one');
+select is(pg_temp.row_(),'creating|||AcctB|0123abcd|930|00000000-0000-4000-8000-00000000b101',
+  'its row now belongs to the new account');
 reset role;
 
 set local role authenticated;
 select pg_temp.as_member('00000000-0000-4000-8000-000000000005');
-select results_eq($$select state, segment_id, profile_count from public.klaviyo_hygiene_segments$$,
-  $$values ('ready', 'SegGros001', 930::bigint)$$,'members read the segment and its size');
+select is((select count(*)::integer from public.klaviyo_hygiene_segments),3,'members read the segment rows');
+select throws_ok($$select public.retry_list_hygiene('00000000-0000-4000-8000-000000000101')$$,'42501',null,
+  'staff cannot ask for it again');
 select pg_temp.as_member('00000000-0000-4000-8000-000000000004');
-select is((select count(*)::integer from public.klaviyo_hygiene_segments),0,'another workspace cannot read it');
+select is((select count(*)::integer from public.klaviyo_hygiene_segments),0,'another workspace cannot read them');
+select throws_ok($$select public.retry_list_hygiene('00000000-0000-4000-8000-000000000101')$$,'42501',null,
+  'another workspace''s owner cannot ask either');
+select pg_temp.as_member('00000000-0000-4000-8000-000000000001');
+select is(public.retry_list_hygiene('00000000-0000-4000-8000-000000000101'),1,
+  'the owner asks again: the no_data row goes, the others stay');
 reset role;
+select results_eq($$select rule_key from public.klaviyo_hygiene_segments order by rule_key$$,
+  $$values ('v1-180'), ('v1-365')$$,'a row being made and a ready one are kept');
 
 select * from finish();
 rollback;

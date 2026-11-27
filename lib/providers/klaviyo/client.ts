@@ -1,7 +1,7 @@
 import 'server-only'
 import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import { klaviyoPrivateKeyPattern } from './key-shape'
-import { grosSegmentNamePattern } from './segment-name'
+import { isHygieneSegmentCreate } from './hygiene-segment'
 
 /**
  * The live Klaviyo client (KLV-001): JSON:API requests to Klaviyo's one
@@ -216,8 +216,9 @@ export type KlaviyoWriteMethod = 'POST' | 'PATCH' | 'DELETE'
 const kid = '[A-Za-z0-9_-]{1,64}'
 /**
  * Every write this client makes: a draft campaign, its message's test
- * settings, its variations, templates and images, and (PICK-101) GROS's own
- * list-hygiene segment, made once and never changed or deleted. Never a
+ * settings, its variations, templates and images, and (PICK-101) the
+ * store's list-hygiene segment (`isHygieneSegmentCreate`: a name and a
+ * definition shaped exactly as the app builds them), never changed or deleted. Never a
  * schedule, a send job, a list, any other segment, a profile or a campaign
  * deletion.
  */
@@ -234,34 +235,6 @@ const draftWrites: { method: KlaviyoWriteMethod; path: RegExp }[] = [
 ]
 export const isDraftWrite = (method: KlaviyoWriteMethod, path: string) =>
   draftWrites.some((w) => w.method === method && w.path.test(path))
-
-/**
- * PICK-101: a segment write is only ever the create of GROS's own
- * list-hygiene segment: `{ data: { type: 'segment', attributes: { name,
- * definition, is_starred: false } } }` with a name GROS makes
- * (`grosSegmentNamePattern`) and nothing else in it.
- */
-export function isGrosSegmentCreate(body: unknown) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return false
-  const { data, ...rest } = body as Record<string, unknown>
-  if (Object.keys(rest).length || !data || typeof data !== 'object')
-    return false
-  const { type, attributes, ...more } = data as Record<string, unknown>
-  if (type !== 'segment' || Object.keys(more).length) return false
-  if (!attributes || typeof attributes !== 'object') return false
-  const a = attributes as Record<string, unknown>
-  return (
-    Object.keys(a).every((k) =>
-      ['name', 'definition', 'is_starred'].includes(k)
-    ) &&
-    typeof a.name === 'string' &&
-    grosSegmentNamePattern.test(a.name) &&
-    !!a.definition &&
-    typeof a.definition === 'object' &&
-    !Array.isArray(a.definition) &&
-    (a.is_starred === undefined || a.is_starred === false)
-  )
-}
 
 /**
  * Fields a draft write never carries, anywhere in its body: a message's
@@ -427,7 +400,7 @@ export function klaviyoClient(
         url.search !== '' ||
         !isDraftWrite(method, url.pathname) ||
         (/^\/api\/segments\/?$/.test(url.pathname) &&
-          !isGrosSegmentCreate(body)) ||
+          !isHygieneSegmentCreate(body)) ||
         (method === 'DELETE') !== (body === null) ||
         carriesSchedule(body)
       )

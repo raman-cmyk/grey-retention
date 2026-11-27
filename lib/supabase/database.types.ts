@@ -5216,6 +5216,8 @@ export type Database = {
           counted_at: string | null
           create_started_at: string | null
           created_at: string
+          fingerprint: string | null
+          klaviyo_account_id: string | null
           profile_count: number | null
           reason: string | null
           rule_key: string
@@ -5229,6 +5231,8 @@ export type Database = {
           counted_at?: string | null
           create_started_at?: string | null
           created_at?: string
+          fingerprint?: string | null
+          klaviyo_account_id?: string | null
           profile_count?: number | null
           reason?: string | null
           rule_key: string
@@ -5242,6 +5246,8 @@ export type Database = {
           counted_at?: string | null
           create_started_at?: string | null
           created_at?: string
+          fingerprint?: string | null
+          klaviyo_account_id?: string | null
           profile_count?: number | null
           reason?: string | null
           rule_key?: string
@@ -9097,6 +9103,7 @@ export type Database = {
         Args: { job: string; t: string }
         Returns: undefined
       }
+      retry_list_hygiene: { Args: { t: string }; Returns: number }
       reverse_fixture_suppression: {
         Args: { expected_revision: number; profile: string; t: string }
         Returns: undefined

@@ -41,6 +41,11 @@ export type HygieneView =
       source: string | null
       /** The rule in plain words. */
       lines: string[]
+      /**
+       * The segment is not in Klaviyo (deleted there, or it failed): the
+       * owner may ask for it to be made again now.
+       */
+      retry: boolean
     }
   | { state: 'unavailable' }
 
@@ -53,17 +58,21 @@ export type StoredSegment = {
 
 const format = (n: number) => new Intl.NumberFormat('en-US').format(n)
 
+const later = 'Nobody is left out for being quiet until then.'
 const reasonWords: Record<string, string> = {
-  missing_scope:
-    'Not applied in Klaviyo yet: your Klaviyo key cannot make segments. Reconnect Klaviyo with a key that can.',
-  refused:
-    'Not applied in Klaviyo yet: Klaviyo did not take the segment. GROS tries again tomorrow.',
+  missing_scope: `Not in Klaviyo yet: your Klaviyo key cannot make segments. Reconnect Klaviyo with a key that can. ${later}`,
+  bad_key: `Not in Klaviyo yet: your Klaviyo key stopped working. Reconnect Klaviyo. ${later}`,
+  refused: `Not in Klaviyo yet: Klaviyo did not take the segment. GROS tries again tomorrow. ${later}`,
+  draft_refused: `Not in Klaviyo drafts yet: Klaviyo refused to leave the segment out of a draft. GROS tries again tomorrow. ${later}`,
+  name_taken: `Not in Klaviyo yet: a segment with the same name is already there with other rules. Rename or delete it in Klaviyo. ${later}`,
   no_email_metrics:
-    'Not applied yet: Klaviyo has no email history to judge from. Nobody is left out for being quiet.',
-  metrics_unread:
-    'Not applied yet: GROS could not read your Klaviyo history. It tries again tomorrow.',
-  segment_gone:
-    'Not applied in Klaviyo: its segment was deleted there. GROS makes it again tomorrow.'
+    'Not in Klaviyo yet: Klaviyo has no email history to judge from. Nobody is left out for being quiet.',
+  no_order_metric:
+    'Not in Klaviyo yet: Klaviyo has no orders for this store, so GROS cannot tell recent buyers apart. Nobody is left out for being quiet.',
+  metrics_unread: `Not in Klaviyo yet: GROS could not read your whole Klaviyo history. It tries again in an hour. ${later}`,
+  rate_limited: `Not in Klaviyo yet: Klaviyo was busy. GROS tries again in an hour. ${later}`,
+  klaviyo_unavailable: `Not in Klaviyo yet: Klaviyo did not answer. GROS tries again in an hour. ${later}`,
+  segment_deleted: `Its segment was deleted in Klaviyo, so GROS leaves nobody out for being quiet. GROS does not make it again unless you ask.`
 }
 
 /** The card from what was read. Pure, for tests. */
@@ -80,7 +89,11 @@ export function hygieneView(input: {
     enabled: rule.enabled,
     days: rule.days,
     revision: input.revision,
-    lines: hygieneRuleLines(rule)
+    lines: hygieneRuleLines(rule),
+    retry:
+      rule.enabled &&
+      !!input.stored &&
+      ['deleted', 'failed', 'no_data'].includes(input.stored.state)
   }
   const groups =
     input.data?.state === 'sample'
@@ -110,13 +123,17 @@ export function hygieneView(input: {
       words: `${s.profileCount === 1 ? '1 person' : `${format(s.profileCount)} people`} with no ${engagedWords} in ${rule.days} days. Klaviyo also skips everyone who bounced or is suppressed.`,
       source: 'From Klaviyo, for every email GROS puts there.'
     }
-  if (s && (s.state === 'no_data' || s.state === 'failed') && s.reason)
+  if (
+    s &&
+    (s.state === 'no_data' || s.state === 'failed' || s.state === 'deleted') &&
+    s.reason
+  )
     return {
       ...base,
       number: null,
       words:
         reasonWords[s.reason] ??
-        'Not applied in Klaviyo yet. GROS tries again tomorrow.',
+        `Not in Klaviyo yet. GROS tries again soon. ${later}`,
       source: null
     }
   return {

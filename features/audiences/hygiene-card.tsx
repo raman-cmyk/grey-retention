@@ -1,8 +1,8 @@
 import { ActionAnswers, ActionButton } from '@/components/gros/action'
 import { Card } from '@/components/gros/card'
 import { Field } from '@/components/gros/input'
-import { saveListHygiene } from './hygiene-actions'
-import { hygieneDayBounds } from './hygiene'
+import { retryListHygiene, saveListHygiene } from './hygiene-actions'
+import { engagedWords, hygieneDayBounds } from './hygiene'
 import type { HygieneView } from './hygiene-view'
 
 /**
@@ -52,10 +52,14 @@ export function HygieneCard({
                 <ActionButton
                   action={saveListHygiene}
                   label="Save days"
-                  fields={{ enabled: 'on', revision: String(view.revision) }}
+                  fields={{
+                    // The days only: on or off stays as it is.
+                    enabled: view.enabled ? 'on' : 'off',
+                    revision: String(view.revision)
+                  }}
                 >
                   <Field
-                    label={`Days with no clicks, site visits or orders, ${hygieneDayBounds.min} to ${hygieneDayBounds.max}`}
+                    label={`Days with no ${engagedWords}, ${hygieneDayBounds.min} to ${hygieneDayBounds.max}`}
                     name="days"
                     inputMode="numeric"
                     autoComplete="off"
@@ -73,6 +77,13 @@ export function HygieneCard({
                     revision: String(view.revision)
                   }}
                 />
+                {view.retry ? (
+                  <ActionButton
+                    action={retryListHygiene}
+                    label="Make it again"
+                    kind="outline"
+                  />
+                ) : null}
               </ActionAnswers>
             ) : (
               <p className="type-caption text-[var(--stone)]">

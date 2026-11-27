@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { grosSegmentNamePattern } from '@/lib/providers/klaviyo/segment-name'
+import type { HygieneSegmentSpec } from '@/lib/providers/klaviyo/hygiene-segment'
 import type { HygieneMetrics } from '@/lib/providers/klaviyo/segments'
 import type {
   LastSeen,
@@ -22,14 +22,15 @@ import type {
  *   a fair chance to see it: they already got emails before that window
  *   and at least `minEmails` emails inside it.
  * - Apple Mail Privacy opens fake an open for nearly every Apple Mail
- *   reader, so an open Klaviyo marks as an Apple privacy open never counts.
- *   Any other open counts (a real reader who never clicks stays in).
+ *   reader. Leaving them out (`countPrivacyOpens: false`) is built, but
+ *   off until Klaviyo's marking of them is proven on a live account
+ *   (`privacyOpenFilterProven`): until then every open counts, which keeps
+ *   more people (when in doubt, keep people).
  * - Someone who ordered in the last `recentOrderDays` (never shorter than
  *   180) always stays in, whatever else is true.
- * - Unknown is not unengaged: a person whose clicks, opens or emails are
- *   unknown stays in. A store with no site-visit or order data is judged
- *   on what it has (clicks and real opens); that is never a reason to leave
- *   someone out.
+ * - Unknown is not unengaged: a person whose clicks, opens, orders or
+ *   emails are unknown stays in. A store with no site tracking is judged
+ *   without site visits (there is nothing to keep anyone by).
  *
  * Turning hygiene off keeps everyone Klaviyo can email; bounced and
  * suppressed people stay out (Klaviyo skips them anyway).
@@ -56,6 +57,12 @@ export const recentOrderFloorDays = 180
  */
 export const minEmailsToJudge = 5
 
+/**
+ * Whether Klaviyo's marking of Apple privacy opens is proven on a live
+ * account. Until it is, every open counts as engagement (keeps people).
+ */
+export const privacyOpenFilterProven = false
+
 export const hygieneSettingsSchema = z.object({
   enabled: z.boolean(),
   days: z.number().int().min(hygieneDayBounds.min).max(hygieneDayBounds.max)
@@ -70,6 +77,8 @@ export type HygieneRule = {
   recentOrderDays: number
   /** At least this many emails inside `days` before anyone is unengaged. */
   minEmails: number
+  /** Apple privacy opens count as opens (true until the filter is proven). */
+  countPrivacyOpens: boolean
   /** What shows a person is still engaged. */
   engagedBy: readonly EngagementSignal[]
   /** Always left out: Klaviyo will not email them. */
@@ -103,6 +112,7 @@ export function hygieneRule(settings: HygieneSettings = hygieneDefaults) {
     days: s.days,
     recentOrderDays: Math.max(s.days, recentOrderFloorDays),
     minEmails: minEmailsToJudge,
+    countPrivacyOpens: !privacyOpenFilterProven,
     engagedBy: engagementSignals,
     alwaysOut: suppressions
   }) satisfies HygieneRule
@@ -151,19 +161,23 @@ export function judge(
   // Never leave out someone who ordered recently.
   if (within(facts.lastOrder, rule.recentOrderDays, now))
     return { out: false, why: 'recent_order' }
-  // Any engagement inside the window keeps them. An Apple privacy open is
-  // never engagement (`lastPrivacyOpen` is not read).
+  // Any engagement inside the window keeps them. An Apple privacy open
+  // counts only while the filter is unproven (`countPrivacyOpens`).
   if (
     within(facts.lastClick, rule.days, now) ||
     within(facts.lastOpen, rule.days, now) ||
+    (rule.countPrivacyOpens && within(facts.lastPrivacyOpen, rule.days, now)) ||
     within(facts.lastSiteVisit, rule.days, now)
   )
     return { out: false, why: 'engaged' }
-  // Unknown is not unengaged. Site visits and orders may be missing for a
-  // whole store (no tracking): the rule then judges on clicks and opens.
+  // Unknown is not unengaged, orders included (a missing keep-signal never
+  // leaves anyone out). Only site visits may be missing for a whole store
+  // (no tracking): then nobody could be kept by one.
   if (
     unknownOrBad(facts.lastClick) ||
     unknownOrBad(facts.lastOpen) ||
+    (rule.countPrivacyOpens && unknownOrBad(facts.lastPrivacyOpen)) ||
+    unknownOrBad(facts.lastOrder) ||
     unknownOrBad(facts.firstEmail) ||
     facts.emails === 'unknown'
   )
@@ -235,7 +249,7 @@ const peopleWords = (n: number) =>
   n === 1 ? '1 person' : `${number(n)} people`
 
 /** What counts as engagement, in the owner's words. */
-export const engagedWords = 'clicks, site visits or orders'
+export const engagedWords = 'clicks, opens, site visits or orders'
 
 /**
  * The plain sentence: "1,240 people left out: 310 bounced, 930 with no
@@ -265,121 +279,55 @@ export function hygieneRuleLines(rule: HygieneRule) {
     ]
   return [
     `Left out: people who bounced or are suppressed, and people with no ${engagedWords} in ${rule.days} days.`,
-    `Always kept: anyone who ordered in the last ${rule.recentOrderDays} days, and anyone too new to judge.`,
-    'Apple Mail privacy opens do not count as opens.'
+    `Always kept: anyone who ordered in the last ${rule.recentOrderDays} days, and anyone too new to judge or sent fewer than ${rule.minEmails} emails (flow emails count too).`,
+    rule.countPrivacyOpens
+      ? 'Every open counts for now, Apple Mail’s automatic opens too.'
+      : 'Apple Mail’s automatic opens do not count as opens.'
   ]
 }
 
-// --- The Klaviyo segment GROS keeps for this rule -------------------------
+// --- The Klaviyo segment for this rule -----------------------------------
 
-/** The Klaviyo metrics the segment reads (their ids in this account). */
 export type { HygieneMetrics }
 
-/**
- * The Opened Email property Klaviyo sets on Apple privacy (machine) opens.
- * To prove on the first live account (revision 2026-10-15 does not
- * document its name in the segments API).
- */
-export const privacyOpenProperty = 'Apple Privacy Open'
-
-/** The segment's name in Klaviyo: one per rule (a new `days` is a new segment). */
-export const hygieneSegmentName = (rule: HygieneRule) =>
-  `GROS list hygiene · ${rule.days} days · v${rule.version}`
-
-/** Only names GROS makes for this rule (the Klaviyo client checks it too). */
-export const hygieneSegmentNamePattern = grosSegmentNamePattern
-
-/** The rule's key in our database (`klaviyo_hygiene_segments.rule_key`). */
+/** The rule's row in our database (`klaviyo_hygiene_segments.rule_key`). */
 export const hygieneRuleKey = (rule: HygieneRule) =>
   `v${rule.version}-${rule.days}`
 
-const metricCount = (
-  metricId: string,
-  operator: 'equals' | 'greater-than-or-equal',
-  value: number,
-  timeframe: Record<string, unknown>,
-  metricFilters: unknown[] | null = null
-) => ({
-  type: 'profile-metric',
-  metric_id: metricId,
-  measurement: 'count',
-  measurement_filter: { type: 'numeric', operator, value },
-  timeframe_filter: timeframe,
-  metric_filters: metricFilters
-})
-const inTheLast = (days: number) => ({
-  type: 'date',
-  operator: 'in-the-last',
-  quantity: days,
-  unit: 'day'
-})
-const before = (days: number) => ({
-  type: 'date',
-  operator: 'before',
-  quantity: days,
-  unit: 'day'
-})
+/** Why no segment can be made for this account (nobody is left out then). */
+export type NoSegment =
+  'metrics_unread' | 'no_email_metrics' | 'no_order_metric'
 
 /**
- * The people the rule leaves out as unengaged, as a Klaviyo segment
- * definition (condition groups must all hold). Bounced and suppressed
- * people need no segment: Klaviyo never emails them. Null when the account
- * lacks a metric the rule needs to judge anyone (Received, Clicked or
- * Opened Email): then nobody is left out as unengaged.
+ * What the Klaviyo segment is built from, or why none can be: the metrics
+ * read must be complete, Klaviyo's three email metrics must be there, and
+ * so must an order metric (orders keep people; without them nobody is
+ * judged). Every Placed Order and Active on Site metric the account has is
+ * used, whichever integration sends it.
  */
-export function hygieneSegmentDefinition(
+export function hygieneSpec(
   rule: HygieneRule,
   metrics: HygieneMetrics
-) {
-  if (!rule.enabled) return null
+): { spec: HygieneSegmentSpec } | { none: NoSegment } {
+  if (!metrics.complete) return { none: 'metrics_unread' }
   const { receivedEmail, clickedEmail, openedEmail } = metrics
-  if (!receivedEmail || !clickedEmail || !openedEmail) return null
-  const group = (condition: Record<string, unknown>) => ({
-    conditions: [condition]
-  })
-  const groups = [
-    // Already getting emails before the window: not too new to judge.
-    group(
-      metricCount(receivedEmail, 'greater-than-or-equal', 1, before(rule.days))
-    ),
-    // Enough emails inside the window to judge.
-    group(
-      metricCount(
+  if (!receivedEmail || !clickedEmail || !openedEmail)
+    return { none: 'no_email_metrics' }
+  if (metrics.placedOrders.length === 0) return { none: 'no_order_metric' }
+  return {
+    spec: {
+      version: rule.version,
+      days: rule.days,
+      recentOrderDays: rule.recentOrderDays,
+      minEmails: rule.minEmails,
+      privacyFilter: !rule.countPrivacyOpens,
+      metrics: {
         receivedEmail,
-        'greater-than-or-equal',
-        rule.minEmails,
-        inTheLast(rule.days)
-      )
-    ),
-    group(metricCount(clickedEmail, 'equals', 0, inTheLast(rule.days))),
-    // Real opens only: Apple privacy opens are left out of the count.
-    group(
-      metricCount(openedEmail, 'equals', 0, inTheLast(rule.days), [
-        {
-          property: privacyOpenProperty,
-          filter: { type: 'boolean', operator: 'equals', value: false }
-        }
-      ])
-    ),
-    ...(metrics.activeOnSite
-      ? [
-          group(
-            metricCount(metrics.activeOnSite, 'equals', 0, inTheLast(rule.days))
-          )
-        ]
-      : []),
-    ...(metrics.placedOrder
-      ? [
-          group(
-            metricCount(
-              metrics.placedOrder,
-              'equals',
-              0,
-              inTheLast(rule.recentOrderDays)
-            )
-          )
-        ]
-      : [])
-  ]
-  return { condition_groups: groups }
+        clickedEmail,
+        openedEmail,
+        activeOnSite: [...metrics.activeOnSite],
+        placedOrders: [...metrics.placedOrders]
+      }
+    }
+  }
 }

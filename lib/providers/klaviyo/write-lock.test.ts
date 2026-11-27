@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 import { liveDraftPusher, type PushStore } from '@/features/klaviyo-push/pusher'
+import { createHygieneSegment } from './segments'
 import {
   KlaviyoError,
   fetchTransport,
@@ -357,24 +358,22 @@ describe('with the lock released by the server (exactly "unlocked")', () => {
       ).kind
     ).toBe('rejected')
     expect(calls).toHaveLength(1)
-    // PICK-101: GROS's own list-hygiene segment is the one segment write.
-    await client
-      .write(
-        'POST',
-        '/api/segments',
-        {
-          data: {
-            type: 'segment',
-            attributes: {
-              name: 'GROS list hygiene · 180 days · v1',
-              definition: { condition_groups: [] },
-              is_starred: false
-            }
-          }
-        },
-        'segments:write'
-      )
-      .catch(() => null)
+    // PICK-101: the list-hygiene segment, built from typed inputs, is the
+    // one segment write.
+    await createHygieneSegment(client, {
+      version: 1,
+      days: 180,
+      recentOrderDays: 180,
+      minEmails: 5,
+      privacyFilter: false,
+      metrics: {
+        receivedEmail: 'MRecv',
+        clickedEmail: 'MClick',
+        openedEmail: 'MOpen',
+        activeOnSite: [],
+        placedOrders: ['MOrd']
+      }
+    }).catch(() => null)
     expect(calls).toEqual([
       { method: 'POST', url: `${host}/api/templates` },
       { method: 'POST', url: `${host}/api/segments` }

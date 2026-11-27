@@ -2,17 +2,26 @@ import { describe, expect, it } from 'vitest'
 import type { ProfileFacts } from '@/lib/providers/klaviyo-read'
 import { sampleKlaviyoSnapshot } from '@/lib/providers/fake-klaviyo-read'
 import {
+  hygieneDefinitionOk,
+  hygieneFingerprint,
+  hygieneSegmentDefinition,
+  hygieneSegmentName,
+  hygieneSegmentNamePattern,
+  isHygieneSegmentCreate,
+  privacyOpenProperty,
+  sameDefinition
+} from '@/lib/providers/klaviyo/hygiene-segment'
+import {
   countHygiene,
   hygieneCountWords,
   hygieneDefaults,
   hygieneRule,
   hygieneRuleKey,
   hygieneRuleLines,
-  hygieneSegmentDefinition,
-  hygieneSegmentName,
-  hygieneSegmentNamePattern,
+  hygieneSpec,
   judge,
-  privacyOpenProperty
+  privacyOpenFilterProven,
+  type HygieneRule
 } from './hygiene'
 
 const now = new Date('2026-11-27T12:00:00Z')
@@ -35,16 +44,20 @@ const asleep = (over: Partial<ProfileFacts> = {}): ProfileFacts => ({
   ...over
 })
 const rule = hygieneRule()
+/** The rule as it will be once Apple privacy opens are proven. */
+const proven: HygieneRule = { ...rule, countPrivacyOpens: false }
 
 describe('the hygiene rule as data', () => {
-  it('defaults to on, 180 days, with orders kept for at least 180 days', () => {
+  it('defaults to on, 180 days, every open counting until proven', () => {
     expect(hygieneDefaults).toEqual({ enabled: true, days: 180 })
+    expect(privacyOpenFilterProven).toBe(false)
     expect(rule).toMatchObject({
       version: 1,
       enabled: true,
       days: 180,
       recentOrderDays: 180,
       minEmails: 5,
+      countPrivacyOpens: true,
       engagedBy: ['click', 'open', 'site_visit', 'order']
     })
     expect(hygieneRule({ enabled: true, days: 90 }).recentOrderDays).toBe(180)
@@ -62,10 +75,13 @@ describe('the hygiene rule as data', () => {
 
   it('says the rule in plain words', () => {
     expect(hygieneRuleLines(rule)).toEqual([
-      'Left out: people who bounced or are suppressed, and people with no clicks, site visits or orders in 180 days.',
-      'Always kept: anyone who ordered in the last 180 days, and anyone too new to judge.',
-      'Apple Mail privacy opens do not count as opens.'
+      'Left out: people who bounced or are suppressed, and people with no clicks, opens, site visits or orders in 180 days.',
+      'Always kept: anyone who ordered in the last 180 days, and anyone too new to judge or sent fewer than 5 emails (flow emails count too).',
+      'Every open counts for now, Apple Mail’s automatic opens too.'
     ])
+    expect(hygieneRuleLines(proven)[2]).toBe(
+      'Apple Mail’s automatic opens do not count as opens.'
+    )
     expect(
       hygieneRuleLines(hygieneRule({ enabled: false, days: 180 }))[0]
     ).toBe('Off: GROS plans for everyone Klaviyo can email.')
@@ -83,7 +99,6 @@ describe('judge', () => {
       out: false,
       why: 'recent_order'
     })
-    // With a shorter window the order still keeps them for 180 days.
     const short = hygieneRule({ enabled: true, days: 60 })
     expect(judge(asleep({ lastOrder: ago(150) }), short, now).why).toBe(
       'recent_order'
@@ -91,19 +106,28 @@ describe('judge', () => {
     expect(judge(asleep({ lastOrder: ago(200) }), rule, now).out).toBe(true)
   })
 
-  it('never counts Apple Mail privacy opens as engagement', () => {
+  it('counts Apple Mail privacy opens until the filter is proven', () => {
+    // Today: an automatic open keeps the person (when in doubt, keep).
     expect(judge(asleep({ lastPrivacyOpen: ago(2) }), rule, now)).toEqual({
+      out: false,
+      why: 'engaged'
+    })
+    // Once proven: only privacy opens is out; a real open keeps.
+    expect(judge(asleep({ lastPrivacyOpen: ago(2) }), proven, now)).toEqual({
       out: true,
       why: 'unengaged'
     })
-    // A real open keeps them, even without a click.
-    expect(judge(asleep({ lastOpen: ago(30) }), rule, now).why).toBe('engaged')
+    expect(judge(asleep({ lastOpen: ago(30) }), proven, now).why).toBe(
+      'engaged'
+    )
   })
 
-  it('keeps people whose clicks, opens or emails are unknown', () => {
+  it('keeps people whose clicks, opens, orders or emails are unknown', () => {
     for (const over of [
       { lastClick: 'unknown' },
       { lastOpen: 'unknown' },
+      { lastPrivacyOpen: 'unknown' },
+      { lastOrder: 'unknown' },
       { firstEmail: 'unknown' },
       { emails: 'unknown' },
       { lastClick: 'not a time' }
@@ -114,14 +138,11 @@ describe('judge', () => {
       })
   })
 
-  it('judges a store without site or order data on clicks and opens', () => {
-    expect(
-      judge(
-        asleep({ lastSiteVisit: 'unknown', lastOrder: 'unknown' }),
-        rule,
-        now
-      )
-    ).toEqual({ out: true, why: 'unengaged' })
+  it('judges a store without site tracking without site visits', () => {
+    expect(judge(asleep({ lastSiteVisit: 'unknown' }), rule, now)).toEqual({
+      out: true,
+      why: 'unengaged'
+    })
     expect(judge(asleep({ lastSiteVisit: ago(9) }), rule, now).why).toBe(
       'engaged'
     )
@@ -169,9 +190,7 @@ describe('countHygiene', () => {
   it('counts each person once and never a suppressed one as reachable', () => {
     const counts = countHygiene(
       [
-        // Bounced and unengaged: counted once, as bounced.
         { facts: asleep({ suppression: 'hard_bounce' }), count: 310 },
-        // A recent buyer who is also suppressed: still out.
         {
           facts: asleep({ suppression: 'unsubscribed', lastOrder: ago(3) }),
           count: 40
@@ -181,7 +200,6 @@ describe('countHygiene', () => {
         { facts: asleep({ lastOrder: ago(30) }), count: 410 },
         { facts: asleep({ emails: 'unknown' }), count: 180 },
         { facts: asleep({ lastClick: ago(10) }), count: 6000 },
-        // Broken counts are ignored.
         { facts: asleep(), count: -5 },
         { facts: asleep(), count: 1.5 }
       ],
@@ -190,17 +208,17 @@ describe('countHygiene', () => {
     )
     expect(counts).toEqual({
       total: 7870,
-      reachable: 6590,
-      leftOut: 1280,
+      reachable: 6980,
+      leftOut: 890,
       bounced: 310,
       suppressed: 40,
-      unengaged: 930,
+      unengaged: 540,
       keptUnsure: 180,
       keptRecentOrder: 410
     })
     expect(counts.reachable + counts.leftOut).toBe(counts.total)
     expect(hygieneCountWords(counts, rule)).toBe(
-      '1,280 people left out: 310 bounced, 40 unsubscribed or blocked, 930 with no clicks, site visits or orders in 180 days'
+      '890 people left out: 310 bounced, 40 unsubscribed or blocked, 540 with no clicks, opens, site visits or orders in 180 days'
     )
   })
 
@@ -224,14 +242,13 @@ describe('countHygiene', () => {
     ).toBe('Nobody is left out.')
   })
 
-  it('counts the sample store as a non-developer would expect', () => {
+  it('counts the sample store', () => {
     const snapshot = sampleKlaviyoSnapshot({ now, timezone: 'UTC' })
     const counts = countHygiene(snapshot.profileGroups ?? [], rule, now)
     expect(counts.total).toBe(snapshot.activeSubscribers.count)
     expect(hygieneCountWords(counts, rule)).toBe(
-      '1,240 people left out: 310 bounced, 930 with no clicks, site visits or orders in 180 days'
+      '850 people left out: 310 bounced, 540 with no clicks, opens, site visits or orders in 180 days'
     )
-    // A longer window leaves fewer people out.
     const longer = hygieneRule({ enabled: true, days: 365 })
     expect(
       countHygiene(snapshot.profileGroups ?? [], longer, now).unengaged
@@ -239,27 +256,66 @@ describe('countHygiene', () => {
   })
 })
 
+/** A definition to change in tests. */
+type Cond = Record<string, unknown> & {
+  measurement_filter: Record<string, unknown>
+  timeframe_filter: Record<string, unknown>
+}
+type Def = { condition_groups: { conditions: Cond[] }[]; extra?: unknown }
+
 describe('the Klaviyo segment for the rule', () => {
   const metrics = {
     receivedEmail: 'MRecv',
     clickedEmail: 'MClick',
     openedEmail: 'MOpen',
-    activeOnSite: 'MSite',
-    placedOrder: 'MOrder'
+    activeOnSite: ['MSite', 'MSiteApi'],
+    placedOrders: ['MOrdShop', 'MOrdApi'],
+    complete: true
+  }
+  const specOf = (r: HygieneRule = rule, m = metrics) => {
+    const planned = hygieneSpec(r, m)
+    if (!('spec' in planned)) throw new Error(planned.none)
+    return planned.spec
   }
 
-  it('has one name and key per rule, which the client accepts', () => {
-    expect(hygieneSegmentName(rule)).toBe('GROS list hygiene · 180 days · v1')
-    expect(hygieneSegmentNamePattern.test(hygieneSegmentName(rule))).toBe(true)
-    expect(
-      hygieneSegmentName(hygieneRule({ enabled: true, days: 90 }))
-    ).not.toBe(hygieneSegmentName(rule))
-    expect(hygieneRuleKey(rule)).toBe('v1-180')
-    expect(hygieneSegmentNamePattern.test('VIP buyers')).toBe(false)
+  it('makes no segment when a keep-signal is missing or the read is unsure', () => {
+    expect(hygieneSpec(rule, { ...metrics, complete: false })).toEqual({
+      none: 'metrics_unread'
+    })
+    expect(hygieneSpec(rule, { ...metrics, placedOrders: [] })).toEqual({
+      none: 'no_order_metric'
+    })
+    for (const missing of ['receivedEmail', 'clickedEmail', 'openedEmail'])
+      expect(hygieneSpec(rule, { ...metrics, [missing]: null })).toEqual({
+        none: 'no_email_metrics'
+      })
   })
 
-  it('says the same as the rule: all groups must hold', () => {
-    const def = hygieneSegmentDefinition(rule, metrics)!
+  it('has a neutral, unique name per rule and metrics', () => {
+    const spec = specOf()
+    const name = hygieneSegmentName(spec)
+    expect(name).toMatch(/^List hygiene · 180 days · v1 · [a-f0-9]{8}$/)
+    expect(name).not.toMatch(/GROS/)
+    expect(hygieneSegmentNamePattern.test(name)).toBe(true)
+    expect(
+      hygieneSegmentName(specOf(hygieneRule({ enabled: true, days: 90 })))
+    ).not.toBe(name)
+    // Other metrics, another segment; the order they come in does not matter.
+    expect(
+      hygieneFingerprint(
+        specOf(rule, { ...metrics, placedOrders: ['MOrdShop'] })
+      )
+    ).not.toBe(hygieneFingerprint(spec))
+    expect(
+      hygieneFingerprint(
+        specOf(rule, { ...metrics, placedOrders: ['MOrdApi', 'MOrdShop'] })
+      )
+    ).toBe(hygieneFingerprint(spec))
+    expect(hygieneRuleKey(rule)).toBe('v1-180')
+  })
+
+  it('one "no orders" group per Placed Order metric, one per site metric', () => {
+    const def = hygieneSegmentDefinition(specOf())!
     const groups = def.condition_groups.map(
       (g) => g.conditions[0] as Record<string, unknown>
     )
@@ -275,39 +331,108 @@ describe('the Klaviyo segment for the rule', () => {
       ['MClick', { type: 'numeric', operator: 'equals', value: 0 }],
       ['MOpen', { type: 'numeric', operator: 'equals', value: 0 }],
       ['MSite', { type: 'numeric', operator: 'equals', value: 0 }],
-      ['MOrder', { type: 'numeric', operator: 'equals', value: 0 }]
+      ['MSiteApi', { type: 'numeric', operator: 'equals', value: 0 }],
+      ['MOrdApi', { type: 'numeric', operator: 'equals', value: 0 }],
+      ['MOrdShop', { type: 'numeric', operator: 'equals', value: 0 }]
     ])
     expect(groups[0]!.timeframe_filter).toMatchObject({
       operator: 'before',
       quantity: 180
     })
-    expect(groups[3]!.metric_filters).toEqual([
-      {
-        property: privacyOpenProperty,
-        filter: { type: 'boolean', operator: 'equals', value: false }
-      }
-    ])
+    // Every open counts today: no Apple filter.
+    expect(groups[3]!.metric_filters).toBeNull()
+    const withFilter = hygieneSegmentDefinition(specOf(proven))!
+    expect(withFilter.condition_groups[3]!.conditions[0]).toMatchObject({
+      metric_filters: [
+        {
+          property: privacyOpenProperty,
+          filter: { type: 'boolean', operator: 'equals', value: false }
+        }
+      ]
+    })
+    expect(hygieneDefinitionOk(def)).toBe(true)
+    expect(hygieneDefinitionOk(withFilter)).toBe(true)
   })
 
-  it('skips site and order data a store does not have', () => {
-    const def = hygieneSegmentDefinition(rule, {
-      ...metrics,
-      activeOnSite: null,
-      placedOrder: null
-    })!
-    expect(def.condition_groups).toHaveLength(4)
-  })
-
-  it('makes no segment without the email metrics, or with hygiene off', () => {
-    for (const missing of ['receivedEmail', 'clickedEmail', 'openedEmail'])
-      expect(
-        hygieneSegmentDefinition(rule, { ...metrics, [missing]: null })
-      ).toBeNull()
+  it('the fence lets through only what the app builds', () => {
+    const spec = specOf()
+    const def = hygieneSegmentDefinition(spec)!
+    const body = (attributes: Record<string, unknown>) => ({
+      data: { type: 'segment', attributes }
+    })
+    const name = hygieneSegmentName(spec)
     expect(
-      hygieneSegmentDefinition(
-        hygieneRule({ enabled: false, days: 180 }),
-        metrics
-      )
-    ).toBeNull()
+      isHygieneSegmentCreate(body({ name, definition: def, is_starred: false }))
+    ).toBe(true)
+    const swap = (path: (d: Def) => void) => {
+      const d = structuredClone(def) as unknown as Def
+      path(d)
+      return body({ name, definition: d, is_starred: false })
+    }
+    for (const hostile of [
+      body({ name: 'VIP buyers', definition: def, is_starred: false }),
+      body({ name, definition: def, is_starred: true }),
+      body({ name, definition: def }),
+      body({ name, definition: {}, is_starred: false }),
+      {
+        data: {
+          type: 'segment',
+          attributes: { name, definition: def, is_starred: false }
+        },
+        extra: 1
+      },
+      // Valid name, hostile definitions.
+      swap(
+        (d) => (d.condition_groups[2]!.conditions[0]!.type = 'profile-property')
+      ),
+      swap(
+        (d) =>
+          (d.condition_groups[2]!.conditions[0]!.measurement_filter.operator =
+            'less-than')
+      ),
+      swap(
+        (d) =>
+          (d.condition_groups[2]!.conditions[0]!.measurement_filter.value = 3)
+      ),
+      swap(
+        (d) =>
+          (d.condition_groups[0]!.conditions[0]!.timeframe_filter.operator =
+            'alltime')
+      ),
+      swap(
+        (d) =>
+          (d.condition_groups[0]!.conditions[0]!.timeframe_filter.quantity = 2)
+      ),
+      swap((d) =>
+        d.condition_groups[0]!.conditions.push(
+          d.condition_groups[1]!.conditions[0]!
+        )
+      ),
+      swap(
+        (d) =>
+          (d.condition_groups[3]!.conditions[0]!.metric_filters = [
+            { property: 'x' }
+          ])
+      ),
+      swap((d) => (d.condition_groups[3]!.conditions[0]!.extra = 1)),
+      swap((d) => (d.condition_groups = d.condition_groups.slice(0, 3))),
+      swap((d) => (d.extra = {}))
+    ])
+      expect(isHygieneSegmentCreate(hostile)).toBe(false)
+  })
+
+  it('a segment Klaviyo shows is ours only when its definition is the same', () => {
+    const def = hygieneSegmentDefinition(specOf())!
+    const shown = structuredClone(def) as unknown as Def
+    // Key order and a missing `metric_filters` do not matter.
+    delete shown.condition_groups[2]!.conditions[0]!.metric_filters
+    shown.condition_groups[2]!.conditions[0] = Object.fromEntries(
+      Object.entries(shown.condition_groups[2]!.conditions[0]!).reverse()
+    ) as Cond
+    expect(sameDefinition(shown, def)).toBe(true)
+    shown.condition_groups[2]!.conditions[0]!.measurement_filter.value = 1
+    expect(sameDefinition(shown, def)).toBe(false)
+    expect(sameDefinition({}, def)).toBe(false)
+    expect(sameDefinition(null, def)).toBe(false)
   })
 })

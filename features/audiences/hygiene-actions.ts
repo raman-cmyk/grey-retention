@@ -5,7 +5,7 @@ import type { FormResult } from '@/components/ui/action-form'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { getServerEnvironment } from '@/lib/env/server'
 import { createClient } from '@/lib/supabase/server'
-import { hygieneDayBounds } from './hygiene'
+import { engagedWords, hygieneDayBounds } from './hygiene'
 
 /**
  * PICK-101: the owner changes list hygiene on Audiences: its days (30 to
@@ -74,7 +74,29 @@ export async function saveListHygiene(
   return {
     message:
       enabled === 'on'
-        ? `Saved. New emails leave out people with no clicks, site visits or orders in ${days} days.`
-        : 'Saved. New emails leave out only people Klaviyo skips (bounced or suppressed).'
+        ? `Saved. New emails leave out people with no ${engagedWords} in ${days} days.`
+        : 'Saved. Hygiene is off: new emails leave out only people Klaviyo skips (bounced or suppressed).'
+  }
+}
+
+/**
+ * "Make it again" on Audiences: the segment was deleted in Klaviyo (or
+ * could not be made). The next email GROS puts in Klaviyo makes or finds it.
+ */
+export async function retryListHygiene(): Promise<FormResult> {
+  const context = await requireRequestContext('client')
+  if (context.tenantRole !== 'owner') return { error: ownerOnly }
+  const db = await createClient()
+  if (!db || getServerEnvironment().AUTH_MODE === 'demo')
+    return { error: 'Please sign in again.' }
+  const done = await db.rpc('retry_list_hygiene', { t: context.tenantId })
+  if (done.error)
+    return done.error.code === '42501'
+      ? { error: ownerOnly }
+      : { error: 'We could not ask for it. Nothing was changed.' }
+  revalidatePath('/audiences')
+  return {
+    message:
+      'Done. GROS makes the segment again with its next email in Klaviyo.'
   }
 }
