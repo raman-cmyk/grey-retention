@@ -618,8 +618,75 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       ['klaviyo_history', 'eq', 'tenant_id', tenantId],
       ['brand_voice_samples', 'eq', 'tenant_id', tenantId],
       ['brand_never_words', 'eq', 'tenant_id', tenantId],
-      ['brand_photo_sets', 'eq', 'tenant_id', tenantId]
+      ['brand_photo_sets', 'eq', 'tenant_id', tenantId],
+      // Pick #3: the website's fonts (`brandFonts` checks the website).
+      ['brand_profiles', 'eq', 'tenant_id', tenantId],
+      ['brand_fonts', 'eq', 'tenant_id', tenantId]
     ])
+    // None kept: the brand kit's font, as before.
+    expect(store.fonts).toBeUndefined()
+  })
+
+  it('carries the website’s kept fonts for the studio, and builds without them when they cannot be read (pick #3)', async () => {
+    const fonts = [
+      {
+        family: 'Fraunces',
+        roles: ['heading'],
+        kind: 'google',
+        files: [
+          {
+            url: 'https://fonts.gstatic.com/s/fraunces/v1/a.woff2',
+            format: 'woff2',
+            weight: 600,
+            italic: false,
+            unicodeRange: null
+          }
+        ]
+      }
+    ]
+    const brandFonts = (over: Partial<Answer> = {}) => ({
+      brand_fonts: {
+        data: { domain: 'shop.example', fonts },
+        error: null,
+        ...over
+      }
+    })
+    const read = async (answers: Record<string, Answer>) => {
+      reads.catalog.mockResolvedValueOnce([...parts().catalog])
+      reads.findings.mockResolvedValueOnce([...parts().findings])
+      reads.corrections.mockResolvedValueOnce([])
+      const { db } = fakeDb({ catalog_status: status(), ...own, ...answers })
+      return ownStoreSource(db).read(tenantId)
+    }
+    expect((await read(brandFonts())).fonts).toEqual([
+      {
+        family: 'Fraunces',
+        roles: ['heading'],
+        faces: [
+          {
+            family: 'Fraunces',
+            url: 'https://fonts.gstatic.com/s/fraunces/v1/a.woff2',
+            weight: 600,
+            italic: false
+          }
+        ]
+      }
+    ])
+    // Read from another website (the owner changed it): none.
+    expect(
+      (
+        await read({
+          brand_fonts: {
+            data: { domain: 'old-shop.example', fonts },
+            error: null
+          }
+        })
+      ).fonts
+    ).toBeUndefined()
+    // A failed read: the store is still made, with the kit's font.
+    const store = await read(brandFonts({ data: null, error: failed.error }))
+    expect(store.fonts).toBeUndefined()
+    expect(store.brand.name).toBe('Cedar Lane')
   })
 
   it('reads the kept set’s own lifestyle photos, and makes the store without them when they cannot be read (REL-ONB2 part c)', async () => {
