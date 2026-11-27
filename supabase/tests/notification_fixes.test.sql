@@ -1,5 +1,5 @@
 begin;
-select plan(29);
+select plan(30);
 
 -- PICK-107 review fixes. Workspace 101: owner ...01, staff ...05, manager
 -- (admin) ...06. Workspace 102: owner ...04.
@@ -16,6 +16,15 @@ grant execute on function pg_temp.as_job() to service_role;
 select ok(pg_get_functiondef(f) ~ 'from public\.tenants where id = t for share.*leased_', f::text || ' locks the workspace before its row')
   from unnest(array['public.finish_strategy_plan(uuid,uuid,jsonb)'::regprocedure,
     'public.finish_email_push(uuid,uuid,text,boolean)'::regprocedure]) f;
+-- Drafts of one plan wait for each other on the per-plan lock (so they
+-- join one item), and that wait is bounded: the 2 s lock_timeout is set
+-- first, and lock_timeout applies to advisory locks too. (The two-session
+-- check is in the PICK-107 handoff: a held lock makes the notice give up
+-- after 2 s with 55P03 and keeps the draft.)
+select ok(pg_get_functiondef('private.notice_email_drafted()'::regprocedure)
+    ~ 'notice_lock_wait\(true\).*perform pg_advisory_xact_lock\('
+  and pg_get_functiondef('private.notice_email_drafted()'::regprocedure) !~ 'pg_try_advisory',
+  'the per-plan lock blocks, after the 2 s lock wait is set');
 select ok(not has_function_privilege('authenticated', f, 'execute'), 'members cannot call ' || f::text)
   from unnest(array['public.finish_strategy_plan(uuid,uuid,jsonb)'::regprocedure,
     'public.finish_email_push(uuid,uuid,text,boolean)'::regprocedure]) f;
