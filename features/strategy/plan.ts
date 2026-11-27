@@ -21,7 +21,11 @@ import {
   letterKinds,
   type LetterKind
 } from '@/features/letter/kind-list'
-import { ladderStartPercent, offerLadder } from '@/features/offers/ladder'
+import {
+  carriedSalePercent,
+  ladderStartPercent,
+  offerLadder
+} from '@/features/offers/ladder'
 import { mixKindOf, type MixKind } from '@/features/results/mix'
 
 /**
@@ -99,7 +103,8 @@ const planInputSchema = z.object({
         date: isoDate,
         audienceId: z.string().min(1),
         offer: z.boolean(),
-        // #40: its percent, when known (the ladder never restarts below it).
+        // #40: its percent, when GROS knows it (PLN-040b: the code it
+        // planned and drafted for that email); a sale picks up from it.
         percent: z.int().min(1).max(100).nullable().optional()
       })
     )
@@ -232,7 +237,11 @@ export type PlanInput = {
     date: string
     audienceId: string
     offer: boolean
-    /** #40: an offer email's percent, when known. */
+    /**
+     * #40: an offer email's percent, when GROS knows it: the code it
+     * planned and drafted for that email (PLN-040b, `offerPercents`), never
+     * read from Klaviyo's words. Missing or null: not known.
+     */
     percent?: number | null
   }[]
   /**
@@ -1017,6 +1026,29 @@ export function keepPassing(
 }
 
 /**
+ * PLN-040b: the percent the ladder starts from for these offer days. A
+ * sale an offer email of known percent ran just before (`carriedSalePercent`:
+ * at most `saleGapDays` before the first of them) goes on from that
+ * percent; when no allowed code is that big any more (the owner lowered
+ * the biggest discount or the margin floor since), from the biggest one
+ * allowed, never above it. Otherwise a sale starts at 10%.
+ */
+export function ladderStart(
+  input: Pick<PlanInput, 'existing' | 'offers' | 'start'>,
+  dates: readonly string[]
+) {
+  const first = dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort()[0]
+  if (first === undefined) return ladderStartPercent
+  const carried = carriedSalePercent(input.existing, input.start, first)
+  if (!carried) return ladderStartPercent
+  const allowed = input.offers
+    .filter((o) => o.until === null || o.until >= first)
+    .map((o) => o.percent)
+  const top = allowed.length ? Math.max(...allowed) : carried.percent
+  return Math.max(ladderStartPercent, Math.min(carried.percent, top))
+}
+
+/**
  * #40, the offer ladder (`offerLadder`): over the kept plan's offer emails,
  * earliest first, a sale starts at the smallest allowed code of at least
  * 10% and steps up toward the biggest, never down, each code only on a day
@@ -1025,9 +1057,9 @@ export function keepPassing(
  * goes above either. It replaces the offer each email was planned with
  * (counted in `changed`, which the plan step logs); an offer email no code
  * can hold without stepping down is dropped, and the plan is checked again
- * (`keepPassing`). Offer emails already planned before these days whose
- * percent is known (`input.existing`) set where the sale picks up: never
- * back at 10% right after a 25% email, when a code of 25% or more works.
+ * (`keepPassing`). An offer email of the same sale just before these days
+ * whose percent GROS knows (`input.existing`, `ladderStart`) sets where the
+ * sale picks up: never back at 10% right after a 25% email.
  */
 export function withOfferLadder(
   slots: Slot[],
@@ -1039,16 +1071,8 @@ export function withOfferLadder(
   )
   if (!offerAt.length)
     return { kept: slots, dropped: [] as Problem[][], changed: 0 }
-  const before = input.existing.flatMap((e) =>
-    e.offer && e.date < input.start && typeof e.percent === 'number'
-      ? [e.percent]
-      : []
-  )
-  const picks = offerLadder(
-    offerAt.map((i) => slots[i]!.date),
-    input.offers,
-    Math.max(ladderStartPercent, ...before)
-  )
+  const dates = offerAt.map((i) => slots[i]!.date)
+  const picks = offerLadder(dates, input.offers, ladderStart(input, dates))
   const next = slots.map((s) => ({ ...s }))
   const issues = new Map<number, Problem[]>()
   let changed = 0
@@ -1619,6 +1643,8 @@ function planOutput(
     notes.push(
       `With ${input.sendsPerWeek} emails a week, an offer email would be more than ${offerSharePercent}% of the week, so no offer was planned. Choose more emails a week to run an offer.`
     )
+  const carried = saleNote(input, slotsOut)
+  if (carried) notes.push(carried)
   notes.push(...guidanceNotes(input))
   const goals = goalLines(input, slotsOut)
   return {
@@ -1631,6 +1657,27 @@ function planOutput(
     slots: slotsOut,
     ...(goals.length ? { goal: goals } : {})
   }
+}
+
+/**
+ * PLN-040b: when the plan's sale goes on from an offer email just before
+ * it (`ladderStart`), a plain note says so, so the owner sees why the first
+ * offer is not 10%.
+ */
+export function saleNote(
+  input: Pick<PlanInput, 'existing' | 'start'>,
+  slots: readonly { date: string; offer: { percent: number } | null }[]
+): string | null {
+  const first = slots
+    .filter((s) => s.offer)
+    .sort((a, b) => a.date.localeCompare(b.date))[0]
+  if (!first?.offer) return null
+  const carried = carriedSalePercent(input.existing, input.start, first.date)
+  if (!carried || carried.percent <= ladderStartPercent) return null
+  const from = `The sale goes on from your ${carried.percent}% offer email on ${carried.date}`
+  return first.offer.percent >= carried.percent
+    ? `${from}, so this plan's offers start at ${first.offer.percent}%, not back at ${ladderStartPercent}%.`
+    : `${from}. No offer that big works now, so this plan's offers start at ${first.offer.percent}%, the closest your offers allow.`
 }
 
 const count = (n: number, one: string, many = `${one}s`) =>

@@ -23,7 +23,11 @@ const reads = vi.hoisted(() => ({
   keyDates: vi.fn(),
   timezone: vi.fn(),
   corrections: vi.fn(),
-  sendTimes: vi.fn()
+  sendTimes: vi.fn(),
+  offerPercents: vi.fn()
+}))
+vi.mock('@/features/strategy/offer-memory', () => ({
+  readOfferPercents: reads.offerPercents
 }))
 vi.mock('@/features/onboarding/history/send-times-store', () => ({
   readSendTimes: reads.sendTimes
@@ -560,6 +564,7 @@ describe('onboardedStrategyData (ONB-057a)', () => {
     vi.clearAllMocks()
     reads.corrections.mockResolvedValue([])
     reads.sendTimes.mockResolvedValue(null)
+    reads.offerPercents.mockResolvedValue(new Map())
     catalogStatus = { data: { live: true }, error: null }
     reads.timezone.mockResolvedValue('America/New_York')
     reads.catalog.mockResolvedValue(parts().catalog)
@@ -632,6 +637,28 @@ describe('onboardedStrategyData (ONB-057a)', () => {
     const own = await load()
     expect(own.sample).toBe(false)
     expect(own.plan.sendTimes).toBeUndefined()
+  })
+
+  it('gives a send GROS drafted an offer for its percent, from this workspace only (PLN-040b)', async () => {
+    reads.offerPercents.mockResolvedValue(new Map([['C1', 25]]))
+    const own = await load()
+    expect(reads.offerPercents).toHaveBeenCalledWith(
+      expect.anything(),
+      tenantId,
+      { campaignIds: ['C1'], live: true }
+    )
+    expect(own.plan.existing).toEqual([
+      { date: '2026-11-18', audienceId: 'SegA', offer: true, percent: 25 }
+    ])
+  })
+
+  it('plans as before when the drafted offers cannot be read (PLN-040b)', async () => {
+    reads.offerPercents.mockRejectedValue(new Error('down'))
+    const own = await load()
+    expect(own.sample).toBe(false)
+    expect(own.plan.existing).toEqual([
+      { date: '2026-11-18', audienceId: 'SegA', offer: true }
+    ])
   })
 
   it('hands back the sample store until there is enough', async () => {

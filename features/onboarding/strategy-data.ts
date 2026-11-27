@@ -19,6 +19,7 @@ import { industryInWords } from '@/features/onboarding/industry'
 import {
   planFromHistory,
   readKlaviyoHistory,
+  windowCampaigns,
   type StoredHistory
 } from '@/features/onboarding/history/read'
 import { resolveSendTimes } from '@/features/onboarding/history/send-times'
@@ -27,6 +28,7 @@ import {
   type StoredSendTimes
 } from '@/features/onboarding/history/send-times-store'
 import { sampleStrategyData, type StrategyData } from '@/features/strategy/data'
+import { readOfferPercents } from '@/features/strategy/offer-memory'
 import { addDays } from '@/features/strategy/pulse'
 import { workspaceTimezone } from '@/features/strategy/offers'
 import type { Industry } from '@/features/intelligence/taxonomy'
@@ -72,6 +74,11 @@ export type OnboardedParts = {
    * null: none (every email at the usual time).
    */
   sendTimes?: StoredSendTimes | null
+  /**
+   * PLN-040b: the percent of the code GROS drafted for a Klaviyo campaign,
+   * by campaign id (`readOfferPercents`); missing: none known.
+   */
+  offerPercents?: ReadonlyMap<string, number>
 }
 
 /** The store's own date of a moment (a launch at 02:00 UTC may be the day before). */
@@ -149,10 +156,11 @@ export function strategyFrom(
   const catalog = parts.catalog.filter((p) => p.featurable)
   if (!history || !historyUsable(history, now) || catalog.length === 0)
     return null
-  const fromHistory = planFromHistory(history.history, {
-    start,
-    days: planDays
-  })
+  const fromHistory = planFromHistory(
+    history.history,
+    { start, days: planDays },
+    parts.offerPercents
+  )
   if (fromHistory.audiences.length === 0) return null
   const industry = industryFrom(parts.findings, {
     live: history.live,
@@ -308,6 +316,18 @@ export function onboardedStrategyData(
         })
       ])
       if (profile.error) throw profile.error
+      // PLN-040b: the offers GROS drafted for the sends already in
+      // Klaviyo; a failed read plans as before (each sale starts low).
+      const offerPercents = await readOfferPercents(db, tenantId, {
+        campaignIds: windowCampaigns(history.history, {
+          start,
+          days: planDays
+        }),
+        live: history.live
+      }).catch(() => {
+        logger.warn('Plan: drafted offers unreadable; the sale starts low')
+        return new Map<string, number>()
+      })
       const keyDates = await planningKeyDates(db, {
         tenantId,
         timezone,
@@ -333,7 +353,8 @@ export function onboardedStrategyData(
           findings,
           corrections,
           keyDates: keyDates.dates,
-          sendTimes
+          sendTimes,
+          offerPercents
         },
         start,
         at

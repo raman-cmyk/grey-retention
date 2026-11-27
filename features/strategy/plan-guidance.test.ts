@@ -8,9 +8,11 @@ import {
   codeBrief,
   goalLines,
   guidanceNotes,
+  ladderStart,
   planEvidence,
   readGuidance,
   readPlanInput,
+  saleNote,
   samplePlan,
   withOfferLadder,
   type PlanInput,
@@ -197,6 +199,131 @@ describe('the offer ladder in the plan (#40)', () => {
         saleBrief
       ).kept.find((s) => s.offerId)!.offerId
     ).toBe('offer:SMALL10')
+  })
+
+  describe('a new plan right after a sale (PLN-040b)', () => {
+    const after = (
+      percent: number | null | undefined,
+      date = '2026-11-12'
+    ) => ({
+      ...sale,
+      existing: [
+        {
+          date,
+          audienceId: 'aud-engaged',
+          offer: true,
+          ...(percent === undefined ? {} : { percent })
+        }
+      ]
+    })
+    const codes = (plan: PlanInput, slots: Slot[]) =>
+      withOfferLadder(slots, plan, saleBrief)
+        .kept.filter((s) => s.offerId)
+        .map((s) => s.offerId)
+
+    it('starts at the last percent right after a 25% email, then holds or steps up', () => {
+      // The 25% email on 12 Nov, the next offer emails a week on.
+      expect(
+        codes(after(25), [
+          offerOn('2026-11-19'),
+          offerOn('2026-11-27'),
+          ...others
+        ])
+      ).toEqual(['offer:BIG25', 'offer:BIG25'])
+      // No 25% code: the next allowed step up.
+      const stepped = [
+        { id: 'offer:SMALL10', code: 'SMALL10', percent: 10, until: null },
+        { id: 'offer:BIG30', code: 'BIG30', percent: 30, until: null }
+      ]
+      const higher = {
+        ...after(25),
+        pulse: { ...pulse, offers: stepped },
+        offers: stepped
+      }
+      expect(ladderStart(higher, ['2026-11-16'])).toBe(25)
+      expect(
+        withOfferLadder(
+          [{ ...offerOn('2026-11-19'), offerId: 'offer:SMALL10' }, ...others],
+          higher,
+          [
+            {
+              ...saleBrief[0]!,
+              evidenceIds: ['offer:SMALL10'],
+              offerId: 'offer:SMALL10'
+            }
+          ]
+        ).kept.find((s) => s.offerId)!.offerId
+      ).toBe('offer:BIG30')
+    })
+
+    it('never goes above the biggest allowed offer (the cap and the margin floor)', () => {
+      // The owner lowered the biggest discount to 15% since the 25% email.
+      const capped = [
+        { id: 'offer:SMALL10', code: 'SMALL10', percent: 10, until: null },
+        { id: 'offer:MID15', code: 'MID15', percent: 15, until: null }
+      ]
+      const lower = {
+        ...after(25),
+        pulse: { ...pulse, offers: capped },
+        offers: capped
+      }
+      expect(ladderStart(lower, ['2026-11-16'])).toBe(15)
+      expect(
+        codes(lower, [
+          { ...offerOn('2026-11-19'), offerId: 'offer:SMALL10' },
+          ...others
+        ])
+      ).toEqual(['offer:MID15'])
+    })
+
+    it('starts low again after a gap longer than the sale, or with no known percent', () => {
+      // 18 days from 9 Nov to 27 Nov: a new sale.
+      expect(
+        codes(after(25, '2026-11-09'), [offerOn('2026-11-27'), ...others])
+      ).toEqual(['offer:SMALL10'])
+      for (const unknown of [undefined, null])
+        expect(
+          codes(after(unknown), [offerOn('2026-11-19'), ...others])
+        ).toEqual(codes(sale, [offerOn('2026-11-19'), ...others]))
+      expect(ladderStart(after(null), ['2026-11-16'])).toBe(10)
+      expect(ladderStart(after(25), [])).toBe(10)
+    })
+
+    it('says so in a plain note, only when the sale goes on above 10%', () => {
+      const plan = { existing: after(25).existing, start }
+      const offerSlot = (date: string, percent: number) => ({
+        date,
+        offer: { percent }
+      })
+      expect(saleNote(plan, [offerSlot('2026-11-16', 25)])).toBe(
+        "The sale goes on from your 25% offer email on 2026-11-12, so this plan's offers start at 25%, not back at 10%."
+      )
+      expect(saleNote(plan, [offerSlot('2026-11-16', 15)])).toBe(
+        "The sale goes on from your 25% offer email on 2026-11-12. No offer that big works now, so this plan's offers start at 15%, the closest your offers allow."
+      )
+      expect(
+        saleNote({ existing: after(10).existing, start }, [
+          offerSlot('2026-11-16', 10)
+        ])
+      ).toBeNull()
+      expect(saleNote(plan, [{ date: '2026-11-16', offer: null }])).toBeNull()
+      expect(
+        saleNote({ existing: after(undefined).existing, start }, [
+          offerSlot('2026-11-16', 10)
+        ])
+      ).toBeNull()
+    })
+
+    it('carries a sale on in the sample plan, with the note', () => {
+      const plan = samplePlan({ ...input, existing: after(15).existing })
+      const offer = plan.slots.find((s) => s.offer)!
+      // The sample's codes: CANDLE10 and WELCOME15; the sale was at 15%.
+      expect(offer.offer?.percent).toBeGreaterThanOrEqual(15)
+      expect(plan.notes.join(' ')).toContain(
+        'The sale goes on from your 15% offer email on 2026-11-12'
+      )
+      expect(storedPlan.safeParse(plan).success).toBe(true)
+    })
   })
 
   it('gives the sample plan its offer from the ladder, its fact citing that code', () => {

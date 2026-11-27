@@ -143,3 +143,62 @@ export function ladderStepsDown(
   }
   return down.sort((a, b) => a - b)
 }
+
+/**
+ * PLN-040b: a sale goes on while its offer emails are at most this many
+ * days apart: two offer spacings (offer emails are at least 7 days apart),
+ * so the next offer email after a skipped week still belongs to it. A
+ * longer gap is a new sale, which starts low again.
+ */
+export const saleGapDays = 14
+
+const dayMs = 86_400_000
+const daysBetween = (from: string, to: string) =>
+  Math.round(
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / dayMs
+  )
+
+/**
+ * PLN-040b: where a new plan picks a sale up. Of the offer emails before
+ * `start` whose percent GROS knows (the code it planned and drafted for
+ * that email, never read from Klaviyo's words), the latest one counts when
+ * it is at most `saleGapDays` before `firstOfferDay` (the new plan's first
+ * offer email): its percent (the highest that day). Null when there is
+ * none: an offer email of unknown percent, or one further back, changes
+ * nothing, and the sale starts low.
+ *
+ * Example: a 25% email on 12 Nov and the next offer email on 23 Nov (11
+ * days) give 25; the same email and an offer email on 1 Dec give null.
+ */
+export function carriedSalePercent(
+  before: readonly {
+    date: string
+    offer: boolean
+    percent?: number | null
+  }[],
+  start: string,
+  firstOfferDay: string
+): { percent: number; date: string } | null {
+  if (!isoDay.test(start) || !isoDay.test(firstOfferDay)) return null
+  const known = before.filter(
+    (e): e is typeof e & { percent: number } =>
+      e.offer &&
+      isoDay.test(e.date) &&
+      e.date < start &&
+      e.date <= firstOfferDay &&
+      typeof e.percent === 'number' &&
+      validPercent(e.percent) &&
+      daysBetween(e.date, firstOfferDay) <= saleGapDays
+  )
+  const latest = known.reduce<string | null>(
+    (d, e) => (d === null || e.date > d ? e.date : d),
+    null
+  )
+  if (latest === null) return null
+  return {
+    date: latest,
+    percent: Math.max(
+      ...known.filter((e) => e.date === latest).map((e) => e.percent)
+    )
+  }
+}
