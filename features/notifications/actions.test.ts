@@ -54,7 +54,7 @@ const redirectedTo = async (work: Promise<unknown>) => {
 
 describe('markAllNoticesRead (PICK-107)', () => {
   it('marks the person’s own notices read in their workspace, staff included', async () => {
-    expect(await markAllNoticesRead({}, form({}))).toEqual({
+    expect(await markAllNoticesRead()).toEqual({
       message: 'Done. Every notification is read.'
     })
     expect(rpc).toHaveBeenCalledWith('mark_notifications_read', { t: tenant })
@@ -63,11 +63,9 @@ describe('markAllNoticesRead (PICK-107)', () => {
 
   it('says when there was nothing to mark, and when it failed', async () => {
     rpc.mockResolvedValueOnce({ data: 0, error: null })
-    expect((await markAllNoticesRead({}, form({}))).message).toBe(
-      'Nothing new to mark.'
-    )
+    expect((await markAllNoticesRead()).message).toBe('Nothing new to mark.')
     rpc.mockResolvedValueOnce({ data: null, error: { code: '42501' } })
-    expect((await markAllNoticesRead({}, form({}))).error).toBe(
+    expect((await markAllNoticesRead()).error).toBe(
       'We could not mark them read. Try again.'
     )
   })

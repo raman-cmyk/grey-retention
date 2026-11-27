@@ -17,10 +17,7 @@ const unavailable = 'Notifications are unavailable right now. Try again.'
 const ownerOnly = 'Only the workspace owner can turn notification emails on.'
 
 /** "Mark all read" on the Notifications page. */
-export async function markAllNoticesRead(
-  _state: ActionResult,
-  _form: FormData
-): Promise<ActionResult> {
+export async function markAllNoticesRead(): Promise<ActionResult> {
   const context = await requireRequestContext('client')
   const db = await createClient()
   if (!db) return { error: unavailable }
