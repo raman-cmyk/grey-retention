@@ -39,6 +39,7 @@ export const teamNames = {
   'design-critic': 'The design studio',
   // DES-ENGINE-002b2: Copy of the email chosen in Inspiration.
   'design-library': 'The design copy',
+  'design-scratch': 'The block library',
   'email-checks': 'The email checks',
   'ab-test': 'The A/B test',
   // Understanding the brand and the inspiration inbox.
