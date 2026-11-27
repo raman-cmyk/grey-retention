@@ -73,6 +73,11 @@ create table public.library_blocks (
   uses integer not null default 0 check (uses >= 0),
   brands integer not null default 0 check (brands >= 0),
   quality text not null check (quality in ('passed', 'failed')),
+  -- The email the stored geometry came from (its first section with this
+  -- structure, or the one that later drew back alike): the email a copy's
+  -- leak check and the visibility rules start from.
+  geometry_message uuid references public.inbox_messages(id),
+  geometry_upload uuid references public.email_uploads(id) on delete set null,
   failure text check (failure ~ '^[a-z_]{1,40}$'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -322,15 +327,17 @@ begin
     -- block went between the two (its last use removed meanwhile).
     for try_n in 1..2 loop
       if t is null then
-        insert into public.library_blocks(tenant_id, source, version, fingerprint, kind, roles, facts, blueprint, quality, failure)
+        insert into public.library_blocks(tenant_id, source, version, fingerprint, kind, roles, facts, blueprint, quality, failure,
+            geometry_message)
           values (null, 'inbox', 1, b->>'fingerprint', b->>'kind',
-            array(select jsonb_array_elements_text(b->'roles')), b->'facts', b->'blueprint', b->>'quality', b->>'failure')
+            array(select jsonb_array_elements_text(b->'roles')), b->'facts', b->'blueprint', b->>'quality', b->>'failure', src)
           on conflict (version, fingerprint) where tenant_id is null do nothing
           returning id into blk;
       else
-        insert into public.library_blocks(tenant_id, source, version, fingerprint, kind, roles, facts, blueprint, quality, failure)
+        insert into public.library_blocks(tenant_id, source, version, fingerprint, kind, roles, facts, blueprint, quality, failure,
+            geometry_upload)
           values (t, 'upload', 1, b->>'fingerprint', b->>'kind',
-            array(select jsonb_array_elements_text(b->'roles')), b->'facts', b->'blueprint', b->>'quality', b->>'failure')
+            array(select jsonb_array_elements_text(b->'roles')), b->'facts', b->'blueprint', b->>'quality', b->>'failure', src)
           on conflict (tenant_id, version, fingerprint) where tenant_id is not null do nothing
           returning id into blk;
       end if;
@@ -345,7 +352,8 @@ begin
         -- A structure that failed once and now draws back alike is kept.
         if (b->>'quality') = 'passed' then
           update public.library_blocks x set quality = 'passed', failure = null, blueprint = b->'blueprint',
-              facts = b->'facts', updated_at = now()
+              facts = b->'facts', geometry_message = case when is_inbox then src end,
+              geometry_upload = case when is_inbox then null else src end, updated_at = now()
             where x.id = blk and x.quality = 'failed';
         end if;
         joined := joined + 1;
