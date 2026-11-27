@@ -9,9 +9,9 @@ select col_is_null('public','email_builds','reference_id','most builds have none
 select ok(exists (select 1 from pg_constraint where conrelid = 'public.email_builds'::regclass
   and conname = 'email_builds_reference_mode' and contype = 'c'),'a chosen email comes with Copy or Remix only');
 select ok(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public' and p.proname = 'create_email_build' and p.pronargs <> 5),'the four-argument command is replaced, not kept beside the new one');
-select ok(not has_function_privilege('anon','public.create_email_build(uuid,uuid,integer,text,uuid)','execute'),'anon cannot create an email');
-select ok(has_function_privilege('authenticated','public.create_email_build(uuid,uuid,integer,text,uuid)','execute'),'members may call it (the owner check is inside)');
+  where n.nspname = 'public' and p.proname = 'create_email_build' and p.pronargs <> 6),'the older commands are replaced, not kept beside the new one (DES-ENGINE-003b: six arguments)');
+select ok(not has_function_privilege('anon','public.create_email_build(uuid,uuid,integer,text,uuid,uuid)','execute'),'anon cannot create an email');
+select ok(has_function_privilege('authenticated','public.create_email_build(uuid,uuid,integer,text,uuid,uuid)','execute'),'members may call it (the owner check is inside)');
 
 -- Brands: one workspace 101 follows, one it follows but hid, one it
 -- stopped following, and one only workspace 102 follows; one email each.

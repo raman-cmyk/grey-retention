@@ -253,6 +253,49 @@ const conditions = new RegExp(
 export const holdsFacts = (words: string) => conditions.test(words)
 
 /**
+ * A word that makes a number next to it a date, a time or a deadline:
+ * a month or day name, a unit of time, or a word that sets a limit
+ * ("Order by Dec 20", "Last chance: 48 hours", "Ships in 2 days",
+ * "at 9", "before 5").
+ */
+const timeWord = new RegExp(
+  '^(?:' +
+    [
+      String.raw`jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?`,
+      String.raw`mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:rs(?:day)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?`,
+      String.raw`today|tonight|tomorrow|midnight|noon|am|pm|a\.m\.?|p\.m\.?`,
+      String.raw`sec(?:ond)?s?|min(?:ute)?s?|h|hrs?|hours?|days?|nights?|weeks?|wks?|weekends?|months?|years?|yrs?`,
+      String.raw`by|before|after|within|until|till|thru|through|at|on|from|left|ends?|only`
+    ].join('|') +
+    ')$',
+  'i'
+)
+
+/**
+ * `holdsFacts` for words GROS keeps as they are (an own design's menu, a
+ * picture's alt text). A plain number that is part of a name ("Slice 1",
+ * "Autumn 2026") is no fact; one next to a date or time word, or in a
+ * date or time form ("20/12", "9:00", "20th"), is, like a percent, money
+ * or a condition.
+ */
+export function holdsKeptFacts(words: string): boolean {
+  const named = words.replace(
+    /(?<![$€£¥₹\d.,:/–-])\b\d+\b(?![.,:/–-]?\d|\s*%)/g,
+    (number, at: number) => {
+      const before = /([\p{L}.]+)[\s:,·]*$/u.exec(words.slice(0, at))?.[1]
+      const after = /^[\s:,·]*([\p{L}.]+)/u.exec(
+        words.slice(at + number.length)
+      )?.[1]
+      const nearTime = [before, after].some(
+        (w) => !!w && timeWord.test(w.replace(/^\.+|\.+$/g, ''))
+      )
+      return nearTime ? number : ''
+    }
+  )
+  return holdsFacts(named)
+}
+
+/**
  * A cut line's end made clean: no comma, colon or dash, and no small word
  * left hanging ("…walk the rows at" → "…walk the rows").
  */

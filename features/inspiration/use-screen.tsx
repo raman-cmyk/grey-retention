@@ -5,7 +5,10 @@ import { Card } from '@/components/gros/card'
 import { ListRow, RowList, TextThumb } from '@/components/gros/list-row'
 import { AppPage, CardRow } from '@/components/gros/nav'
 import { EmptyState, ErrorState } from '@/components/gros/states'
-import { createEmailFromInspiration } from '@/features/email-build/actions'
+import {
+  createEmailFromInspiration,
+  createEmailFromUpload
+} from '@/features/email-build/actions'
 import { toSafePreview } from '@/features/email-generation/to-safe-preview'
 import { startPlan } from '@/features/strategy/actions'
 import type { ChosenEmail, UseEmailView } from './use-view'
@@ -126,9 +129,17 @@ function Pick({ view }: { view: Extract<UseEmailView, { kind: 'pick' }> }) {
           </p>
         ) : null}
         <ActionButton
-          action={createEmailFromInspiration}
+          action={
+            view.email.upload
+              ? createEmailFromUpload
+              : createEmailFromInspiration
+          }
           label="Create email"
-          fields={{ run: view.runId, reference: view.email.id }}
+          fields={
+            view.email.upload
+              ? { run: view.runId, upload: view.email.id }
+              : { run: view.runId, reference: view.email.id }
+          }
         >
           <fieldset className="flex flex-col gap-[var(--space-3)]">
             <legend className="sr-only">The planned email</legend>
@@ -154,29 +165,39 @@ function Pick({ view }: { view: Extract<UseEmailView, { kind: 'pick' }> }) {
               ))}
             </RowList>
           </fieldset>
-          <fieldset className="flex flex-col gap-[var(--space-3)]">
-            <legend className="gros-field-label mb-[var(--space-2)] text-[var(--ink)]">
-              How to make it
-            </legend>
-            {inspirationModes.map((m) => (
-              <label
-                key={m.value}
-                className="type-body flex items-center gap-[var(--space-3)]"
-              >
-                <input
-                  type="radio"
-                  name="mode"
-                  value={m.value}
-                  // Copy unless the email cannot be followed yet.
-                  defaultChecked={
-                    m.value === (view.email.unready ? 'remix' : 'copy')
-                  }
-                  className="size-5 accent-[var(--forest)]"
-                />
-                {m.label}
-              </label>
-            ))}
-          </fieldset>
+          {view.email.upload ? (
+            // DES-ENGINE-003b: one of your own emails is copied, its look
+            // kept when it is your brand's own design.
+            <p className="type-caption text-[var(--stone)]">
+              {view.email.upload === 'own'
+                ? 'GROS keeps your design and writes this email’s words, products, prices and links.'
+                : 'GROS copies its layout in your brand’s colours, fonts, logo, words and photos.'}
+            </p>
+          ) : (
+            <fieldset className="flex flex-col gap-[var(--space-3)]">
+              <legend className="gros-field-label mb-[var(--space-2)] text-[var(--ink)]">
+                How to make it
+              </legend>
+              {inspirationModes.map((m) => (
+                <label
+                  key={m.value}
+                  className="type-body flex items-center gap-[var(--space-3)]"
+                >
+                  <input
+                    type="radio"
+                    name="mode"
+                    value={m.value}
+                    // Copy unless the email cannot be followed yet.
+                    defaultChecked={
+                      m.value === (view.email.unready ? 'remix' : 'copy')
+                    }
+                    className="size-5 accent-[var(--forest)]"
+                  />
+                  {m.label}
+                </label>
+              ))}
+            </fieldset>
+          )}
         </ActionButton>
       </div>
     </Card>

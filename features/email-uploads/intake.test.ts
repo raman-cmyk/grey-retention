@@ -46,6 +46,8 @@ function fakes(answers: {
   saved?: unknown
   /** What the limits answer before anything is read (default ok). */
   room?: string
+  /** The size of an `email.html` already stored (default: the one written). */
+  storedHtmlSize?: number
 }) {
   const calls: string[] = []
   const stored: { path: string; type: string; size: number }[] = []
@@ -109,7 +111,17 @@ function fakes(answers: {
             : { data: {}, error: null }
         },
         list: async () => ({
-          data: [{ name: 'original.eml' }, { name: 'email.html' }],
+          data: [
+            { name: 'original.eml' },
+            {
+              name: 'email.html',
+              metadata: {
+                size:
+                  answers.storedHtmlSize ??
+                  stored.find((f) => f.path.endsWith('/email.html'))?.size
+              }
+            }
+          ],
           error: null
         }),
         remove: async (paths: string[]) => {
@@ -195,6 +207,21 @@ describe('adding an email file (DES-ENGINE-003)', () => {
     expect(f.calls.at(-1)).toBe(
       `remove:${tenant}/${upload}/original.eml,${tenant}/${upload}/email.html,${tenant}/${upload}/picture-0.png`
     )
+  })
+
+  it('never replaces a stored prepared HTML of another size (another window’s add)', async () => {
+    const f = fakes({
+      storedError: 'The resource already exists',
+      storedHtmlSize: 1
+    })
+    const got = await add(f, {
+      name: 'a.html',
+      bytes: enc(`<p>${designHtml}</p>`)
+    })
+    expect(got.ok).toBe(false)
+    expect(!got.ok && got.error).toContain('its pictures have changed')
+    expect(f.calls).not.toContain('finish_email_upload')
+    expect(f.calls.some((c) => c.startsWith('remove:'))).toBe(false)
   })
 
   it('treats a file already stored by the same request as stored', async () => {

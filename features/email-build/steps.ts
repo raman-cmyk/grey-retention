@@ -475,8 +475,11 @@ export async function runBuildStep(
   // design is copied 1:1 for the brand by the browser job; short of a copy
   // that passes, the coded blocks are drawn and the log says why (D16).
   // The studio never redraws a library copy.
-  const copyOf =
-    ctx.library && sections.reference?.mode === 'copy'
+  // DES-ENGINE-003b: or the workspace's own uploaded email it copies.
+  const uploadOf = ctx.library?.upload
+  const copyOf = uploadOf
+    ? uploadOf
+    : ctx.library && sections.reference?.mode === 'copy'
       ? sections.reference.emailId
       : undefined
   const studioPorts = copyOf ? undefined : ctx.studio
@@ -486,6 +489,7 @@ export async function runBuildStep(
     const library = await libraryStep({
       port: ctx.library,
       emailId: copyOf,
+      ...(uploadOf ? { uploadId: uploadOf } : {}),
       store,
       draft: plain.draft,
       rules: sections.rules,

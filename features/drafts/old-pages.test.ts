@@ -27,7 +27,12 @@ const expected: Record<string, string> = {
   '/assets': '/brand/assets',
   '/settings/brand': '/brand',
   '/settings/brand/book': '/brand/book',
-  '/settings/assets': '/brand/assets'
+  '/settings/assets': '/brand/assets',
+  // DES-ENGINE-003b: the old "Add an email you like" pages and their results.
+  '/import-reference': '/inspiration/add',
+  '/import-reference/files/:fileImportId': '/inspiration/add',
+  '/create-email/:importId': '/inspiration/add',
+  '/emails/:resultId': '/plan'
 }
 
 function pages(dir: string): string[] {
@@ -61,6 +66,11 @@ describe('retired old client pages', () => {
     for (const source of Object.keys(expected))
       expect(addresses).not.toContain(source)
     expect(addresses).not.toContain('/copy-review')
+  })
+
+  it('leave no page in the old shell (DES-ENGINE-003b)', () => {
+    const app = join(import.meta.dirname, '../../app')
+    expect(pages(app).filter((p) => p.includes('/(client)/'))).toEqual([])
   })
 
   it('serve Brand, the Brand book and Brand assets at their own addresses (UI-BRAND-2)', async () => {
