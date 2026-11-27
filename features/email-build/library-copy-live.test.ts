@@ -840,7 +840,7 @@ describe('a Scratch copy of library blocks (DES-ENGINE-004b)', () => {
         },
         'blueprint_gone'
       ]
-    ] as const) {
+    ] as [Rows, string][]) {
       const { db, calls } = fakeDb({
         rows: { ...scratchRows, ...rows },
         rpc: claimed
