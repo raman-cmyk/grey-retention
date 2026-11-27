@@ -487,8 +487,11 @@ describe('stored with the email (the design step)', () => {
   })
 
   it('stores none for a slot planned before it (no facts kept)', async () => {
-    const { evidence: _e, timing: _t, ...old } = slot
-    const made = await build(old)
+    const made = await build({
+      ...slot,
+      evidence: undefined,
+      timing: undefined
+    })
     expect(made.reasons).toBeUndefined()
     // An odd stored list never stops the email being read.
     expect(
