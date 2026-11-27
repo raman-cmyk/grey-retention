@@ -66,7 +66,7 @@ describe('a product reason (the plan’s own fact about it)', () => {
     expect(reasons).toEqual([
       {
         kind: 'product',
-        text: 'Cedar candle is in this email because it is one of your bestsellers: it sold 118 in the 30 days before this plan.',
+        text: 'Cedar candle is in this email because it is one of your bestsellers: it sold 118 in the last 30 days.',
         facts: [{ from: 'plan', key: 'evidence:bestseller:p1' }]
       }
     ])
@@ -87,7 +87,7 @@ describe('a product reason (the plan’s own fact about it)', () => {
       progress
     })
     expect(hero!.text).toBe(
-      'The hero shows Cedar candle because it is one of your bestsellers: it sold 118 in the 30 days before this plan.'
+      'The hero shows Cedar candle because it is one of your bestsellers: it sold 118 in the last 30 days.'
     )
     // A copied design's sections are another email's: no hero claim.
     const [copied] = reasonsFor({
@@ -142,7 +142,7 @@ describe('a product reason (the plan’s own fact about it)', () => {
       progress: {}
     })
     expect(reasons.map((r) => r.text)).toEqual([
-      'Cedar candle is in this email because it is one of your bestsellers: it sold 118 in the 30 days before this plan.',
+      'Cedar candle is in this email because it is one of your bestsellers: it sold 118 in the last 30 days.',
       'Oak tray is in this email because it is new: it launches on 6 Mar.'
     ])
   })
@@ -467,8 +467,7 @@ describe('stored with the email (the design step)', () => {
           planned: parsed,
           store: await sampleStoreFrom(start).read(tenantId),
           offers: sampleOffersFrom(start),
-          progress,
-          planStart: start
+          progress
         },
         ctx
       )
@@ -483,7 +482,7 @@ describe('stored with the email (the design step)', () => {
   it('keeps the reasons the plan’s facts give, as the worker stores them', async () => {
     const made = await build(slot)
     expect(made.reasons?.map((r) => r.text)).toEqual([
-      'The hero shows Cedar candle because it is one of your bestsellers: it sold 118 in the 30 days before the plan starting 2 Mar.',
+      'The hero shows Cedar candle because it is one of your bestsellers: it sold 118 in the last 30 days.',
       'The suggested send time for “Engaged subscribers (sample)” is 10:00 am: not enough history yet; your usual send time.'
     ])
   })
@@ -544,20 +543,18 @@ describe('the ladder’s place for each offer email (ladderPlaces)', () => {
 })
 
 describe('the review fixes (PICK-104)', () => {
-  it('dates the sales figure to the plan, never as if it were today', () => {
-    const at = (planStart?: string) =>
-      reasonsFor({
-        planned: planned({ evidence: [sold('p1', 'Cedar candle', 118)] }),
-        email: email(),
-        progress: {},
-        ...(planStart !== undefined ? { planStart } : {})
-      })[0]!.text
-    expect(at('2026-11-16')).toBe(
-      'Cedar candle is in this email because it is one of your bestsellers: it sold 118 in the 30 days before the plan starting 16 Nov.'
+  it('keeps the sales figure in the pulse’s own words, never dated to the plan', () => {
+    // The 30 days are counted back from the catalog read, which the stored
+    // fact does not date: no plan day is put on them.
+    const [reason] = reasonsFor({
+      planned: planned({ evidence: [sold('p1', 'Cedar candle', 118)] }),
+      email: email(),
+      progress: {}
+    })
+    expect(reason!.text).toBe(
+      'Cedar candle is in this email because it is one of your bestsellers: it sold 118 in the last 30 days.'
     )
-    // A day it cannot read is left out, never shown wrong.
-    for (const odd of ['2026-02-30', 'soon', ''])
-      expect(at(odd)).toMatch(/in the 30 days before this plan\.$/)
+    expect(reason!.text).not.toMatch(/before|plan/)
   })
 
   it('gives no launch reason for a date that is not a real day, and never throws', () => {

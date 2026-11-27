@@ -290,9 +290,7 @@ export async function runEmailBuilds(
             store,
             offers,
             progress: job.progress,
-            taken,
-            // PICK-104: the plan's first day, for the design reasons.
-            planStart: job.start_on
+            taken
           },
           {
             tenantId: job.tenant_id,

@@ -355,7 +355,6 @@ export async function runBuildStep(
       planned: input.planned,
       email: made.email,
       progress: input.progress,
-      ...(input.planStart ? { planStart: input.planStart } : {}),
       // A library or upload copy that did not pass is drawn coded.
       copyFellBack: !!ctx.library && !made.email.library
     })
@@ -376,8 +375,6 @@ async function runStep(
     progress: unknown
     /** The copy step: subjects the plan's other emails use (REL-AI). */
     taken?: readonly string[]
-    /** PICK-104: the plan's first day, for the design reasons' words. */
-    planStart?: string
   },
   ctx: BuildCtx & {
     /**

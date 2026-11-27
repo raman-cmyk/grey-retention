@@ -129,11 +129,6 @@ type Input = {
   /** The build's saved steps (`email_builds.progress`). */
   progress: unknown
   /**
-   * The plan's first day (`strategy_runs.start_on`): the pulse's "last 30
-   * days" are the days before it. Missing: said without the day.
-   */
-  planStart?: string
-  /**
    * A Copy whose library copy did not pass and was drawn with its coded
    * blocks instead: the design is not the inspiration email's, so the
    * "We copy …" reason is not given (the run log says why, below it).
@@ -146,18 +141,16 @@ function productReason(
   id: string,
   title: string,
   hero: boolean,
-  evidence: ReadonlyMap<string, string>,
-  planStart: string | undefined
+  evidence: ReadonlyMap<string, string>
 ): DesignReason | null {
   const lead = hero ? `The hero shows ${title}` : `${title} is in this email`
   const sold = evidence.get(`bestseller:${id}`)?.match(soldFact)
   if (sold)
     return {
       kind: 'product',
-      // The pulse counted the 30 days before the plan, not before today.
-      text: `${lead} because it is one of your bestsellers: it sold ${sold[2]} in the 30 days before ${
-        day(planStart) ? `the plan starting ${day(planStart)}` : 'this plan'
-      }.`,
+      // The pulse's own words, as the plan recorded them: its 30 days are
+      // counted back from the catalog read, which the fact does not date.
+      text: `${lead} because it is one of your bestsellers: it sold ${sold[2]} in the last 30 days.`,
       facts: [{ from: 'plan', key: `evidence:bestseller:${id}` }]
     }
   const launch = evidence.get(`launch:${id}`)
@@ -233,7 +226,6 @@ export function reasonsFor({
   planned,
   email,
   progress,
-  planStart,
   copyFellBack
 }: Input): DesignReason[] {
   const saved = savedSteps.safeParse(progress ?? {})
@@ -265,13 +257,7 @@ export function reasonsFor({
     if (!title) return []
     // A copied design's sections are another email's: no "hero" claim.
     const hero = designed && !email.library && heroIds.has(id)
-    const reason = productReason(
-      id,
-      oneLine(title, 120),
-      hero,
-      evidence,
-      planStart
-    )
+    const reason = productReason(id, oneLine(title, 120), hero, evidence)
     return reason ? [reason] : []
   })
   if (products[0]) reasons.push(products[0])

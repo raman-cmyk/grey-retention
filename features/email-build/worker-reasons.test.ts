@@ -120,21 +120,15 @@ const stored = (calls: Call[]) =>
   calls.find((c) => c.fn === 'finish_email_build')?.args.result as
     BuiltEmail | undefined
 const sold =
-  'The hero shows Linen throw because it is one of your bestsellers: it sold 42 in the 30 days before the plan starting'
+  'The hero shows Linen throw because it is one of your bestsellers: it sold 42 in the last 30 days.'
 
 describe('the design reasons in the stored email (PICK-104)', () => {
-  it('stores them through finish_email_build, dated to the plan', async () => {
+  it('stores them through finish_email_build, in the pulse’s words', async () => {
     const { db, calls } = fakeDb()
     await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
     const email = stored(calls)!
     expect(email.reasons).toHaveLength(1)
-    // The plan's first day, as the sales figure's date ("2 Mar").
-    const day = new Intl.DateTimeFormat('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      timeZone: 'UTC'
-    }).format(new Date(`${start}T00:00:00Z`))
-    expect(email.reasons![0]!.text).toBe(`${sold} ${day}.`)
+    expect(email.reasons![0]!.text).toBe(sold)
     expect(email.reasons![0]!.facts).toEqual([
       { from: 'plan', key: 'evidence:bestseller:p-linen-throw' }
     ])
