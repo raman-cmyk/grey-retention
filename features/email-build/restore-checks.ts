@@ -132,6 +132,11 @@ export async function restoreRefusal(
 const checksUnread =
   'This version could not be checked just now. Try again in a moment.'
 const offersUnread = 'Your saved offers could not be read. Try again.'
+/** The refusals that mean a read failed, not the version (tried again). */
+export const restoreUnread: ReadonlySet<string> = new Set([
+  checksUnread,
+  offersUnread
+])
 const codeWords = (code: string) =>
   `This version’s discount code ${code} is no longer one of your working codes within your max discount, so it is not used again.`
 

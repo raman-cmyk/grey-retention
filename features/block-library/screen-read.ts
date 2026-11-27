@@ -3,6 +3,8 @@ import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { blockKinds, type BlockKind } from '@/features/design-engine/blocks'
 import { drawBlueprint } from '@/features/design-engine/render'
 import { swapBrand, type SwapBrand } from '@/features/design-engine/swap'
+import { withTokens } from '@/features/design-engine/token-layout'
+import { givenTokens } from '@/features/design-engine/tokens'
 import type { WordPools } from '@/features/design-engine/words'
 import { swapBrandOf } from '@/features/email-build/library-copy'
 import type { Store } from '@/features/email-build/ports'
@@ -96,7 +98,11 @@ export function previewWords(
   }
 }
 
-/** One block drawn in the brand's look, or null when it cannot be drawn. */
+/**
+ * One block drawn in the brand's look, or null when it cannot be drawn.
+ * PICK-006: as Scratch draws it, in the brand's design tokens (its spaces
+ * and type scale on the layout, its corners and buttons in the swap).
+ */
 export function drawInBrand(
   blueprint: Parameters<typeof swapBrand>[0]['source'],
   brand: SwapBrand,
@@ -104,7 +110,9 @@ export function drawInBrand(
 ): string | null {
   try {
     const swapped = swapBrand({
-      source: blueprint,
+      source: brand.tokens
+        ? withTokens(blueprint, givenTokens(brand.tokens))
+        : blueprint,
       brand,
       products,
       words: previewWords(
@@ -138,7 +146,8 @@ export async function readLibraryScreen(
     const brand = swapBrandOf(
       store.brand,
       store.confirmed?.lifestylePhoto,
-      store.fonts
+      store.fonts,
+      store.tokens
     )
     const products = store.products.slice(0, 6).map((p) => ({
       id: p.id,

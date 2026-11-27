@@ -1346,6 +1346,45 @@ export type Database = {
           }
         ]
       }
+      brand_tokens: {
+        Row: {
+          domain: string
+          read_at: string
+          run_id: string
+          tenant_id: string
+          tokens: Json
+        }
+        Insert: {
+          domain: string
+          read_at?: string
+          run_id: string
+          tenant_id: string
+          tokens: Json
+        }
+        Update: {
+          domain?: string
+          read_at?: string
+          run_id?: string
+          tenant_id?: string
+          tokens?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_tokens_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_tokens_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       brand_versions: {
         Row: {
           created_at: string
@@ -9260,6 +9299,10 @@ export type Database = {
       }
       record_site_photos: {
         Args: { job: string; lease: string; photos: Json }
+        Returns: boolean
+      }
+      record_site_tokens: {
+        Args: { job: string; lease: string; tokens: Json }
         Returns: boolean
       }
       record_voice_samples: {

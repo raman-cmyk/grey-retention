@@ -11,8 +11,15 @@ import {
 import {
   correctedFacts,
   listCorrections,
+  ownerTokens,
   type Correction
 } from '@/features/onboarding/brand-book-corrections'
+import { brandTokens } from '@/features/onboarding/brand-tokens'
+import {
+  givenTokens,
+  resolveTokens,
+  type SiteTokens
+} from '@/features/design-engine/tokens'
 import { copyFacts, trueFacts } from '@/features/onboarding/brand-facts'
 import {
   catalogPriceCheck,
@@ -123,6 +130,11 @@ export type OwnStoreParts = {
    * already only from the workspace's current website), heading first.
    */
   fonts?: readonly BrandFont[] | null
+  /**
+   * PICK-006: the design tokens the Site reader kept (`brandTokens`,
+   * already only from the workspace's current website).
+   */
+  tokens?: SiteTokens | null
 }
 
 /**
@@ -238,16 +250,25 @@ export function storeFrom(parts: OwnStoreParts): Store {
             : []
       })
     : undefined
+  // PICK-006: the owner's tokens over the site's over the defaults.
+  const tokens = resolveTokens({
+    site: parts.tokens,
+    owner: ownerTokens(parts.corrections)
+  })
   return {
     sample: !parts.status.live,
-    brand: brandFromKit({
-      name,
-      site: hostname.test(domain) ? `https://${domain}` : '',
-      colors: parts.kit?.colors ?? [],
-      fonts: parts.kit?.fonts ?? [],
-      logo: emailLogo(logos?.onLight),
-      logoOnDark: emailLogo(logos?.onDark)
-    }),
+    brand: {
+      ...brandFromKit({
+        name,
+        site: hostname.test(domain) ? `https://${domain}` : '',
+        colors: parts.kit?.colors ?? [],
+        fonts: parts.kit?.fonts ?? [],
+        logo: emailLogo(logos?.onLight),
+        logoOnDark: emailLogo(logos?.onDark)
+      }),
+      tokens: givenTokens(tokens)
+    },
+    tokens,
     industry,
     timezone: parts.timezone,
     products,
@@ -363,7 +384,8 @@ export function ownStoreSource(db: Db): StoreSource {
         voice,
         neverWords,
         sitePhotos,
-        fonts
+        fonts,
+        tokens
       ] = await Promise.all([
         workspaceTimezone(db, tenantId),
         listCatalog(db, tenantId, { featurableOnly: true, synthetic: !live }),
@@ -418,6 +440,13 @@ export function ownStoreSource(db: Db): StoreSource {
             code: String((error as { code?: unknown })?.code ?? 'unknown')
           })
           return null
+        }),
+        // PICK-006: optional; without them the defaults (the blocks' look).
+        brandTokens(db, tenantId).catch((error: unknown) => {
+          logger.warn('Brand tokens unreadable for the email', {
+            code: String((error as { code?: unknown })?.code ?? 'unknown')
+          })
+          return null
         })
       ])
       if (profile.error) throw profile.error
@@ -461,7 +490,8 @@ export function ownStoreSource(db: Db): StoreSource {
             ? neverWords.never.map((w) => w.phrase)
             : null,
         sitePhotos,
-        fonts
+        fonts,
+        tokens
       })
     }
   }

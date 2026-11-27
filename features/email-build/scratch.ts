@@ -5,6 +5,8 @@ import {
 } from '@/features/design-engine/blueprint'
 import type { BlockFacts, BlockKind } from '@/features/design-engine/blocks'
 import { lightness } from '@/features/design-engine/palette'
+import { withTokens } from '@/features/design-engine/token-layout'
+import { givenTokens, type DesignTokens } from '@/features/design-engine/tokens'
 import type { EmailType } from '@/features/strategy/plan'
 
 /**
@@ -292,9 +294,19 @@ export function planScratch(
 /**
  * The picked blocks as one email: their sections in order, numbered 1, 2,
  * 3…, the email's page and body colours from the first block. Each block
- * is one section on its own (`sectionAlone`), structure only.
+ * is one section on its own (`sectionAlone`), structure only. PICK-006:
+ * with the brand's design tokens, its spaces and type scale (those its
+ * site or owner gave) replace the blocks' own (`withTokens`).
  */
-export function composeScratch(blocks: readonly Blueprint[]): Blueprint {
+export function composeScratch(
+  blocks: readonly Blueprint[],
+  tokens?: DesignTokens | null
+): Blueprint {
+  const composed = composeBlocks(blocks)
+  return tokens ? withTokens(composed, givenTokens(tokens)) : composed
+}
+
+function composeBlocks(blocks: readonly Blueprint[]): Blueprint {
   const first = blocks[0]!
   return {
     version: BLUEPRINT_VERSION,

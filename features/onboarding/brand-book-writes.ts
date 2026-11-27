@@ -14,6 +14,7 @@ import {
   type BrandBookContent
 } from './brand-book'
 import { listCorrections } from './brand-book-corrections'
+import { brandTokens } from './brand-tokens'
 import { listCatalog } from './catalog/read'
 import { listFindings } from './findings'
 import { readKlaviyoHistory } from './history/read'
@@ -57,7 +58,8 @@ export const composeOnboardedBrandBook = (db: Db, tenantId: string) =>
     catalog: (d, t) => listCatalog(d, t),
     history: readKlaviyoHistory,
     timezone: workspaceTimezone,
-    corrections: listCorrections
+    corrections: listCorrections,
+    tokens: brandTokens
   })
 
 /** What one write saves: the book, on top of the version it read. */

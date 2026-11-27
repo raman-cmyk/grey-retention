@@ -214,6 +214,24 @@ describe('a restored email’s push (PICK-106)', () => {
     expect(other).not.toHaveBeenCalled()
   })
 
+  it('tries a restore again when its checks could not read what they need', async () => {
+    const { db, calls } = fakeDb(await built(), {
+      email_builds: [{ sample_draft: false, restore_version: 'v3' }]
+    })
+    const pusher = { createDraft: vi.fn() }
+    await run(
+      db,
+      pusher,
+      async () =>
+        'This version could not be checked just now. Try again in a moment.'
+    )
+    expect(pusher.createDraft).not.toHaveBeenCalled()
+    expect(calls.find((c) => c.fn === 'fail_email_step')?.args).toMatchObject({
+      code: 'restore_unchecked',
+      final: false
+    })
+  })
+
   it('reads whether Klaviyo holds it in the build’s own workspace', async () => {
     const { db, calls } = fakeDb(await built())
     expect(await pushFactsOf(db)(tenant, 'key-1', 'build-1')).toEqual({

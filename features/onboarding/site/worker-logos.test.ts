@@ -129,6 +129,7 @@ describe('readBrandSite keeps the logos (ONB-060b)', () => {
     expect(calls.map((c) => c.name)).toEqual([
       'record_site_logos',
       'record_site_photos',
+      'record_site_tokens',
       'record_site_findings'
     ])
     expect(calls[0]!.args).toEqual({
@@ -148,7 +149,11 @@ describe('readBrandSite keeps the logos (ONB-060b)', () => {
       { ...job, input: { domain: 'cedar-lane.example' } } as Job,
       { fetcher: sampleSiteFetcher, askFor: () => sampleAsk }
     )
-    expect(calls.map((c) => c.name)).toEqual(['record_site_findings'])
+    // PICK-006: the sample site's design tokens are kept (it has no logo).
+    expect(calls.map((c) => c.name)).toEqual([
+      'record_site_tokens',
+      'record_site_findings'
+    ])
     expect(run.logos).toBeUndefined()
   })
 
@@ -177,6 +182,7 @@ describe('readBrandSite keeps the logos (ONB-060b)', () => {
     })
     expect(down.calls.map((c) => c.name)).toEqual([
       'record_site_photos',
+      'record_site_tokens',
       'record_site_findings'
     ])
   })
@@ -191,6 +197,7 @@ describe('readBrandSite keeps the logos (ONB-060b)', () => {
     expect(calls.map((c) => c.name)).toEqual([
       'record_site_logos',
       'record_site_photos',
+      'record_site_tokens',
       'record_site_findings'
     ])
     expect(run.logos).toBeUndefined()
@@ -206,6 +213,7 @@ describe('readBrandSite keeps the logos (ONB-060b)', () => {
     expect(calls.map((c) => c.name)).toEqual([
       'record_site_logos',
       'record_site_photos',
+      'record_site_tokens',
       'record_site_findings'
     ])
     expect(run.logos).toBeUndefined()

@@ -37,7 +37,8 @@ const buildCodes = [
   'klaviyo_unavailable',
   // PICK-106: a draft Klaviyo holds, the push switch off.
   'push_switched_off',
-  'restore_unsafe'
+  'restore_unsafe',
+  'restore_unchecked'
 ]
 const planCodes = [
   'out_of_date',

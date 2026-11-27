@@ -49,6 +49,8 @@ export const buildFailureWords = {
   push_switched_off:
     'Putting emails into Klaviyo is switched off right now, so its draft in Klaviyo was left as it is.',
   // PICK-106: a restored version no longer passes the checks of today.
+  restore_unchecked:
+    'This version could not be checked just now, so its draft was left as it is. Try again.',
   restore_unsafe:
     'This version no longer passes today’s checks (its code, offer, words or Klaviyo state), so its draft was left as it is.'
 } as const satisfies Record<string, string>

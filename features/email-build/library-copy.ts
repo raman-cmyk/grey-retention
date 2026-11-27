@@ -8,6 +8,10 @@ import type {
   SwapProduct
 } from '@/features/design-engine/swap'
 import type { WordPools, WordRules } from '@/features/design-engine/words'
+import {
+  designTokensSchema,
+  type DesignTokens
+} from '@/features/design-engine/tokens'
 import type { WebFont } from '@/features/studio/design-step'
 import type { Store } from './ports'
 import type { LibraryBlock } from './scratch'
@@ -62,7 +66,9 @@ export const copyInputSchema = z.object({
     bodyFont: text(200),
     logo: picture.nullable(),
     logoOnDark: picture.nullable().optional(),
-    photos: z.array(picture).max(8).optional()
+    photos: z.array(picture).max(8).optional(),
+    /** PICK-006: the brand's design tokens, with their sources. */
+    tokens: designTokensSchema.optional()
   }),
   products: z
     .array(
@@ -386,11 +392,15 @@ export function swapFontsOf(
   }
 }
 
-/** The brand as the swap reads it (sizes are read by the browser job). */
+/**
+ * The brand as the swap reads it (sizes are read by the browser job).
+ * PICK-006: with its design tokens (the store's, their sources kept).
+ */
 export function swapBrandOf(
   brand: BlockBrand,
   lifestyle?: { image: string; alt: string },
-  fonts?: readonly Pick<WebFont, 'family' | 'roles'>[]
+  fonts?: readonly Pick<WebFont, 'family' | 'roles'>[],
+  tokens?: DesignTokens
 ): SwapBrand {
   const own = lifestyle ? photoOf(lifestyle.image, lifestyle.alt) : null
   return {
@@ -406,7 +416,8 @@ export function swapBrandOf(
     photos: own ? [own] : [],
     icons: [],
     radius: Number(/^(\d+)px$/.exec(brand.radius ?? '')?.[1] ?? 8),
-    address: null
+    address: null,
+    ...(tokens ? { tokens } : {})
   }
 }
 
@@ -418,7 +429,10 @@ export function swapBrandOf(
  * the brand's content says, for the leak check.
  */
 export function copyInput(input: {
-  store: Pick<Store, 'brand' | 'products' | 'facts' | 'confirmed' | 'fonts'>
+  store: Pick<
+    Store,
+    'brand' | 'products' | 'facts' | 'confirmed' | 'fonts' | 'tokens'
+  >
   draft: Draft
   rules: {
     maxDiscountPercent: number
@@ -452,7 +466,8 @@ export function copyInput(input: {
   const brand = swapBrandOf(
     store.brand,
     store.confirmed?.lifestylePhoto,
-    store.fonts
+    store.fonts,
+    store.tokens
   )
   const claims = store.facts.approvedClaims.slice(0, 40)
   return {

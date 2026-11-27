@@ -2,11 +2,12 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Browser } from '@playwright/test'
 import { desktopWindow, measureHtml, phoneWindow, pictureOf } from '../browser'
+import { partsOf } from '../blueprint'
 import type { CopyResult } from '../copy'
 import type { Leak } from '../leaks'
 import { blueprintFrom } from '../measure'
 import { forStorage } from '../stored'
-import type { Cropper, SwapProduct } from '../swap'
+import type { Cropper, SwapBrand, SwapProduct } from '../swap'
 import { libraryCopy, withCutsInline } from '../library-copy'
 import type { PhotoTools } from '../photos'
 import {
@@ -41,6 +42,8 @@ export type BrandRow = {
   problems: string[]
   leaks: Leak[]
   pictureError?: string
+  /** PICK-006: the copy's buttons as drawn and measured (corners, outline or filled). */
+  buttons?: { radius: number; outline: boolean }[]
 }
 
 const escape = (s: string) =>
@@ -80,7 +83,12 @@ async function sideBySide(
 }
 
 /** A gate run's own photo tools and products (the noisy photo over a loopback server). */
-export type GateExtra = { tools?: PhotoTools; products?: SwapProduct[] }
+export type GateExtra = {
+  tools?: PhotoTools
+  products?: SwapProduct[]
+  /** PICK-006: the brand copied for (the test brand with design tokens). */
+  brand?: SwapBrand
+}
 
 /** One library email copied for the test brand. */
 export async function brandCopy(
@@ -100,7 +108,7 @@ export async function brandCopy(
     source: stored,
     sourceHtml: email.html,
     sourceNames: goldenStoreNames,
-    brand: testBrand,
+    brand: extra.brand ?? testBrand,
     products: extra.products ?? testProducts,
     words: testWords,
     rules: testRules,
@@ -158,7 +166,14 @@ export async function runBrandGate(
       drawings: result.drawings,
       sections: result.sections,
       problems: [...result.problems],
-      leaks
+      leaks,
+      buttons: result.drawn.sections
+        .flatMap((s) => partsOf(s.items))
+        .flatMap((p) =>
+          p.type === 'button'
+            ? [{ radius: p.radius, outline: !p.background && !!p.border }]
+            : []
+        )
     })
     if (out) {
       try {

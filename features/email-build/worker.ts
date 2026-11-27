@@ -23,7 +23,7 @@ import {
 } from './build'
 import { buildAgentsFor, emailAgentsReady } from './agents'
 import { fittedEmail } from './reasons'
-import { restoreRefusal } from './restore-checks'
+import { restoreRefusal, restoreUnread } from './restore-checks'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { libraryCopyOn } from './library-copy'
 import { libraryPortsFor } from './library-copy-live'
@@ -633,11 +633,14 @@ export async function runEmailBuilds(
           await fail('push_switched_off', true)
           continue
         }
-        if (
-          facts.restore &&
-          (await (deps.restoreCheck ?? restoreCheckOf(db))(job, email.data))
-        ) {
-          await fail('restore_unsafe', true)
+        const refused = facts.restore
+          ? await (deps.restoreCheck ?? restoreCheckOf(db))(job, email.data)
+          : null
+        if (refused) {
+          // What it needs could not be read: tried again (after its last
+          // try, the draft is kept as it was); else refused for good.
+          const unread = restoreUnread.has(refused)
+          await fail(unread ? 'restore_unchecked' : 'restore_unsafe', !unread)
           continue
         }
         const pushed = await pusher.createDraft(input)
