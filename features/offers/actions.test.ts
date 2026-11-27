@@ -10,7 +10,12 @@ vi.mock('@/lib/supabase/server', () => supabase)
 vi.mock('@/lib/env/server', () => ({ getServerEnvironment: () => env.values }))
 
 import { revalidatePath } from 'next/cache'
-import { addDiscountCode, retireDiscountCode, saveMaxDiscount } from './actions'
+import {
+  addDiscountCode,
+  retireDiscountCode,
+  saveMarginFloor,
+  saveMaxDiscount
+} from './actions'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
 const codeId = '00000000-0000-4000-8000-0000000000c1'
@@ -35,6 +40,139 @@ beforeEach(() => {
   supabase.createClient.mockResolvedValue({ rpc })
 })
 afterEach(() => vi.clearAllMocks())
+
+describe('saveMarginFloor (owner pick #39)', () => {
+  it('saves the margin and the floor with the revision the page read, and says what it allows', async () => {
+    expect(
+      await saveMarginFloor(
+        {},
+        form({ margin: '60', floor: '30', revision: '3' })
+      )
+    ).toEqual({
+      message:
+        'Saved. A sale keeps at least 30% margin, so emails offer at most 42% off (or less, if your biggest discount is lower).'
+    })
+    expect(rpc).toHaveBeenCalledWith('set_margin_floor', {
+      t: tenant,
+      gross_margin: 60,
+      margin_floor: 30,
+      expected_revision: 3
+    })
+    expect(revalidatePath).toHaveBeenCalledWith('/settings')
+  })
+
+  it('removes the floor when both are empty', async () => {
+    expect(
+      await saveMarginFloor({}, form({ margin: '', floor: ' ', revision: '4' }))
+    ).toEqual({ message: 'Removed. Only your biggest discount limits offers.' })
+    expect(rpc).toHaveBeenCalledWith('set_margin_floor', {
+      t: tenant,
+      gross_margin: null,
+      margin_floor: null,
+      expected_revision: 4
+    })
+  })
+
+  it('checks both numbers before saving, never calling the database', async () => {
+    for (const [margin, floor, words] of [
+      ['60', '', /Enter both percents/],
+      ['', '30', /Enter both percents/],
+      ['0', '0', /from 1 to 99/],
+      ['100', '30', /from 1 to 99/],
+      ['60', '60', /below your usual margin of 60%/],
+      ['60', '70', /below your usual margin of 60%/],
+      ['60.5', '30', /whole percents/],
+      ['-5', '3', /whole percents/],
+      ['sixty', '30', /whole percents/]
+    ] as const)
+      expect(
+        (await saveMarginFloor({}, form({ margin, floor, revision: '0' })))
+          .error
+      ).toMatch(words)
+    expect(
+      (
+        await saveMarginFloor(
+          {},
+          form({ margin: '60', floor: '30', revision: 'x' })
+        )
+      ).error
+    ).toMatch(/Reload/)
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('lets admins save, refuses staff and the demo, and explains the database’s answers', async () => {
+    signedInAs('staff')
+    expect(
+      (
+        await saveMarginFloor(
+          {},
+          form({ margin: '60', floor: '30', revision: '0' })
+        )
+      ).error
+    ).toMatch(/owner or an admin/)
+    expect(rpc).not.toHaveBeenCalled()
+    signedInAs('admin')
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'PT409', details: 'no_offer_limits' }
+    })
+    expect(
+      (
+        await saveMarginFloor(
+          {},
+          form({ margin: '60', floor: '30', revision: '0' })
+        )
+      ).error
+    ).toBe('Save your biggest discount first.')
+    fail('PT409')
+    expect(
+      (
+        await saveMarginFloor(
+          {},
+          form({ margin: '60', floor: '30', revision: '0' })
+        )
+      ).error
+    ).toMatch(/changed in another window/)
+    fail('23514')
+    expect(
+      (
+        await saveMarginFloor(
+          {},
+          form({ margin: '60', floor: '30', revision: '0' })
+        )
+      ).error
+    ).toMatch(/below your usual margin/)
+    fail('42501')
+    expect(
+      (
+        await saveMarginFloor(
+          {},
+          form({ margin: '60', floor: '30', revision: '0' })
+        )
+      ).error
+    ).toMatch(/owner or an admin/)
+    fail('XX000')
+    expect(
+      (
+        await saveMarginFloor(
+          {},
+          form({ margin: '60', floor: '30', revision: '0' })
+        )
+      ).error
+    ).toMatch(/Nothing was changed/)
+    expect(revalidatePath).not.toHaveBeenCalled()
+    signedInAs('owner')
+    env.values = { AUTH_MODE: 'demo' }
+    expect(
+      (
+        await saveMarginFloor(
+          {},
+          form({ margin: '60', floor: '30', revision: '0' })
+        )
+      ).error
+    ).toMatch(/sign in again/)
+  })
+})
 
 describe('saveMaxDiscount', () => {
   it('saves with the revision the page read', async () => {

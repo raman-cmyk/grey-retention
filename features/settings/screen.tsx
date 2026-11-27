@@ -11,12 +11,16 @@ import {
   connectKlaviyo,
   disconnectKlaviyo
 } from '@/features/connections/actions'
+import { clearRevenueGoal, saveRevenueGoal } from '@/features/goals/actions'
+import { goalMoney } from '@/features/goals/settings'
 import {
   addDiscountCode,
   retireDiscountCode,
+  saveMarginFloor,
   saveMaxDiscount
 } from '@/features/offers/actions'
-import type { ManagedCode } from '@/features/offers/source'
+import { discountCap, marginCap } from '@/features/offers/cap'
+import type { ManagedCode, ManagedOffers } from '@/features/offers/source'
 import { formatBrandDate } from '@/lib/brand-time'
 import type { SettingsPart, SettingsView } from './page-model'
 import { ChangesCard } from './changes-card'
@@ -50,6 +54,10 @@ export function SettingsScreen({
         <KlaviyoCard view={view} assistant={assistant} />
       </CardRow>
       <CardRow>
+        <MarginFloorCard view={view} />
+        <GoalCard view={view} />
+      </CardRow>
+      <CardRow>
         <CodesCard view={view} />
         <TimezoneCard view={view} />
       </CardRow>
@@ -78,6 +86,7 @@ export function SettingsScreen({
 
 const unreadWords: Record<SettingsPart, string> = {
   offers: 'Your offers',
+  goal: 'Your revenue goal',
   klaviyo: 'The Klaviyo connection',
   timezone: 'The timezone',
   team: 'The team',
@@ -154,6 +163,153 @@ function MaxDiscountCard({ view }: { view: SettingsView }) {
   )
 }
 
+/**
+ * Owner pick #39: the margin floor, next to the biggest discount. Products
+ * carry no cost in Klaviyo, so the owner gives his usual margin and the
+ * lowest margin he accepts on a sale; agents never offer more off than
+ * keeps it (`discountCap`). Both empty removes it.
+ */
+function MarginFloorCard({ view }: { view: SettingsView }) {
+  const title = 'Margin floor'
+  const offers = view.offers
+  const set =
+    offers &&
+    offers.grossMarginPercent !== null &&
+    offers.marginFloorPercent !== null
+      ? {
+          margin: offers.grossMarginPercent,
+          floor: offers.marginFloorPercent,
+          cap: marginCap({
+            grossMarginPercent: offers.grossMarginPercent,
+            marginFloorPercent: offers.marginFloorPercent
+          })
+        }
+      : null
+  return (
+    <Card label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <Title text={title} />
+        {offers ? (
+          <>
+            <div className="flex flex-col gap-[var(--space-1)]">
+              <p className="type-number-lg">
+                {set ? `${set.floor}%` : 'Not set'}
+              </p>
+              <p className="type-caption text-[var(--stone)]">
+                {set && set.cap !== null
+                  ? `The lowest margin you accept on a sale. On your ${set.margin}% margin, no email offers more than ${set.cap}% off.`
+                  : 'The lowest margin you accept on a sale. Not set: only your biggest discount limits offers.'}
+              </p>
+            </div>
+            {view.editor ? (
+              <ActionButton
+                action={saveMarginFloor}
+                label="Save margin floor"
+                fields={{ revision: String(offers.revision) }}
+              >
+                <Field
+                  label="Your usual margin on a sale, %"
+                  name="margin"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  defaultValue={set?.margin ?? ''}
+                />
+                <Field
+                  label="The lowest margin you accept on a sale, %"
+                  name="floor"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  defaultValue={set?.floor ?? ''}
+                />
+              </ActionButton>
+            ) : null}
+          </>
+        ) : (
+          <Unread view={view} part="offers" />
+        )}
+      </div>
+    </Card>
+  )
+}
+
+/**
+ * Owner pick #33: the email revenue goal for this month (and next month's,
+ * once set), typed in words. The 15-day plan works back from it.
+ */
+function GoalCard({ view }: { view: SettingsView }) {
+  const title = 'Revenue goal'
+  const goal = view.goal
+  const [now, next] = goal?.months ?? []
+  return (
+    <Card label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <ActionAnswers>
+          <Title text={title} />
+          {goal && now && next ? (
+            <>
+              <div className="flex flex-col gap-[var(--space-1)]">
+                <p className="type-number-lg">
+                  {now.goal ? goalMoney(now.goal) : 'Not set'}
+                </p>
+                <p className="type-caption text-[var(--stone)]">
+                  {`Email revenue for ${now.label}. The 15-day plan works back from it.`}
+                </p>
+                {next.goal ? (
+                  <p className="type-caption text-[var(--stone)]">
+                    {`${next.label}: ${goalMoney(next.goal)}`}
+                  </p>
+                ) : null}
+              </div>
+              {view.editor ? (
+                <>
+                  <ActionButton
+                    action={saveRevenueGoal}
+                    label="Save goal"
+                    fields={{
+                      revisions: goal.months
+                        .map((m) => `${m.month}:${m.revision}`)
+                        .join(',')
+                    }}
+                  >
+                    <Field
+                      label={
+                        goal.currency
+                          ? `Goal, like ${goalMoney({ amount: 20_000, currency: goal.currency })} this month or 25k next month`
+                          : 'Goal, like 20,000 USD this month'
+                      }
+                      name="goal"
+                      autoComplete="off"
+                      maxLength={120}
+                      required
+                    />
+                  </ActionButton>
+                  {goal.months
+                    .filter((m) => m.goal)
+                    .map((m) => (
+                      <ActionButton
+                        key={m.month}
+                        action={clearRevenueGoal}
+                        label={`Remove the ${m.label} goal`}
+                        kind="outline"
+                        size="row"
+                        fields={{
+                          month: m.month,
+                          revision: String(m.revision)
+                        }}
+                      />
+                    ))}
+                </>
+              ) : null}
+            </>
+          ) : (
+            <Unread view={view} part="goal" />
+          )}
+        </ActionAnswers>
+      </div>
+    </Card>
+  )
+}
+
 function CodeThumb() {
   return (
     <span
@@ -167,16 +323,28 @@ function CodeThumb() {
 
 function codeDetails(
   code: ManagedCode,
-  max: number | null,
+  offers: Pick<
+    ManagedOffers,
+    'maxDiscountPercent' | 'grossMarginPercent' | 'marginFloorPercent'
+  >,
   timezone: string
 ): string[] {
   const date = code.expiresAt ? formatBrandDate(code.expiresAt, timezone) : null
+  const max = offers.maxDiscountPercent
+  // Pick #39: a code under the biggest discount can still break the floor.
+  const cap = discountCap(offers)
   return [
     `${code.percent}% off`,
     date ? `${code.ended ? 'Ended' : 'Until'} ${date}` : 'No end date',
-    !code.ended && max !== null && code.percent > max
-      ? 'Above your biggest discount, not used'
-      : ''
+    code.ended || max === null
+      ? ''
+      : code.percent > max
+        ? 'Above your biggest discount, not used'
+        : cap.limitedBy === 'margin_floor' &&
+            cap.maxDiscountPercent !== null &&
+            code.percent > cap.maxDiscountPercent
+          ? 'Below your margin floor, not used'
+          : ''
   ]
 }
 
@@ -202,11 +370,7 @@ function CodesCard({ view }: { view: SettingsView }) {
                   key={code.id}
                   thumbnail={<CodeThumb />}
                   title={code.code}
-                  details={codeDetails(
-                    code,
-                    offers.maxDiscountPercent,
-                    timezone
-                  )}
+                  details={codeDetails(code, offers, timezone)}
                   end={
                     view.editor ? (
                       <ActionButton
