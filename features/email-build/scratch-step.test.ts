@@ -96,7 +96,11 @@ const record = (over: Partial<CopyRecord> = {}): CopyRecord => ({
   ...over
 })
 
-function fakePort(copy: CopyState = { state: 'queued' }, blocks = lib) {
+function fakePort(
+  copy: CopyState = { state: 'queued' },
+  blocks = lib,
+  stored: string[] | null = null
+) {
   const asked: { blocks: readonly string[]; input: CopyInput }[] = []
   let reads = 0
   const port: NonNullable<LibraryCopyPort['scratch']> = {
@@ -104,6 +108,7 @@ function fakePort(copy: CopyState = { state: 'queued' }, blocks = lib) {
       reads++
       return { blocks, recent: [] }
     },
+    stored: async () => stored,
     copy: async (b, input) => {
       asked.push({ blocks: b, input })
       return copy
@@ -226,5 +231,18 @@ describe('the Scratch step (DES-ENGINE-004b)', () => {
     expect(savedPick({ library: { blocks: ['x'] } })).toBeNull()
     expect(savedPick({ library: { blocks: [] } })).toBeNull()
     expect(savedPick(undefined)).toBeNull()
+  })
+
+  it('a lost saved pick takes the one this build’s copy already asked for, never a new one', async () => {
+    const { port, asked, reads } = fakePort({ state: 'queued' }, lib, [
+      id(4),
+      id(1)
+    ])
+    expect(await step(port)).toMatchObject({
+      kind: 'waiting',
+      work: { library: { blocks: [id(4), id(1)] } }
+    })
+    expect(asked[0]!.blocks).toEqual([id(4), id(1)])
+    expect(reads()).toBe(0)
   })
 })

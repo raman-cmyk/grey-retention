@@ -83,7 +83,10 @@ export async function scratchStep(input: {
     sourceNames: [],
     mode: 'klaviyo'
   })
-  let blocks = savedPick(input.saved)
+  // The pick is kept in the step's saved work; if that is lost, the one
+  // this build's copy already asked for is used (never a new pick the
+  // database would refuse as another email).
+  let blocks = savedPick(input.saved) ?? (await input.port.stored())
   if (!blocks) {
     const library = await input.port.library()
     const plan = planScratch(library.blocks, {

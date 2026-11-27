@@ -22,7 +22,10 @@ import {
 import { runEmailBuilds } from './worker'
 import { composeScratch } from './scratch'
 import { libraryScratchOn } from './scratch-switch'
-import { blockBlueprints } from '@/features/block-library/read'
+import { blockBlueprints, checkedBlocks } from '@/features/block-library/read'
+
+/** The most source emails one Scratch copy's leak check reads. */
+export const scratchLeakSources = 24
 
 /**
  * DES-ENGINE-002b2: the library copy browser job's side in the app. A
@@ -146,11 +149,11 @@ export async function copyJobs(
   if (claimed.error) throw claimed.error
   const job = (claimed.data as unknown as Lease[] | null)?.[0]
   if (!job) return { jobs: [], skew: false }
-  const handed = await handOut(db, job)
+  const handed = await handOut(db, job, env)
   return { jobs: handed ? [handed] : [], skew: false }
 }
 
-async function handOut(db: Db, job: Lease): Promise<CopyJob | null> {
+async function handOut(db: Db, job: Lease, env: Env): Promise<CopyJob | null> {
   const copy = await db
     .from('email_copies')
     .select(
@@ -174,6 +177,18 @@ async function handOut(db: Db, job: Lease): Promise<CopyJob | null> {
     return null
   }
   const c = copy.data
+  // Each kind of copy only with its own switch: a Scratch copy with
+  // DESIGN_LIBRARY_SCRATCH, a Copy or upload copy with DESIGN_LIBRARY_COPY
+  // (handed back, its try given back, until its switch is on).
+  if (!(c.blocks?.length ? libraryScratchOn(env) : libraryCopyOn(env))) {
+    const back = await db.rpc('release_email_copy', {
+      job: job.id,
+      lease: job.lease_token
+    })
+    if (back.error)
+      logger.warn('Copy job not handed back', { code: back.error.code })
+    return null
+  }
   const build = await db
     .from('email_builds')
     .select('state,step')
@@ -334,6 +349,7 @@ async function scratchSources(
 ): Promise<
   | { blueprint: unknown; sources: ScratchSource[] }
   | 'blueprint_gone'
+  | 'block_unusable'
   | 'source_missing'
   | 'unreadable'
 > {
@@ -345,30 +361,39 @@ async function scratchSources(
   }
   if (!blocks.length || blocks.some((b) => !prints.has(b)))
     return 'blueprint_gone'
+  // Reference time: every block must still be one the workspace may use
+  // (Copy's rules and the Observer selection, as when it was picked).
+  let checked: Awaited<ReturnType<typeof checkedBlocks>>
+  try {
+    checked = await checkedBlocks(db, tenant, blocks)
+  } catch {
+    return 'unreadable'
+  }
+  const usable = new Map(checked.map((c) => [c.id, c]))
+  if (blocks.some((b) => !usable.has(b))) return 'block_unusable'
   const blueprint = composeScratch(blocks.map((b) => prints.get(b)!))
+  // The leak check reads the email each block's geometry came from first,
+  // then the other emails that used the same layouts, up to
+  // `scratchLeakSources` emails in all (the gate reads them all).
   const from = await db
     .from('library_block_sources')
     .select('block_id,inbox_message_id,upload_id,created_at')
     .in('block_id', [...blocks])
     .order('created_at')
   if (from.error) return 'unreadable'
-  const first = new Map<
-    string,
-    { message: string | null; upload: string | null }
-  >()
-  for (const r of from.data ?? [])
-    if (!first.has(r.block_id))
-      first.set(r.block_id, {
-        message: r.inbox_message_id,
-        upload: r.upload_id
-      })
-  if (blocks.some((b) => !first.has(b))) return 'source_missing'
-  const messages = [
-    ...new Set([...first.values()].flatMap((f) => f.message ?? []))
-  ]
-  const uploads = [
-    ...new Set([...first.values()].flatMap((f) => f.upload ?? []))
-  ]
+  const messages: string[] = []
+  const uploads: string[] = []
+  const add = (message: string | null, upload: string | null) => {
+    if (messages.length + uploads.length >= scratchLeakSources) return
+    if (message && !messages.includes(message)) messages.push(message)
+    if (upload && !uploads.includes(upload)) uploads.push(upload)
+  }
+  for (const b of blocks) {
+    const c = usable.get(b)!
+    if (!c.geometryMessage && !c.geometryUpload) return 'source_missing'
+    add(c.geometryMessage, c.geometryUpload)
+  }
+  for (const r of from.data ?? []) add(r.inbox_message_id, r.upload_id)
   const sources: ScratchSource[] = []
   if (messages.length) {
     const rows = await db
@@ -719,8 +744,8 @@ export async function runCopiedBuilds(
     now?: () => number
   }
 ): Promise<{ off: boolean; builds: number; ran: number; cleaned: number }> {
-  if (!copiesOn(deps.env ?? process.env))
-    return { off: true, builds: 0, ran: 0, cleaned: 0 }
+  const env = deps.env ?? process.env
+  if (!copiesOn(env)) return { off: true, builds: 0, ran: 0, cleaned: 0 }
   const now = deps.now ?? Date.now
   const { data, error } = await db
     .from('email_copies')
@@ -748,7 +773,9 @@ export async function runCopiedBuilds(
     n++
     const done = await runEmailBuilds(db, {
       build: b.id,
-      library: true,
+      // Each kind of copy with its own switch (DES-ENGINE-004b).
+      library: libraryCopyOn(env),
+      scratch: libraryScratchOn(env),
       deadline: deps.deadline,
       ...(deps.pusher ? { pusher: deps.pusher } : {}),
       now

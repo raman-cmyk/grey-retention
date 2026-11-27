@@ -26,10 +26,18 @@ export function LibraryScreen({ view }: { view: LibraryView }) {
   if (!view.ok)
     return (
       <AppPage current="inspiration" title={title}>
-        {view.on ? (
+        {view.on && view.why === 'no_store' ? (
+          <ErrorState
+            title="Your store is not read yet"
+            reason="The layouts are shown in your brand’s own look, and GROS has not read your store yet. Finish setup, then open this page again."
+            action={
+              <ButtonLink href={inspirationHref} label="Back to Inspiration" />
+            }
+          />
+        ) : view.on ? (
           <ErrorState
             title="The library did not open"
-            reason="We could not read the block library just now. Nothing was changed."
+            reason="We could not read the block library or your brand’s look just now. Nothing was changed."
             action={
               <ButtonLink href={inspirationHref} label="Back to Inspiration" />
             }

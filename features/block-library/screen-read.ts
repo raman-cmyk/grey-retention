@@ -5,7 +5,7 @@ import { drawBlueprint } from '@/features/design-engine/render'
 import { swapBrand, type SwapBrand } from '@/features/design-engine/swap'
 import type { WordPools } from '@/features/design-engine/words'
 import { swapBrandOf } from '@/features/email-build/library-copy'
-import { sampleStoreFrom, type Store } from '@/features/email-build/ports'
+import type { Store } from '@/features/email-build/ports'
 import { libraryScratchOn } from '@/features/email-build/scratch-switch'
 import { ownStoreSource } from '@/features/onboarding/store-source'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -43,7 +43,12 @@ export type ShownBlock = {
 }
 
 export type LibraryView =
-  | { ok: false; on: boolean }
+  | {
+      ok: false
+      on: boolean
+      /** Why, when on: the library or the store could not be read, or no store yet. */
+      why?: 'unread' | 'no_store'
+    }
   | {
       ok: true
       on: true
@@ -55,14 +60,22 @@ export type LibraryView =
       kinds: { kind: BlockKind; count: number; shown: ShownBlock[] }[]
     }
 
-async function storeOf(tenant: string): Promise<Store> {
-  const db = createServiceClient()
+/**
+ * The workspace's own store, never a sample one: a store not read yet, or
+ * one that cannot be read now, shows the page's own state instead of
+ * another brand's look.
+ */
+async function storeOf(
+  db: NonNullable<ReturnType<typeof createServiceClient>>,
+  tenant: string
+): Promise<Store | 'no_store'> {
   try {
-    if (db) return await ownStoreSource(db).read(tenant)
-  } catch {
-    // No catalog read yet: the sample store, as planning uses.
+    return await ownStoreSource(db).read(tenant)
+  } catch (error) {
+    if ((error as { code?: unknown } | null)?.code === 'plan_store_changed')
+      return 'no_store'
+    throw error
   }
-  return sampleStoreFrom(new Date().toISOString().slice(0, 10)).read(tenant)
 }
 
 /** Words GROS writes for the preview, from the brand's own name and products. */
@@ -118,9 +131,10 @@ export async function readLibraryScreen(
   if (!db) return { ok: false, on: true }
   try {
     const [blocks, store] = await Promise.all([
-      workspaceLibrary(db, context.tenantId),
-      storeOf(context.tenantId)
+      workspaceLibrary(db, context.tenantId, { withHidden: true }),
+      storeOf(db, context.tenantId)
     ])
+    if (store === 'no_store') return { ok: false, on: true, why: 'no_store' }
     const brand = swapBrandOf(
       store.brand,
       store.confirmed?.lifestylePhoto,
@@ -180,6 +194,6 @@ export async function readLibraryScreen(
       kinds
     }
   } catch {
-    return { ok: false, on: true }
+    return { ok: false, on: true, why: 'unread' }
   }
 }

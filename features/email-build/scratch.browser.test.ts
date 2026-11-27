@@ -128,7 +128,7 @@ describe.skipIf(!on)('Scratch from the real library', () => {
         (sources.get(c.block.fingerprint) ?? new Set()).add(c.email)
       )
     const library: (LibraryBlock & { blueprint: Blueprint })[] = []
-    for (const { block, uses } of dedupe(all.map((a) => a.block))) {
+    for (const { block } of dedupe(all.map((a) => a.block))) {
       if (block.unsafe) continue
       if (!(await checkBlock(browser, block.check)).pass) continue
       library.push({
@@ -136,7 +136,8 @@ describe.skipIf(!on)('Scratch from the real library', () => {
         kind: block.kind,
         facts: block.facts,
         width: block.blueprint.width,
-        uses,
+        // Different emails that used the layout (as the library counts).
+        uses: sources.get(block.fingerprint)!.size,
         brands: sources.get(block.fingerprint)!.size,
         emailTypes: [],
         yours: false,

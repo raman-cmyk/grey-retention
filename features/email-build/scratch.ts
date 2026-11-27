@@ -27,7 +27,8 @@ import type { EmailType } from '@/features/strategy/plan'
  *   left, a logo only with a logo, no icons (the brand has none stored),
  *   a footer only with the unsubscribe line Klaviyo needs, emails 600 px
  *   wide only.
- * - **Used a lot**: blocks used more (and by more brands) rank higher, and
+ * - **Used a lot**: blocks used by more brands (then by more emails) rank
+ *   higher, and
  *   blocks from emails of the same type (a launch's layouts for a launch).
  * - **Variety**: a block the workspace's last Scratch emails used ranks
  *   lower, and a small fixed shake per email (from its build) keeps two
@@ -212,12 +213,14 @@ const shake = (seed: string, id: string) =>
 export function rank(b: LibraryBlock, input: ScratchInput): number {
   const labels = typeLabels[input.emailType]
   return (
-    Math.log1p(b.uses) +
-    0.5 * Math.log1p(b.brands) +
+    // Different brands weigh most (one brand resending is weak evidence),
+    // then different emails.
+    Math.log1p(b.brands) +
+    0.5 * Math.log1p(b.uses) +
     (b.emailTypes.some((t) => labels.includes(t)) ? 1 : 0) +
     (b.yours ? 0.5 : 0) -
     (input.recent.has(b.id) ? 3 : 0) +
-    shake(input.seed, b.id)
+    0.5 * shake(input.seed, b.id)
   )
 }
 

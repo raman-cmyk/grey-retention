@@ -8736,6 +8736,35 @@ export type Database = {
         }[]
       }
       library_block_jobs_waiting: { Args: never; Returns: number }
+      library_blocks_check: {
+        Args: { blocks: string[]; t: string }
+        Returns: {
+          email_external_id: string
+          email_id: string
+          email_synthetic: boolean
+          geometry_message: string
+          geometry_upload: string
+          id: string
+        }[]
+      }
+      library_blocks_for: {
+        Args: { t: string; with_hidden?: boolean }
+        Returns: {
+          brands: number
+          email_external_id: string
+          email_id: string
+          email_synthetic: boolean
+          email_types: string[]
+          facts: Json
+          geometry_message: string
+          hidden: boolean
+          id: string
+          kind: string
+          tenant_id: string
+          uses: number
+          width: number
+        }[]
+      }
       my_pending_invites: {
         Args: never
         Returns: {

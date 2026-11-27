@@ -191,7 +191,9 @@ export const copyFailures = {
   blueprint_gone: 'its measured design is no longer stored',
   source_missing: 'the original email is no longer stored',
   copy_job_failed: 'the copying job failed 4 times',
-  input_invalid: 'what GROS saved for the copy could not be read'
+  input_invalid: 'what GROS saved for the copy could not be read',
+  /** DES-ENGINE-004b */
+  block_unusable: 'one of its library layouts can no longer be used'
 } as const
 export type CopyFailure = keyof typeof copyFailures
 
@@ -236,6 +238,8 @@ export type LibraryCopyPort = {
    */
   scratch?: {
     library: () => Promise<{ blocks: LibraryBlock[]; recent: string[] }>
+    /** The pick this build's copy already asked for, if any. */
+    stored: () => Promise<string[] | null>
     copy: (
       blocks: readonly string[],
       input: CopyInput,

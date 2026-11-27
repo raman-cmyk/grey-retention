@@ -1,5 +1,5 @@
 begin;
-select plan(21);
+select plan(32);
 
 -- DES-ENGINE-004b: a Scratch build asks for its copy from library blocks
 -- it may use; owners and admins hide a layout for their workspace.
@@ -16,10 +16,33 @@ create function pg_temp.bp() returns jsonb language sql as $$
     'sections', jsonb_build_array(jsonb_build_object('ordinal', 1, 'kind', 'hero', 'unsupported', null, 'background', null,
       'items', '[]'::jsonb)))
 $$;
-create function pg_temp.block(n int, t uuid default null, quality text default 'passed') returns uuid language sql as $$
-  insert into public.library_blocks(tenant_id, source, version, fingerprint, kind, roles, facts, blueprint, quality, failure, uses)
+create function pg_temp.k(n int) returns text language sql as $$ select encode(extensions.digest('sl-' || n, 'sha256'), 'hex') $$;
+-- An inbox email of a brand (a real one unless `synthetic`).
+create function pg_temp.email(n int, capture text, synthetic boolean default false) returns uuid language plpgsql as $$
+declare m uuid;
+begin
+  insert into public.inbox_messages(mailbox_id, message_key, uidvalidity, uid, raw_bytes, subject, received_at, synthetic, state)
+    select id, pg_temp.k(n), 1, 9000 + n, 10, 'Email ' || n, now(), true, 'too_large'
+    from public.inbox_mailboxes where key = 'fake' returning id into m;
+  insert into public.competitor_emails(capture_id, external_id, received_at, subject, text_content, safe_html, micro, synthetic, inbox_message_id)
+    select id, 'msg:sl' || n, now(), 'Email', 'x', '<p>x</p>', '{}', email.synthetic, m
+    from public.competitor_captures where domain = capture;
+  return m;
+end $$;
+create function pg_temp.block(n int, t uuid default null, quality text default 'passed', message uuid default null,
+  upload uuid default null) returns uuid language sql as $$
+  insert into public.library_blocks(tenant_id, source, version, fingerprint, kind, roles, facts, blueprint, quality, failure, uses,
+      geometry_message, geometry_upload)
     values (t, case when t is null then 'inbox' else 'upload' end, 1, left(encode(extensions.digest('sb-' || n, 'sha256'), 'hex'), 32),
-      'hero', '{headline}', '{}', pg_temp.bp(), quality, case when quality = 'failed' then 'not_alike' end, 1)
+      'hero', '{headline}', '{}', pg_temp.bp(), quality, case when quality = 'failed' then 'not_alike' end, 1, message, upload)
+  returning id
+$$;
+create function pg_temp.upload(t uuid) returns uuid language sql as $$
+  insert into public.email_uploads (tenant_id, request_key, name, design, file_kind, byte_size, sha256, created_by, state,
+      blueprint, original_etag, html_etag, html_size)
+    values (t, gen_random_uuid(), 'Mine', 'own', 'eml', 1, encode(extensions.digest(gen_random_uuid()::text, 'sha256'), 'hex'),
+      (select profile_id from public.tenant_memberships where tenant_id = t and role = 'owner' limit 1), 'ready',
+      '{"version":1}'::jsonb, 'a', 'b', 1)
   returning id
 $$;
 create function pg_temp.lease(build uuid) returns uuid language sql as $$
@@ -33,11 +56,48 @@ begin
   return pg_temp.lease(build);
 end $$;
 
-select set_config('test.a', pg_temp.block(1)::text, true);
-select set_config('test.b', pg_temp.block(2)::text, true);
-select set_config('test.failed', pg_temp.block(3, null, 'failed')::text, true);
-select set_config('test.mine', pg_temp.block(4, '00000000-0000-4000-8000-000000000101')::text, true);
-select set_config('test.theirs', pg_temp.block(5, '00000000-0000-4000-8000-000000000102')::text, true);
+-- Workspace 101 follows brand A (real emails); brand B it does not follow,
+-- but B's sample email is a sample brand's (101 is a sample workspace).
+select public.enqueue_inbox_poll('fake');
+insert into public.competitor_captures(domain) values ('lib-a.example'), ('lib-b.example');
+insert into public.competitor_subscriptions(tenant_id, capture_id, label, created_by)
+  select '00000000-0000-4000-8000-000000000101', id, 'Brand A', '00000000-0000-4000-8000-000000000001'
+  from public.competitor_captures where domain = 'lib-a.example';
+select set_config('test.ma', pg_temp.email(1, 'lib-a.example')::text, true);
+select set_config('test.mb', pg_temp.email(2, 'lib-b.example')::text, true);
+select set_config('test.ms', pg_temp.email(3, 'lib-b.example', true)::text, true);
+select set_config('test.a', pg_temp.block(1, null, 'passed', current_setting('test.ma')::uuid)::text, true);
+select set_config('test.b', pg_temp.block(2, null, 'passed', current_setting('test.ma')::uuid)::text, true);
+select set_config('test.failed', pg_temp.block(3, null, 'failed', current_setting('test.ma')::uuid)::text, true);
+select set_config('test.mine', pg_temp.block(4, '00000000-0000-4000-8000-000000000101', 'passed', null,
+  pg_temp.upload('00000000-0000-4000-8000-000000000101'))::text, true);
+select set_config('test.theirs', pg_temp.block(5, '00000000-0000-4000-8000-000000000102', 'passed', null,
+  pg_temp.upload('00000000-0000-4000-8000-000000000102'))::text, true);
+select set_config('test.unfollowed', pg_temp.block(6, null, 'passed', current_setting('test.mb')::uuid)::text, true);
+select set_config('test.sample', pg_temp.block(7, null, 'passed', current_setting('test.ms')::uuid)::text, true);
+
+-- Which blocks a workspace may use: Copy's rule on each block's geometry.
+select pg_temp.as_job();
+select is((select array_agg(id::text order by id::text) from public.library_blocks_for('00000000-0000-4000-8000-000000000101')),
+  (select array_agg(x order by x) from unnest(array[current_setting('test.a'), current_setting('test.b'), current_setting('test.mine'),
+    current_setting('test.sample')]) x),
+  'a followed brand''s layouts, its own and a sample email''s; never a brand it does not follow, another''s private one or a failed one');
+select is((select count(*)::int from public.library_blocks_for('00000000-0000-4000-8000-000000000102') where tenant_id is not null), 1,
+  'another workspace sees only its own private block');
+reset role;
+insert into public.competitor_hidden(tenant_id, capture_id, hidden_by)
+  select '00000000-0000-4000-8000-000000000101', id, '00000000-0000-4000-8000-000000000001'
+  from public.competitor_captures where domain = 'lib-a.example';
+select pg_temp.as_job();
+select is((select count(*)::int from public.library_blocks_for('00000000-0000-4000-8000-000000000101') where tenant_id is null), 1,
+  'a hidden brand''s layouts are never offered');
+select is((select count(*)::int from public.library_blocks_check('00000000-0000-4000-8000-000000000101',
+  array[current_setting('test.a')::uuid])), 0, 'nor pass the check at reference time');
+reset role;
+delete from public.competitor_hidden where tenant_id = '00000000-0000-4000-8000-000000000101';
+select pg_temp.as_user('00000000-0000-4000-8000-000000000001');
+select throws_ok($$select public.library_blocks_for('00000000-0000-4000-8000-000000000101')$$, '42501', null,
+  'only the job reads the library this way');
 
 -- Grants.
 select ok(not has_function_privilege('anon', 'public.set_library_block_hidden(uuid,uuid,boolean)', 'execute'), 'anon cannot hide');
@@ -70,6 +130,14 @@ select throws_ok(format($$select public.set_library_block_hidden('00000000-0000-
 select throws_ok(format($$select public.set_library_block_hidden('00000000-0000-4000-8000-000000000102', %L, true)$$,
   current_setting('test.a')), '42501', null, 'nor in another workspace');
 select is((select count(*)::int from public.library_block_hides), 1, 'members read their own hides');
+select is(public.set_library_block_hidden('00000000-0000-4000-8000-000000000101', current_setting('test.b')::uuid, false), false,
+  'the owner uses it again');
+select is((select count(*)::int from public.library_block_hides), 0, 'no longer hidden');
+select pg_temp.as_user('00000000-0000-4000-8000-000000000006');
+select is(public.set_library_block_hidden('00000000-0000-4000-8000-000000000101', current_setting('test.b')::uuid, true), true,
+  'an admin hides a layout too');
+select throws_ok(format($$select public.set_library_block_hidden('00000000-0000-4000-8000-000000000101', %L, true)$$,
+  current_setting('test.unfollowed')), '22023', null, 'never a layout of a brand the workspace does not follow');
 select pg_temp.as_user('00000000-0000-4000-8000-000000000004');
 select is((select count(*)::int from public.library_block_hides), 0, 'another workspace reads none');
 reset role;
@@ -103,6 +171,12 @@ select throws_ok(format($$select public.request_email_copy(%L, %L, null, '{}', 0
 select throws_ok(format($$select public.request_email_copy(%L, %L, null, '{}', 0, null, array[%L]::uuid[])$$,
   current_setting('test.build'), current_setting('test.lease'), current_setting('test.theirs')),
   'PT409', 'A library layout cannot be used', 'never another workspace''s private block');
+select throws_ok(format($$select public.request_email_copy(%L, %L, null, '{}', 0, null, array[%L]::uuid[])$$,
+  current_setting('test.build'), current_setting('test.lease'), current_setting('test.failed')),
+  'PT409', 'A library layout cannot be used', 'never one that failed the quality gate');
+select throws_ok(format($$select public.request_email_copy(%L, %L, null, '{}', 0, null, array[%L]::uuid[])$$,
+  current_setting('test.build'), current_setting('test.lease'), current_setting('test.unfollowed')),
+  'PT409', 'A library layout cannot be used', 'never one of a brand the workspace does not follow');
 select throws_ok(format($$select public.request_email_copy(%L, %L, null, '{}', 0, null, array[%L, %L]::uuid[])$$,
   current_setting('test.build'), current_setting('test.lease'), current_setting('test.a'), current_setting('test.a')),
   '22023', 'Invalid copy input', 'each block once');

@@ -3,7 +3,11 @@ import { observerAllowed } from '@/features/inbox/observer-access'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { inspirationBlueprint } from '@/features/inbox/blueprints'
-import { recentPicks, workspaceLibrary } from '@/features/block-library/read'
+import {
+  recentPicks,
+  storedPick,
+  workspaceLibrary
+} from '@/features/block-library/read'
 import {
   blueprintWords,
   copyFailures,
@@ -157,7 +161,22 @@ export function libraryPortsFor(
     } as never)
     if (asked.error) {
       if (asked.error.details === 'no_blueprint')
-        return { state: 'failed', reason: copyFailures.blueprint_gone }
+        return {
+          state: 'failed',
+          reason:
+            'blocks' in source
+              ? copyFailures.block_unusable
+              : copyFailures.blueprint_gone
+        }
+      // DES-ENGINE-004b: a Scratch request the database will refuse every
+      // time (another pick stored for this build, or not a Scratch build):
+      // the coded blocks, never a step stuck on it.
+      if (
+        'blocks' in source &&
+        (asked.error.details === 'other_email' ||
+          asked.error.details === 'not_scratch')
+      )
+        return { state: 'failed', reason: copyFailures.copy_failed }
       throw asked.error
     }
     return settled(asked.data)
@@ -239,14 +258,16 @@ export function libraryPortsFor(
       ? {
           scratch: {
             // The blocks this workspace may use (hidden ones left out) and
-            // its last Scratch emails' picks.
+            // its last Scratch emails' picks (this build's own left out).
             async library() {
               const [blocks, recent] = await Promise.all([
                 workspaceLibrary(db, input.tenant),
-                recentPicks(db, input.tenant)
+                recentPicks(db, input.tenant, input.build)
               ])
-              return { blocks: blocks.filter((b) => !b.hidden), recent }
+              return { blocks, recent }
             },
+            // The pick this build's copy already asked for (a saved pick lost).
+            stored: () => storedPick(db, input.tenant, input.build),
             copy: (
               blocks: readonly string[],
               copyIn: CopyInput,

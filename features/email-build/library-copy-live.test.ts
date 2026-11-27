@@ -793,9 +793,26 @@ describe('a Scratch copy of library blocks (DES-ENGINE-004b)', () => {
     platform_jobs: [{ id: job, kind: 'design.copy', subject_key: build }]
   }
   const scratchOn = { DESIGN_LIBRARY_SCRATCH: 'on' }
+  const usable = (ids: string[], geometry: Record<string, string>) =>
+    ids.map((id) => ({
+      id,
+      geometry_message: geometry[id] ?? null,
+      geometry_upload: null,
+      email_id: `e-${id}`,
+      email_external_id: `x-${id}`,
+      email_synthetic: true
+    }))
+  const checked = {
+    library_blocks_check: {
+      data: usable([b1, b2], { [b1]: message, [b2]: m2 })
+    }
+  }
 
   it('hands out the blocks composed into one email and every email they came from, with its brand’s names', async () => {
-    const { db } = fakeDb({ rows: scratchRows, rpc: claimed })
+    const { db } = fakeDb({
+      rows: scratchRows,
+      rpc: { ...claimed, ...checked }
+    })
     const got = await copyJobs(db, ENGINE_VERSION, scratchOn)
     expect(got.jobs).toHaveLength(1)
     const j = got.jobs[0]!
@@ -843,7 +860,7 @@ describe('a Scratch copy of library blocks (DES-ENGINE-004b)', () => {
     ] as [Rows, string][]) {
       const { db, calls } = fakeDb({
         rows: { ...scratchRows, ...rows },
-        rpc: claimed
+        rpc: { ...claimed, ...checked }
       })
       expect((await copyJobs(db, ENGINE_VERSION, scratchOn)).jobs).toEqual([])
       expect(calls.at(-1)).toEqual({
@@ -861,7 +878,7 @@ describe('a Scratch copy of library blocks (DES-ENGINE-004b)', () => {
     const leaked = fakeDb({
       rows: scratchRows,
       texts,
-      rpc: { record_email_copy: { data: 'failed' } }
+      rpc: { ...checked, record_email_copy: { data: 'failed' } }
     })
     await finishCopy(
       leaked.db,
@@ -883,7 +900,7 @@ describe('a Scratch copy of library blocks (DES-ENGINE-004b)', () => {
     const clean = fakeDb({
       rows: scratchRows,
       texts,
-      rpc: { record_email_copy: { data: 'done' } }
+      rpc: { ...checked, record_email_copy: { data: 'done' } }
     })
     expect(
       await finishCopy(
@@ -894,5 +911,40 @@ describe('a Scratch copy of library blocks (DES-ENGINE-004b)', () => {
     expect(
       clean.calls.filter((c) => c.fn === 'download:inbox-raw').length
     ).toBe(2)
+  })
+
+  it('records a Scratch copy whose layout the workspace may no longer use (reference time)', async () => {
+    const { db, calls } = fakeDb({
+      rows: scratchRows,
+      rpc: {
+        ...claimed,
+        library_blocks_check: { data: usable([b1], { [b1]: message }) }
+      }
+    })
+    expect((await copyJobs(db, ENGINE_VERSION, scratchOn)).jobs).toEqual([])
+    expect(calls.at(-1)).toEqual({
+      fn: 'record_email_copy',
+      args: { job, lease, failure: 'block_unusable' }
+    })
+  })
+
+  it('hands out a Copy only with DESIGN_LIBRARY_COPY, a Scratch copy only with DESIGN_LIBRARY_SCRATCH', async () => {
+    const copy = fakeDb({ rows: handOutRows, rpc: claimed })
+    expect((await copyJobs(copy.db, ENGINE_VERSION, scratchOn)).jobs).toEqual(
+      []
+    )
+    expect(copy.calls.at(-1)).toEqual({
+      fn: 'release_email_copy',
+      args: { job, lease }
+    })
+    const scratch = fakeDb({
+      rows: scratchRows,
+      rpc: { ...claimed, ...checked }
+    })
+    expect((await copyJobs(scratch.db, ENGINE_VERSION, on)).jobs).toEqual([])
+    expect(scratch.calls.at(-1)).toEqual({
+      fn: 'release_email_copy',
+      args: { job, lease }
+    })
   })
 })
