@@ -284,3 +284,38 @@ describe('an email’s page (UI-EMAIL-b)', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('the design reasons (PICK-104)', () => {
+  it('shows each stored reason as one plain line', () => {
+    const lines = [
+      'The hero shows Cedar candle because it is one of your bestsellers: it sold 118 in the last 30 days.',
+      'The suggested send time for “Engaged subscribers” is 9:00 am: when this group opens and clicks most.'
+    ]
+    render(
+      <EmailScreen
+        view={emailScreen(
+          row({
+            email: email({
+              reasons: lines.map((text) => ({
+                kind: 'product',
+                text,
+                facts: [{ from: 'plan', key: 'evidence:bestseller:p1' }]
+              }))
+            })
+          })
+        )}
+      />
+    )
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Why these choices' })
+    ).toBeInTheDocument()
+    for (const line of lines) expect(screen.getByText(line)).toBeInTheDocument()
+  })
+
+  it('shows no reasons card for an email built before them', () => {
+    render(<EmailScreen view={emailScreen(row())} />)
+    expect(
+      screen.queryByRole('heading', { name: 'Why these choices' })
+    ).toBeNull()
+  })
+})

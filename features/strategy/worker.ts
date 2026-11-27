@@ -19,6 +19,7 @@ import {
 } from './competitors'
 import {
   goalLines,
+  ladderKept,
   readGuidance,
   planFifteenDays,
   samplePlan,
@@ -318,7 +319,12 @@ export async function runStrategyRuns(
               dropped: dated.dropped
             })
           )
-        const checked = withoutUnusableOffers(dated.slots, offers, timezone)
+        const guarded = withoutUnusableOffers(dated.slots, offers, timezone)
+        // PICK-104: a ladder place the guards made untrue is not kept.
+        const checked = {
+          ...guarded,
+          slots: ladderKept(made.slots, guarded.slots)
+        }
         const dropNote = droppedOffersNote(checked.dropped)
         if (checked.dropped.length)
           await fallbacks.record(

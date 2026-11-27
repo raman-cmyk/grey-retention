@@ -74,6 +74,8 @@ export const config = {
     '/onboarding/:path*',
     '/profile/:path*',
     '/settings/:path*',
+    // PICK-107: the person's notifications.
+    '/notifications/:path*',
     // UI-BRAND-2: Brand, the Brand book and Brand assets.
     '/brand/:path*',
     '/setup/:path*',

@@ -202,3 +202,57 @@ export function carriedSalePercent(
     )
   }
 }
+
+/**
+ * PICK-104 (owner pick #104, "One-line design reasons"): where each offer
+ * email of a finished plan sits on its ladder, kept with the plan when the
+ * ladder chose its code, so the email's page can say why it has that offer
+ * from the facts alone. `step` is its offer day among the plan's offer days
+ * (1 is the first; emails on one day share a step) of `steps`; `before` is
+ * the percent the sale went on from: the offer day before it in this plan,
+ * or, for the first, the earlier offer email it picked up from (`carried`,
+ * null for a new sale); `lowest` is true when its percent is the smallest
+ * the ladder starts from that day: the lowest of the codes working on its
+ * day of at least `ladderStartPercent` (any code when none is that big).
+ */
+export type LadderPlace = {
+  step: number
+  steps: number
+  before: number | null
+  lowest: boolean
+}
+
+export function ladderPlaces(
+  emails: readonly { date: string; percent: number | null }[],
+  offers: readonly LadderOffer[],
+  carried: { percent: number } | null
+): (LadderPlace | null)[] {
+  const days = [
+    ...new Set(
+      emails.flatMap((e) =>
+        e.percent !== null && isoDay.test(e.date) ? [e.date] : []
+      )
+    )
+  ].sort()
+  const highest = new Map<string, number>()
+  for (const e of emails)
+    if (e.percent !== null && days.includes(e.date))
+      highest.set(e.date, Math.max(highest.get(e.date) ?? 0, e.percent))
+  return emails.map((e) => {
+    if (e.percent === null || !validPercent(e.percent)) return null
+    const i = days.indexOf(e.date)
+    if (i < 0) return null
+    const working = offers
+      .filter((o) => validPercent(o.percent) && worksOn(o, e.date))
+      .map((o) => o.percent)
+    const rungs = working.some((p) => p >= ladderStartPercent)
+      ? working.filter((p) => p >= ladderStartPercent)
+      : working
+    return {
+      step: i + 1,
+      steps: days.length,
+      before: i > 0 ? highest.get(days[i - 1]!)! : (carried?.percent ?? null),
+      lowest: rungs.length > 0 && e.percent === Math.min(...rungs)
+    }
+  })
+}

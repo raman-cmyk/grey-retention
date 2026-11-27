@@ -5850,36 +5850,113 @@ export type Database = {
           }
         ]
       }
+      notification_events: {
+        Row: {
+          created_at: string
+          event_key: string
+          item_key: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_key: string
+          item_key: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          event_key?: string
+          item_key?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'notification_events_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      notification_settings: {
+        Row: {
+          email_on: boolean
+          email_since: string | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          email_on?: boolean
+          email_since?: string | null
+          tenant_id: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          email_on?: boolean
+          email_since?: string | null
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'notification_settings_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'notification_settings_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       notifications: {
         Row: {
           created_at: string
           entity_id: string | null
+          event_key: string | null
+          href: string | null
           id: string
           kind: string
           message: string
           read_at: string | null
           recipient_id: string
           tenant_id: string
+          updated_at: string
         }
         Insert: {
           created_at?: string
           entity_id?: string | null
+          event_key?: string | null
+          href?: string | null
           id?: string
           kind: string
           message: string
           read_at?: string | null
           recipient_id: string
           tenant_id: string
+          updated_at?: string
         }
         Update: {
           created_at?: string
           entity_id?: string | null
+          event_key?: string | null
+          href?: string | null
           id?: string
           kind?: string
           message?: string
           read_at?: string | null
           recipient_id?: string
           tenant_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -8223,6 +8300,17 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      claim_notification_emails: {
+        Args: { lim?: number }
+        Returns: {
+          href: string
+          kind: string
+          message: string
+          notification_id: string
+          recipient_id: string
+          tenant_id: string
+        }[]
+      }
       claim_platform_job: {
         Args: { kinds: string[]; subject?: string }
         Returns: {
@@ -8858,6 +8946,10 @@ export type Database = {
           uses: number
           width: number
         }[]
+      }
+      mark_notifications_read: {
+        Args: { ids?: string[]; t: string }
+        Returns: number
       }
       my_pending_invites: {
         Args: never
@@ -9597,6 +9689,10 @@ export type Database = {
       set_max_discount: {
         Args: { expected_revision: number; percent: number; t: string }
         Returns: number
+      }
+      set_notification_email: {
+        Args: { t: string; turn_on: boolean }
+        Returns: boolean
       }
       set_planning_preferences: {
         Args: {

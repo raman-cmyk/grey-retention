@@ -1,5 +1,5 @@
 begin;
-select plan(66);
+select plan(67);
 
 -- PICK-101: list hygiene. Workspace 101: owner ...01, staff ...05, admin
 -- ...06. Workspace 102: owner ...04.
@@ -31,6 +31,14 @@ select ok(has_function_privilege('authenticated','public.retry_list_hygiene(uuid
   and not has_function_privilege('anon','public.retry_list_hygiene(uuid)','execute')
   and not has_function_privilege('service_role','public.retry_list_hygiene(uuid)','execute'),
   'only signed-in members may call retry_list_hygiene (it checks the owner itself); never anon or the worker');
+-- Lock order, as PICK-107's finish_email_push: the workspace first, then the build, then the row.
+select ok((select position('from public.tenants where id = t for share' in prosrc) > 0
+    and position('from public.tenants where id = t for share' in prosrc)
+      < position('private.leased_email_build(build, lease' in prosrc)
+    and position('private.leased_email_build(build, lease' in prosrc)
+      < position('from public.klaviyo_hygiene_segments s where s.tenant_id = t and s.rule_key = rule for update' in prosrc)
+  from pg_proc where proname = 'save_hygiene_segment'),
+  'save_hygiene_segment locks the workspace, then the build, then its row');
 select ok(has_function_privilege('service_role','public.save_hygiene_segment(uuid,uuid,text,jsonb)','execute')
   and not has_function_privilege('authenticated','public.save_hygiene_segment(uuid,uuid,text,jsonb)','execute')
   and not has_function_privilege('anon','public.save_hygiene_segment(uuid,uuid,text,jsonb)','execute'),

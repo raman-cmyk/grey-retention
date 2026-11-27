@@ -14,6 +14,8 @@ import { runStrategyRuns } from '@/features/strategy/worker'
 import { onboardedStrategyData } from '@/features/onboarding/strategy-data'
 import { runEmailBuilds } from '@/features/email-build/worker'
 import { draftPusherFor } from '@/features/klaviyo-push/live'
+import { sendNoticeEmails } from '@/features/notifications/email'
+import { notificationMailer } from '@/lib/providers/notification-email'
 
 /** Time the sweep gives to plan steps before the workspace jobs. */
 const planBudgetMs = 5_000
@@ -117,12 +119,23 @@ export async function GET(request: NextRequest) {
       },
       { status: 503, headers: noStore }
     )
+  // PICK-107: notification emails, where the owner turned them on, behind
+  // the same dispatch gate as the workspace jobs. The
+  // mailer is the fake one (nothing is sent); each notice is claimed once.
+  const notices = await sendNoticeEmails(db, notificationMailer()).catch(
+    (error) => {
+      logger.error('Notification emails could not run', {
+        code: (error as { code?: string }).code ?? 'notice_email_error'
+      })
+      return { sent: 0 }
+    }
+  )
   if (Date.now() - started > schedulerLatestMs) {
     logger.warn('Scheduled jobs left for the next run', {
       code: 'sweep_out_of_time'
     })
     return NextResponse.json(
-      { live: false, skipped: 'out_of_time', inbox, plans, emails },
+      { live: false, skipped: 'out_of_time', inbox, plans, emails, notices },
       { headers: noStore }
     )
   }
@@ -137,7 +150,7 @@ export async function GET(request: NextRequest) {
     })
     logger.info('Scheduled job run finished', run)
     return NextResponse.json(
-      { live: false, ...run, inbox, plans, emails },
+      { live: false, ...run, inbox, plans, emails, notices },
       { headers: noStore }
     )
   } catch (error) {
