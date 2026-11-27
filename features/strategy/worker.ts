@@ -171,7 +171,9 @@ export async function runStrategyRuns(
           ...input,
           brand: {
             ...input.brand,
-            maxDiscountPercent: offers.maxDiscountPercent
+            maxDiscountPercent: offers.maxDiscountPercent,
+            // PLN-039b: a code over the margin floor's cap is named for it.
+            ...(offers.limitedBy ? { limitedBy: offers.limitedBy } : {})
           },
           codes: listed.codes
         }

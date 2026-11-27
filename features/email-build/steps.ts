@@ -539,6 +539,8 @@ export async function runBuildStep(
         })),
         blocks: drawn.draft.blocks,
         brand: store.brand,
+        // Pick #3: the brand's real web fonts, when the Site reader kept any.
+        ...(store.fonts?.length ? { fonts: store.fonts } : {}),
         saved,
         // DST-002b: the inbox email the sections step picked, if any.
         ...(sections.reference
