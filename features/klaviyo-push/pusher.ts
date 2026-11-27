@@ -3,6 +3,7 @@ import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import { logger } from '@/lib/logger'
 import { fingerprints, norm, seen } from './fingerprints'
 import { shownOf, shownText, stillOurs, type Shown } from './shown'
+import { hygieneExclusion, type HygieneStore } from './hygiene'
 import {
   KlaviyoError,
   type KlaviyoClient
@@ -304,6 +305,11 @@ function timed(
 type Deps = {
   source: PushSource
   store: PushStore
+  /**
+   * PICK-101: list hygiene's exclusion segment, made or reused before the
+   * campaign; missing: the campaign leaves nobody out.
+   */
+  hygiene?: HygieneStore
   now?: () => Date
   /** The longest one push may take (default 30 s), each request at most `callMs`. */
   budgetMs?: number
@@ -831,6 +837,16 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       else if (ago(p.createStartedAt) < showMs) throw new Wait()
     }
     if (!p.campaignId) {
+      // 4a. PICK-101: list hygiene's segment, which the campaign leaves out.
+      const hygiene = deps.hygiene
+        ? await hygieneExclusion(
+            client,
+            { tenantId: input.tenantId, build: ref.build, lease: ref.lease },
+            deps.hygiene,
+            now
+          )
+        : { excluded: [] }
+      if (hygiene === 'wait') throw new Wait()
       fits(1)
       if (!p.createStartedAt)
         await save({
@@ -841,7 +857,8 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
         name: input.name,
         description: pushMark(ref.key),
         audienceId: input.audienceId,
-        timezone: await deps.source.timezone(input.tenantId)
+        timezone: await deps.source.timezone(input.tenantId),
+        excluded: hygiene.excluded
       })
       await save({ campaignId, audienceId: input.audienceId })
     }

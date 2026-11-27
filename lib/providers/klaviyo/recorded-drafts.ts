@@ -77,6 +77,8 @@ type Campaign = {
   description: string
   createdAt: string
   included: string[]
+  /** PICK-101: what the campaign leaves out (GROS's hygiene segment). */
+  excluded?: string[]
   audienceRef: string
   messageIds: string[]
 }
@@ -449,12 +451,16 @@ export function fakeDraftAccount(
         return bad()
       const included = (audiences[0] as Obj).included as string[]
       if (!included.every((x) => account.audiences.has(x))) return bad()
+      const out = (audiences[0] as Obj).excluded ?? []
+      if (!Array.isArray(out) || !out.every(kid)) return bad()
+      const excluded = out as string[]
       const cid = id('Cmp')
       account.campaigns.set(cid, {
         name: definition.name as string,
         description: (definition.description as string | undefined) ?? '',
         createdAt: now().toISOString(),
         included,
+        excluded,
         audienceRef: id('Aud'),
         messageIds: []
       })

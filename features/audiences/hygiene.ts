@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { grosSegmentNamePattern } from '@/lib/providers/klaviyo/segment-name'
+import type { HygieneMetrics } from '@/lib/providers/klaviyo/segments'
 import type {
   LastSeen,
   ProfileFacts,
@@ -272,15 +273,7 @@ export function hygieneRuleLines(rule: HygieneRule) {
 // --- The Klaviyo segment GROS keeps for this rule -------------------------
 
 /** The Klaviyo metrics the segment reads (their ids in this account). */
-export type HygieneMetrics = {
-  receivedEmail: string | null
-  clickedEmail: string | null
-  openedEmail: string | null
-  /** Missing in a store without Klaviyo's site tracking. */
-  activeOnSite: string | null
-  /** Missing in a store without order data. */
-  placedOrder: string | null
-}
+export type { HygieneMetrics }
 
 /**
  * The Opened Email property Klaviyo sets on Apple privacy (machine) opens.
