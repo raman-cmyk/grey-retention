@@ -148,4 +148,47 @@ describe('the keepLook swap (DES-ENGINE-003b)', () => {
       'has a picture whose words state an offer, a price or a condition GROS cannot check against your facts'
     )
   })
+
+  it('rebuilds kept menu or picture words that hold a deadline, keeps a number in a name', () => {
+    const run = (nav: string | null, alt: string | null) => {
+      const source = own()
+      if (nav !== null)
+        source.sections[0]!.items = [
+          text({ role: 'nav', runs: [{ text: nav }] }),
+          ...source.sections[0]!.items.slice(1)
+        ]
+      if (alt !== null)
+        source.sections[0]!.items[0] = image({
+          role: 'hero_photo',
+          src: 'https://email-uploads.invalid/0.png',
+          alt
+        })
+      const got = swapBrand({
+        source,
+        brand: testBrand,
+        products: testProducts,
+        words: testWords,
+        rules: testRules,
+        keepLook: true
+      })
+      expect(got.ok).toBe(true)
+      return got.ok ? got.blocked.get(1) : 'not ok'
+    }
+    for (const words of [
+      'Order by Dec 20 for Christmas',
+      'Last chance: 48 hours',
+      'Ships in 2 days'
+    ]) {
+      expect(run(words, null), words).toBe(
+        'has menu words with an offer, a price or a condition GROS cannot check against your facts'
+      )
+      expect(run(null, words), words).toBe(
+        'has a picture whose words state an offer, a price or a condition GROS cannot check against your facts'
+      )
+    }
+    for (const words of ['Slice 1', '2026', 'Women · Men · Kids']) {
+      expect(run(words, null), words).toBeUndefined()
+      expect(run(null, words), words).toBeUndefined()
+    }
+  })
 })

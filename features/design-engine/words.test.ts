@@ -1,10 +1,47 @@
 import { describe, expect, it } from 'vitest'
-import { cutTo, holdsFacts, wordPicker, wordsAllowed } from './words'
+import {
+  cutTo,
+  holdsFacts,
+  holdsKeptFacts,
+  wordPicker,
+  wordsAllowed
+} from './words'
 import { shorten, trimTo } from './copy'
 
 const rules = { offer: { code: 'FERN15', percent: 15 }, maxDiscountPercent: 20 }
 
 describe('brand words', () => {
+  it('kept words: a number in a name passes, a deadline or a date does not (DES-ENGINE-003b)', () => {
+    for (const words of [
+      'Order by Dec 20 for Christmas',
+      'Last chance: 48 hours',
+      'Ships in 2 days',
+      'Order before 5 for next-day dispatch',
+      'Open until 9',
+      'Sale ends Sunday at 9 pm',
+      'Only 3 left',
+      'Back on 20/12',
+      'Doors open 9:00',
+      'Delivered by the 20th',
+      'Dec 2026 drop',
+      '40% OFF',
+      'From $25',
+      'Free shipping'
+    ])
+      expect(holdsKeptFacts(words), words).toBe(true)
+    for (const words of [
+      'Slice 1',
+      'Slice 2 of the hero',
+      '2026',
+      'Autumn 2026',
+      'The 2026 collection',
+      'Women · Men · Kids',
+      'Look 3',
+      'New in · Tea · Gifts'
+    ])
+      expect(holdsKeptFacts(words), words).toBe(false)
+  })
+
   it('only the email’s own offer and code', () => {
     expect(wordsAllowed('15% off loose leaf', rules)).toBe(true)
     expect(wordsAllowed('Use code FERN15', rules)).toBe(true)

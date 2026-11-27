@@ -25,6 +25,7 @@ import {
 import {
   cutTo,
   holdsFacts,
+  holdsKeptFacts,
   wordPicker,
   wordsAllowed,
   type Lengthen,
@@ -281,12 +282,9 @@ export function swapBrand(input: SwapInput): SwapResult {
    */
   const keptWordsOk = (words: string) =>
     !words.trim() ||
-    (wordsAllowed(words, allowedRules) &&
-      // A plain number ("Slice 1", "Autumn 2026") is no offer; a percent,
-      // money, a date word or a condition is.
-      !holdsFacts(
-        words.replace(/(?<![$€£¥₹\d.,])\b\d+\b(?![.,]?\d|\s*%)/g, '')
-      ))
+    // A plain number in a name ("Slice 1", "Autumn 2026") is no offer; a
+    // percent, money, a deadline ("Ships in 2 days") or a condition is.
+    (wordsAllowed(words, allowedRules) && !holdsKeptFacts(words))
   const blocked = new Map<number, string>()
   const block = (s: Section, why: string) => {
     if (!blocked.has(s.ordinal)) blocked.set(s.ordinal, why)
