@@ -23,8 +23,10 @@ import { blueprintFrom } from './measure'
  * DES-ENGINE-003: the leak check's hidden marks, and the upload measuring
  * (.2: marks after a slash are removed too, more invisible characters).
  * DES-ENGINE-004: the block job's quality drawing (`checkBlock`).
+ * PICK-006 (.3): the brand's design tokens in the swap (button, picture and
+ * card corners, the button's look) and in Scratch's layouts (spaces, type).
  */
-export const ENGINE_VERSION = '2026-11-27.2'
+export const ENGINE_VERSION = '2026-11-27.3'
 
 /** A web address written in words, blanked letter for letter (its length stays). */
 /**
