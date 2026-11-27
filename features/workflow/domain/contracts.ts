@@ -293,14 +293,8 @@ export interface CommercePort {
     synthetic: boolean
   }>
 }
-export interface NotificationPort {
-  deliver(input: {
-    tenantId: string
-    recipientId: string
-    template: string
-    idempotencyKey: string
-  }): Promise<{ reference: string; simulated: boolean }>
-}
+// PICK-107: the port lives with its adapter in lib (lib never imports features).
+export type { NotificationPort } from '@/lib/providers/notification-email'
 export interface RendererPort {
   render(input: {
     copyRevision: number
