@@ -135,6 +135,13 @@ jobs:
           DESIGN_ENGINE_BROWSER: 'on'
           DESIGN_GOLDEN_OUT: design-golden
         run: pnpm exec vitest run features/email-build/scratch.browser.test.ts
+      # PICK-006: the token gate's coded-block half (the Scratch half runs
+      # above); pictures in design-golden/tokens.
+      - name: Design tokens on the coded blocks
+        env:
+          DESIGN_ENGINE_BROWSER: 'on'
+          DESIGN_GOLDEN_OUT: design-golden
+        run: pnpm exec vitest run features/email-build/tokens.browser.test.ts
       - name: Uploaded emails measured as the upload job measures them
         env:
           DESIGN_ENGINE_BROWSER: 'on'
