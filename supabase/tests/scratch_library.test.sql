@@ -1,5 +1,5 @@
 begin;
-select plan(34);
+select plan(35);
 
 -- DES-ENGINE-004b: a Scratch build asks for its copy from library blocks
 -- it may use; owners and admins hide a layout for their workspace.
@@ -42,6 +42,10 @@ begin
     values (b, message, upload, n);
   return b;
 end $$;
+-- One more email that used a block's layout (at section `n`).
+create function pg_temp.used_by_n(b uuid, message uuid, n int) returns void language sql as $$
+  insert into public.library_block_sources(block_id, inbox_message_id, ordinal) values (b, message, n)
+$$;
 -- One more email that used a block's layout.
 create function pg_temp.used_by(b uuid, message uuid) returns void language sql as $$
   insert into public.library_block_sources(block_id, inbox_message_id, ordinal) values (b, message, 39)
@@ -107,6 +111,19 @@ select is((select array_agg(id::text order by id::text) from public.library_bloc
   'a hidden brand''s layouts are never offered, unless an email it may use also used the layout');
 select is((select emails->0->>'message' from public.library_blocks_for('00000000-0000-4000-8000-000000000101')
   where id = current_setting('test.revived')::uuid), current_setting('test.ms'), 'with only the emails it may use, for the Observer check');
+-- More than 20 emails used a layout: the 20 sent keep the geometry's email first.
+reset role;
+select set_config('test.many', pg_temp.block(9, null, 'passed', pg_temp.email(100, 'lib-b.example', true))::text, true);
+select pg_temp.used_by_n(current_setting('test.many')::uuid, pg_temp.email(100 + i, 'lib-b.example', true), i)
+  from generate_series(1, 24) i;
+-- Its geometry's email sorts after every other one.
+update public.competitor_emails set id = 'ffffffff-ffff-4fff-bfff-ffffffffffff'
+  where inbox_message_id = (select geometry_message from public.library_blocks where id = current_setting('test.many')::uuid);
+select pg_temp.as_job();
+select is((select jsonb_array_length(emails) || '/' || (emails->0->>'message')
+  from public.library_blocks_for('00000000-0000-4000-8000-000000000101') where id = current_setting('test.many')::uuid),
+  '20/' || (select geometry_message::text from public.library_blocks where id = current_setting('test.many')::uuid),
+  'at most 20 emails, the geometry''s first even when its id sorts last');
 select is((select count(*)::int from public.library_blocks_check('00000000-0000-4000-8000-000000000101',
   array[current_setting('test.a')::uuid])), 0, 'nor pass the check at reference time');
 reset role;

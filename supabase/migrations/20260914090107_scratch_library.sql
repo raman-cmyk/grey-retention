@@ -86,11 +86,14 @@ create or replace function private.library_block_emails(t uuid, b public.library
 returns jsonb language sql stable security definer set search_path = '' as $$
   select coalesce(jsonb_agg(jsonb_build_object('id', x.id, 'message', x.inbox_message_id, 'external_id', x.external_id,
       'synthetic', x.synthetic) order by x.first desc, x.id), '[]'::jsonb)
-  from (select distinct on (e.id) e.id, e.inbox_message_id, e.external_id, e.synthetic,
-          e.inbox_message_id is not distinct from b.geometry_message as first
-        from public.library_block_sources s join public.competitor_emails e on e.inbox_message_id = s.inbox_message_id
-        where b.tenant_id is null and s.block_id = b.id and private.email_usable(t, s.inbox_message_id)
-        order by e.id
+  from (select y.* from (
+          select distinct on (e.id) e.id, e.inbox_message_id, e.external_id, e.synthetic,
+            e.inbox_message_id is not distinct from b.geometry_message as first
+          from public.library_block_sources s join public.competitor_emails e on e.inbox_message_id = s.inbox_message_id
+          where b.tenant_id is null and s.block_id = b.id and private.email_usable(t, s.inbox_message_id)
+          order by e.id) y
+        -- The geometry's email first, then the rest: the cut keeps it.
+        order by y.first desc, y.id
         limit 20) x
 $$;
 revoke all on function private.library_block_emails(uuid, public.library_blocks) from public, anon, authenticated, service_role;
