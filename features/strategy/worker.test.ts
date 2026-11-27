@@ -209,6 +209,35 @@ describe('running plan steps (the code-only path)', () => {
     expect(plan.notes.length).toBeLessThanOrEqual(10)
   })
 
+  it('drops guidance it cannot read, logs it, and still plans', async () => {
+    const { db, calls } = fakeDb([
+      run({ state: 'plan_queued', pulse, offer_pick: { mode: 'auto' } })
+    ])
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+    const guidance = vi.fn(async () => ({
+      goals: [
+        {
+          month: '2026-11-01',
+          label: 'November 2026',
+          sentence: 'Far more emails needed than fit.',
+          emailsNeeded: 19_999,
+          emailsPossible: 6,
+          needsStrongerEmails: true,
+          pace: 'behind' as const
+        }
+      ]
+    }))
+    expect(await runStrategyRuns(db, { guidance })).toEqual({ ran: 1 })
+    expect(warn).toHaveBeenCalledWith('Plan guidance dropped', {
+      code: 'guidance_invalid'
+    })
+    warn.mockRestore()
+    const plan = calls.find((c) => c.fn === 'finish_strategy_plan')!.args
+      .result as StoredPlan
+    expect(plan.goal).toBeUndefined()
+    expect(plan.slots.length).toBeGreaterThan(0)
+  })
+
   it('plans without the guidance when it cannot be read', async () => {
     const { db, calls } = fakeDb([
       run({ state: 'plan_queued', pulse, offer_pick: { mode: 'auto' } })

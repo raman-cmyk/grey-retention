@@ -19,6 +19,7 @@ import {
 } from './competitors'
 import {
   goalLines,
+  readGuidance,
   planFifteenDays,
   samplePlan,
   unusedOffersNote,
@@ -273,10 +274,18 @@ export async function runStrategyRuns(
           sendsPerWeek: store.plan.sendsPerWeek,
           offers: usable.length,
           now: now()
-        }).catch((error: unknown) => {
-          logger.warn('Plan guidance not read', { code: stepCode(error) })
-          return {}
         })
+          .then((read) => {
+            // Advice only: one the plan cannot read is dropped, logged.
+            const checked = readGuidance(read)
+            if (!checked)
+              logger.warn('Plan guidance dropped', { code: 'guidance_invalid' })
+            return checked ?? {}
+          })
+          .catch((error: unknown) => {
+            logger.warn('Plan guidance not read', { code: stepCode(error) })
+            return {}
+          })
         const planInput = {
           ...store.plan,
           start: run.start_on,

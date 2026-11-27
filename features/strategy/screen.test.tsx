@@ -80,10 +80,14 @@ describe('the revenue goal on the Plan screen (#33)', () => {
           }),
           owner
         )}
+        assistant="Ava"
       />
     )
     const card = screen.getByRole('region', { name: 'Revenue goal' })
     expect(card).toHaveTextContent('November 2026')
+    // The white label's own name, never "GROS".
+    expect(card).toHaveTextContent('from the emails Ava made.')
+    expect(card).not.toHaveTextContent('GROS')
     expect(card).toHaveTextContent(
       '$12,400 still needed by 30 November. This plan has 2 emails in November 2026.'
     )

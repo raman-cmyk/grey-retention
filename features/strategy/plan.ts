@@ -14,7 +14,7 @@ import {
   letterKinds,
   type LetterKind
 } from '@/features/letter/kind-list'
-import { offerLadder } from '@/features/offers/ladder'
+import { ladderStartPercent, offerLadder } from '@/features/offers/ladder'
 import { mixKindOf, type MixKind } from '@/features/results/mix'
 
 /**
@@ -91,50 +91,67 @@ const planInputSchema = z.object({
       z.object({
         date: isoDate,
         audienceId: z.string().min(1),
-        offer: z.boolean()
+        offer: z.boolean(),
+        // #40: its percent, when known (the ladder never restarts below it).
+        percent: z.int().min(1).max(100).nullable().optional()
       })
     )
     .max(200),
   founderNote: z.boolean().optional(),
-  guidance: z
+  // Checked on its own (`readGuidance`): a broken one is dropped, never thrown.
+  guidance: z.unknown().optional()
+})
+
+/** The most emails a goal can be said to need (`goalGuidance` clamps to it). */
+export const maxEmailsNeeded = 10_000
+
+const guidanceSchema = z.object({
+  goals: z
+    .array(
+      z.object({
+        month: isoDate,
+        label: z.string().min(1).max(40),
+        sentence: z.string().min(1).max(400),
+        emailsNeeded: z.int().min(0).max(maxEmailsNeeded).nullable(),
+        emailsPossible: z.int().min(0).max(100),
+        needsStrongerEmails: z.boolean(),
+        pace: z.enum(['met', 'on_track', 'behind', 'missed', 'unknown'])
+      })
+    )
+    .max(2)
+    .optional(),
+  mix: z
     .object({
-      goals: z
-        .array(
-          z.object({
-            month: isoDate,
-            label: z.string().min(1).max(40),
-            sentence: z.string().min(1).max(400),
-            emailsNeeded: z.int().min(0).max(10_000).nullable(),
-            emailsPossible: z.int().min(0).max(100),
-            needsStrongerEmails: z.boolean(),
-            pace: z.enum(['met', 'on_track', 'behind', 'missed', 'unknown'])
-          })
-        )
-        .max(2)
-        .optional(),
-      mix: z
-        .object({
-          counts: z.object({
-            offer: z.int().min(0).max(100),
-            story: z.int().min(0).max(100),
-            education: z.int().min(0).max(100),
-            product: z.int().min(0).max(100)
-          }),
-          basis: z.enum(['default', 'learned'])
-        })
-        .optional(),
-      competitors: z
-        .array(
-          z.object({
-            id: z.string().regex(/^competitor-[a-z]+:\d{1,3}$/),
-            fact: z.string().min(1).max(400)
-          })
-        )
-        .max(12)
-        .optional()
+      counts: z.object({
+        offer: z.int().min(0).max(100),
+        story: z.int().min(0).max(100),
+        education: z.int().min(0).max(100),
+        product: z.int().min(0).max(100)
+      }),
+      basis: z.enum(['default', 'learned'])
     })
+    .optional(),
+  competitors: z
+    .array(
+      z.object({
+        id: z.string().regex(/^competitor-[a-z]+:\d{1,3}$/),
+        fact: z.string().min(1).max(400)
+      })
+    )
+    .max(12)
     .optional()
 })
+
+/**
+ * PICK-WIRE: the plan's guidance if it is in the shape the plan reads,
+ * else undefined (the plan is made without it; the plan step logs it).
+ * Guidance is advice: it never stops a plan.
+ */
+export function readGuidance(raw: unknown): PlanGuidance | undefined {
+  if (raw === undefined) return undefined
+  const read = guidanceSchema.safeParse(raw)
+  return read.success ? (read.data as PlanGuidance) : undefined
+}
 
 /**
  * PICK-WIRE: what the 15 days work toward and from, all optional (read by
@@ -191,7 +208,13 @@ export type PlanInput = {
    * Sends already planned from 7 days before `start` to the last day: they
    * count against the weekly cap, the offer share and the offer spacing.
    */
-  existing: { date: string; audienceId: string; offer: boolean }[]
+  existing: {
+    date: string
+    audienceId: string
+    offer: boolean
+    /** #40: an offer email's percent, when known. */
+    percent?: number | null
+  }[]
   /**
    * DST-PIC #24: the store has the founder's own note, so a text email may
    * be a founder note (missing: it has none).
@@ -206,12 +229,15 @@ export type PlanInput = {
  * a pulse for other days); keeps only offers that are in the pulse.
  */
 export function readPlanInput(raw: PlanInput): PlanInput {
-  const input = planInputSchema.parse(raw) as PlanInput
-  if (input.pulse.start !== input.start)
+  const parsed = planInputSchema.parse(raw) as PlanInput
+  if (parsed.pulse.start !== parsed.start)
     throw new Error('The pulse is for other days; run it again.')
+  const { guidance: rawGuidance, ...input } = parsed
+  const guidance = readGuidance(rawGuidance)
   const pulseOffers = new Map(input.pulse.offers.map((o) => [o.id, o]))
   return {
     ...input,
+    ...(guidance ? { guidance } : {}),
     // Only the pulse's own offers, with its codes, percents and end dates.
     offers: input.offers.flatMap((o) => {
       const real = pulseOffers.get(o.id)
@@ -648,6 +674,7 @@ export type CalendarRule =
   | 'audience_cap'
   | 'offer_spacing'
   | 'offer_share'
+  | 'offer_ladder'
 export type Problem = { rule: CalendarRule | 'critic'; text: string }
 
 const weekOf = (date: string) => localWeek(`${date}T12:00:00Z`, 'UTC')
@@ -950,8 +977,11 @@ export function keepPassing(
  * it still works. The allowed offers are already within the owner's
  * biggest discount and margin floor (`discountCap`), so the ladder never
  * goes above either. It replaces the offer each email was planned with
- * (counted in `changed`); an offer email no code can hold without stepping
- * down is dropped, and the plan is checked again (`keepPassing`).
+ * (counted in `changed`, which the plan step logs); an offer email no code
+ * can hold without stepping down is dropped, and the plan is checked again
+ * (`keepPassing`). Offer emails already planned before these days whose
+ * percent is known (`input.existing`) set where the sale picks up: never
+ * back at 10% right after a 25% email, when a code of 25% or more works.
  */
 export function withOfferLadder(
   slots: Slot[],
@@ -963,9 +993,15 @@ export function withOfferLadder(
   )
   if (!offerAt.length)
     return { kept: slots, dropped: [] as Problem[][], changed: 0 }
+  const before = input.existing.flatMap((e) =>
+    e.offer && e.date < input.start && typeof e.percent === 'number'
+      ? [e.percent]
+      : []
+  )
   const picks = offerLadder(
     offerAt.map((i) => slots[i]!.date),
-    input.offers
+    input.offers,
+    Math.max(ladderStartPercent, ...before)
   )
   const next = slots.map((s) => ({ ...s }))
   const issues = new Map<number, Problem[]>()
@@ -975,7 +1011,7 @@ export function withOfferLadder(
     if (!p.offer)
       issues.set(i, [
         {
-          rule: 'offer_ended',
+          rule: 'offer_ladder',
           text: 'no allowed offer works that day without a smaller one.'
         }
       ])
@@ -1348,6 +1384,15 @@ export async function planFifteenDays(
         ].sort()
       }
     )
+  if (ladder.changed)
+    await log(
+      'calendar-rules',
+      'offer_ladder',
+      `${count(ladder.changed)} planned with another offer than the ladder's.`,
+      `Gave ${ladder.changed === 1 ? 'it' : 'them'} the offer ladder's code: the sale starts with the smallest offer and steps up.`,
+      1,
+      { changed: ladder.changed }
+    )
   if (changed)
     await log(
       'calendar-rules',
@@ -1408,6 +1453,8 @@ export const ruleWords: Record<CalendarRule | 'critic', string> = {
   audience_cap: 'that audience already gets enough emails that week',
   offer_spacing: 'it was too close to another offer email',
   offer_share: 'too many of that week’s emails carried an offer',
+  offer_ladder:
+    'none of your offers still worked that day without going below an earlier offer email',
   critic: 'the strategy check still found a problem'
 }
 

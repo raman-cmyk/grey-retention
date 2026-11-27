@@ -14,7 +14,7 @@ import {
 import { developmentPolicy } from '@/features/workflow/domain/policy'
 import { logger } from '@/lib/logger'
 import type { Database } from '@/lib/supabase/database.types'
-import type { PlanGuidance } from './plan'
+import { maxEmailsNeeded, type PlanGuidance } from './plan'
 import { addDays, pulseDays } from './pulse'
 
 type Db = SupabaseClient<Database>
@@ -117,7 +117,10 @@ export function goalGuidance(input: {
             month,
             label: monthLabel(month),
             sentence: cut(progress.sentence, 400),
-            emailsNeeded: progress.emailsNeeded,
+            emailsNeeded:
+              progress.emailsNeeded === null
+                ? null
+                : Math.min(maxEmailsNeeded, Math.max(0, progress.emailsNeeded)),
             emailsPossible: Math.min(100, progress.emailsPossible),
             needsStrongerEmails: progress.needsStrongerEmails,
             pace: progress.pace

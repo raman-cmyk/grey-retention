@@ -9,6 +9,7 @@ import {
   goalLines,
   guidanceNotes,
   planEvidence,
+  readGuidance,
   readPlanInput,
   samplePlan,
   withOfferLadder,
@@ -162,7 +163,40 @@ describe('the offer ladder in the plan (#40)', () => {
     ])
     expect(kept).toHaveLength(5)
     expect(dropped).toHaveLength(1)
-    expect(dropped[0]![0]!.rule).toBe('offer_ended')
+    expect(dropped[0]![0]!.rule).toBe('offer_ladder')
+  })
+
+  it('picks a sale up where the last planned offer email left it, never back at 10%', () => {
+    const after25 = {
+      ...sale,
+      existing: [
+        {
+          date: '2026-11-12',
+          audienceId: 'aud-engaged',
+          offer: true,
+          percent: 25
+        }
+      ]
+    }
+    expect(
+      withOfferLadder(
+        [offerOn('2026-11-23'), ...others],
+        after25,
+        saleBrief
+      ).kept.find((s) => s.offerId)!.offerId
+    ).toBe('offer:BIG25')
+    // A percent not known: the ladder starts low, as before.
+    const unknown = {
+      ...sale,
+      existing: [{ date: '2026-11-12', audienceId: 'aud-engaged', offer: true }]
+    }
+    expect(
+      withOfferLadder(
+        [offerOn('2026-11-23'), ...others],
+        unknown,
+        saleBrief
+      ).kept.find((s) => s.offerId)!.offerId
+    ).toBe('offer:SMALL10')
   })
 
   it('gives the sample plan its offer from the ladder, its fact citing that code', () => {
@@ -207,14 +241,23 @@ describe('the plan’s guidance (#33, #37, #48, #49)', () => {
   }
   const guided: PlanInput = { ...input, guidance }
 
-  it('keeps the guidance when it reads the input, and refuses a broken one', () => {
+  it('keeps the guidance when it reads the input, and drops a broken one without stopping the plan', () => {
     expect(readPlanInput(guided).guidance).toEqual(guidance)
-    expect(() =>
-      readPlanInput({
-        ...input,
-        guidance: { competitors: [{ id: 'pattern:1', fact: 'Not theirs.' }] }
-      })
-    ).toThrow()
+    const broken = {
+      ...input,
+      guidance: { competitors: [{ id: 'pattern:1', fact: 'Not theirs.' }] }
+    }
+    expect(readPlanInput(broken).guidance).toBeUndefined()
+    expect(readGuidance(broken.guidance)).toBeUndefined()
+    expect(samplePlan(broken).slots.length).toBeGreaterThan(0)
+    // Too many emails needed for the shape: dropped, never thrown.
+    const huge = {
+      ...input,
+      guidance: {
+        goals: [{ ...guidance.goals[0]!, emailsNeeded: 19_999 }]
+      }
+    }
+    expect(samplePlan(huge).goal).toBeUndefined()
   })
 
   it('gives the Brief writer the goal and the followed brands’ facts, and the planner the mix', () => {

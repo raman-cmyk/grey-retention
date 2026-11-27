@@ -9,6 +9,9 @@ import {
   offersThatFit,
   planGuidance
 } from './guidance'
+import { maxEmailsNeeded, samplePlan } from './plan'
+import { codePulse, gatherEvidence } from './pulse'
+import { sampleStore } from './sample'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
 let n = 0
@@ -71,6 +74,55 @@ describe('the plan’s guidance from the workspace’s own data (PICK-WIRE)', ()
     expect(offersThatFit(3, 3)).toBe(2)
     expect(offersThatFit(4, 3)).toBe(2)
     expect(offersThatFit(4, 0)).toBe(0)
+  })
+
+  it('caps a goal far beyond what emails earn, and the plan is still made (review: $10 an email, $200k)', () => {
+    const lines = [
+      line('2026-10-20T15:00:00Z', 10),
+      line('2026-11-03T15:00:00Z', 10),
+      line('2026-11-10T15:00:00Z', 10)
+    ]
+    const goals = goalGuidance({
+      goals: [
+        {
+          month: '2026-11-01',
+          goal: { month: '2026-11-01', amount: 200_000, currency: 'USD' }
+        }
+      ],
+      lines,
+      capped: false,
+      today: '2026-11-15',
+      timezone: 'America/New_York',
+      currency: 'USD',
+      sendsPerWeek: 3
+    })
+    expect(goals[0]).toMatchObject({
+      emailsNeeded: maxEmailsNeeded,
+      needsStrongerEmails: true
+    })
+    const store = sampleStore('2026-11-16')
+    const pulse = codePulse(gatherEvidence(store))
+    const plan = samplePlan({
+      industry: 'home',
+      start: '2026-11-16',
+      sendsPerWeek: 3,
+      sendTime: '10:00',
+      pulse,
+      offers: pulse.offers,
+      moves: [],
+      products: store.products.map((p) => ({
+        id: p.id,
+        title: p.title,
+        inStock: p.stock !== 0,
+        availableFrom: null
+      })),
+      audiences: [{ id: 'aud', label: 'Engaged subscribers' }],
+      blackouts: [],
+      existing: [],
+      guidance: { goals }
+    })
+    expect(plan.slots.length).toBeGreaterThan(0)
+    expect(plan.goal?.[0]?.month).toBe('2026-11-01')
   })
 
   it('works the month’s goal back to emails from the Results lines (#33)', () => {

@@ -4,7 +4,7 @@ import { ButtonLink } from '@/components/gros/button'
 import { Card } from '@/components/gros/card'
 import { DayStrip, type Day } from '@/components/gros/day-strip'
 import { ListRow, RowList, TextThumb } from '@/components/gros/list-row'
-import { AppPage, CardRow } from '@/components/gros/nav'
+import { AppPage, CardRow, defaultAssistant } from '@/components/gros/nav'
 import { Progress } from '@/components/gros/progress'
 import { Status } from '@/components/gros/status'
 import { EmptyState, ErrorState } from '@/components/gros/states'
@@ -20,10 +20,17 @@ import { KeepFresh } from './refresh'
  * components. Plan next 15 days, the offer pick and Create email are the
  * owner's clicks (D17); staff see the same screen without them.
  */
-export function PlanScreen({ view }: { view: View }) {
+export function PlanScreen({
+  view,
+  assistant = defaultAssistant
+}: {
+  view: View
+  /** The assistant's name (the white label may rename it). */
+  assistant?: string
+}) {
   return (
-    <AppPage current="plan" title="Plan">
-      <Body view={view} />
+    <AppPage current="plan" title="Plan" assistant={assistant}>
+      <Body view={view} assistant={assistant} />
     </AppPage>
   )
 }
@@ -37,7 +44,7 @@ const planButton = (label: string, kind: 'main' | 'outline' = 'main') => (
   <ActionButton action={startPlan} label={label} kind={kind} />
 )
 
-function Body({ view }: { view: View }) {
+function Body({ view, assistant }: { view: View; assistant: string }) {
   switch (view.kind) {
     case 'empty':
       return (
@@ -75,7 +82,7 @@ function Body({ view }: { view: View }) {
     case 'offers':
       return <Offers view={view} />
     case 'plan':
-      return <Plan view={view} />
+      return <Plan view={view} assistant={assistant} />
   }
 }
 
@@ -133,7 +140,13 @@ const dayOf = (d: Extract<View, { kind: 'plan' }>['days'][number]): Day => ({
   state: d.state === 'sample_draft' ? 'planned' : d.state
 })
 
-function Plan({ view }: { view: Extract<View, { kind: 'plan' }> }) {
+function Plan({
+  view,
+  assistant
+}: {
+  view: Extract<View, { kind: 'plan' }>
+  assistant: string
+}) {
   const working = view.emails
     .filter((e) => e.status.kind === 'working')
     .map((e) => e.slot)
@@ -164,8 +177,7 @@ function Plan({ view }: { view: Extract<View, { kind: 'plan' }> }) {
             ))}
           </ul>
           <p className="type-caption mt-[var(--space-3)] text-[var(--stone)]">
-            As of when this plan was made, from the emails GROS made. Change the
-            goal in Settings.
+            {`As of when this plan was made, from the emails ${assistant} made. Change the goal in Settings.`}
           </p>
         </Card>
       )}
