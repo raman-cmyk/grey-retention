@@ -4,6 +4,7 @@ import type { BuiltEmail } from './build'
 import {
   copiedLines,
   copyWords,
+  keptPicturesWords,
   uploadWords,
   type CopyInput,
   type CopyRecord,
@@ -184,5 +185,51 @@ describe('the design step of an email copied from an upload (DES-ENGINE-003b)', 
     expect(copiedLines({ sections: [], upload: 'other' })).toEqual([
       'Every section was copied from the email you added, with your brand’s colours, fonts, logo, words and photos.'
     ])
+  })
+
+  it('copies an upload only when at least half its sections are copied', async () => {
+    const little = record({
+      sections: [
+        { ordinal: 1, kind: 'header', result: 'copied', reason: null },
+        {
+          ordinal: 2,
+          kind: 'image',
+          result: 'library',
+          reason: 'Section 2 (picture) …'
+        },
+        {
+          ordinal: 3,
+          kind: 'text',
+          result: 'library',
+          reason: 'Section 3 (text) …'
+        }
+      ]
+    })
+    expect(
+      await step(
+        port(
+          { state: 'ready', design: 'own' },
+          { state: 'done', record: little }
+        ).port
+      )
+    ).toEqual({
+      kind: 'coded',
+      reasonCode: 'library_too_little',
+      reason: copyWords.uploadTooLittle(1, 3)
+    })
+  })
+
+  it('says how much of the own design was kept, and to check offers written in its pictures', () => {
+    const lines = copiedLines({ sections: record().sections, upload: 'own' })
+    expect(lines[0]).toMatch(/^Your own design was kept in 1 of its 2 sections/)
+    expect(lines.at(-1)).toBe(keptPicturesWords)
+    expect(
+      copiedLines({
+        sections: [
+          { ordinal: 1, kind: 'header', result: 'copied', reason: null }
+        ],
+        upload: 'own'
+      })[0]
+    ).toMatch(/^Your own design was kept, every section/)
   })
 })

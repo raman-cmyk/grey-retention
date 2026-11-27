@@ -290,7 +290,9 @@ export function libraryPortsFor(
 export async function uploadPictureLinks(
   db: Db,
   tenant: string,
-  upload: string
+  upload: string,
+  /** How long the links work: 30 days for a draft, minutes for a preview. */
+  seconds: number = copyPhotoLinkSeconds
 ): Promise<Map<number, string> | null> {
   const row = await db
     .from('email_uploads')
@@ -330,7 +332,7 @@ export async function uploadPictureLinks(
       return null
     paths.push(path)
   }
-  const signed = await files.createSignedUrls(paths, copyPhotoLinkSeconds)
+  const signed = await files.createSignedUrls(paths, seconds)
   if (signed.error) throw signed.error
   for (const [n, s] of (signed.data ?? []).entries()) {
     if (!s.signedUrl || s.error) return null

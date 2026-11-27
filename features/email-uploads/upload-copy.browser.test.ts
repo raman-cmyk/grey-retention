@@ -41,13 +41,20 @@ vi.mock('server-only', () => ({}))
  */
 const on = process.env.DESIGN_ENGINE_BROWSER === 'on'
 const out = join(process.env.DESIGN_GOLDEN_OUT ?? 'design-golden', 'uploads')
+/**
+ * Copies that keep the structure (and, for an own design, the look), of 20:
+ * 20 of 20 both ways when measured on 27 Nov; the floor is the plan's 18.
+ */
 export const uploadCopyFloor = 18
 /**
- * Copies that also pass every hard check, of 20. Short of them: the
- * test emails with no real heading, one 640 px wide and one with no link,
- * which a 1:1 copy keeps as they are.
+ * Copies that also pass every hard check, of 20, per kind, at the measured
+ * results of 27 Nov: own 12, other 14. Short of them are test emails with
+ * no real heading, one 640 px wide and some with no link to the store,
+ * which a 1:1 copy keeps as they are (the app draws them with coded blocks
+ * and says why).
  */
-export const uploadCheckedFloor = 12
+export const ownCheckedFloor = 12
+export const otherCheckedFloor = 14
 
 const inline = new Map<string, SwapPicture>()
 const hosted = (p: SwapPicture | null | undefined): SwapPicture | null => {
@@ -280,8 +287,8 @@ describe.skipIf(!on)(
       expect(leaks).toBe(0)
       expect(own).toBeGreaterThanOrEqual(uploadCopyFloor)
       expect(other).toBeGreaterThanOrEqual(uploadCopyFloor)
-      expect(ownChecked).toBeGreaterThanOrEqual(uploadCheckedFloor)
-      expect(otherChecked).toBeGreaterThanOrEqual(uploadCheckedFloor)
+      expect(ownChecked).toBeGreaterThanOrEqual(ownCheckedFloor)
+      expect(otherChecked).toBeGreaterThanOrEqual(otherCheckedFloor)
       expect(pusher.calls.length).toBeGreaterThanOrEqual(own + other)
     }, 900_000)
   }

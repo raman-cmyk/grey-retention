@@ -253,8 +253,23 @@ export const copyWords = {
   uploadFailed: (reason: string) =>
     `The design of your email could not be copied (${reason.replace(/\.$/, '')}), so this email was made with coded blocks.`,
   uploadLook:
-    'The copy of your own design did not keep its look (its colours, fonts or pictures), so this email was made with coded blocks.'
+    'The copy of your own design did not keep its look (its colours, fonts or pictures), so this email was made with coded blocks.',
+  uploadTooLittle: (copied: number, total: number) =>
+    `Only ${copied} of the ${total} sections of your email could be copied, so this email was made with coded blocks.`
 } as const
+
+/** DES-ENGINE-003b: at least this share of an upload's sections must be copied. */
+export const uploadCopiedShare = 0.5
+
+/** How many of a copy's sections were copied, of how many. */
+export const copiedCount = (sections: readonly CopiedSection[]) => ({
+  copied: sections.filter((s) => s.result === 'copied').length,
+  total: sections.length
+})
+
+/** Pictures of an own design are kept as they are: what is written in them too. */
+export const keptPicturesWords =
+  'Your pictures are kept as they are: check any offer or price written in a picture (a discount in a banner, for example) before you schedule it.'
 
 /** Why an uploaded email cannot be copied, in the owner's words. */
 export const uploadWords = {
@@ -451,19 +466,22 @@ export function copiedLines(library: {
   const reasons = library.sections.flatMap((s) =>
     s.result !== 'copied' && s.reason ? [s.reason] : []
   )
-  // DES-ENGINE-003b: one of the owner's own uploaded emails.
+  // DES-ENGINE-003b: one of the owner's own uploaded emails, said by how
+  // much of it was kept.
+  const { copied, total } = copiedCount(library.sections)
   if (library.upload === 'own')
     return [
-      reasons.length
-        ? 'Your own design was kept (its layout, colours, fonts and pictures), with this email’s words, products, prices and links. Some sections were built differently:'
-        : 'Your own design was kept, every section: its layout, colours, fonts and pictures, with this email’s words, products, prices and links.',
-      ...reasons
+      copied === total
+        ? 'Your own design was kept, every section: its layout, colours, fonts and pictures, with this email’s words, products, prices and links.'
+        : `Your own design was kept in ${copied} of its ${total} sections (their layout, colours, fonts and pictures), with this email’s words, products, prices and links. The others were built differently:`,
+      ...reasons,
+      keptPicturesWords
     ]
   if (library.upload === 'other')
     return [
-      reasons.length
-        ? 'The design was copied from the email you added, with your brand’s colours, fonts, logo, words and photos. Some sections were built differently:'
-        : 'Every section was copied from the email you added, with your brand’s colours, fonts, logo, words and photos.',
+      copied === total
+        ? 'Every section was copied from the email you added, with your brand’s colours, fonts, logo, words and photos.'
+        : `${copied} of the ${total} sections were copied from the email you added, with your brand’s colours, fonts, logo, words and photos. The others were built differently:`,
       ...reasons
     ]
   return [

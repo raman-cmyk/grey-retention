@@ -20,6 +20,9 @@ import { uploadCopyOn } from './switch'
  * the upload again under the workspace lock.
  */
 
+/** How long a preview's picture links work. */
+export const previewLinkSeconds = 600
+
 const held =
   /\ssrc="data:image\/svg\+xml;base64,[A-Za-z0-9+/=]*"\s+data-de-src="(https:\/\/email-uploads\.invalid\/\d{1,2}\.(?:png|jpg|gif|webp))"/g
 
@@ -56,7 +59,13 @@ export async function readUseUpload(
     if (!file.error && file.data) {
       html = await file.data.text()
       if (row.design === 'own') {
-        const links = await uploadPictureLinks(service, row.tenant_id, row.id)
+        // Short links: the preview is looked at now, never kept.
+        const links = await uploadPictureLinks(
+          service,
+          row.tenant_id,
+          row.id,
+          previewLinkSeconds
+        )
         if (links)
           html = withUploadPictures(
             html.replace(

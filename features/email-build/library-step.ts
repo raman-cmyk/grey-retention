@@ -1,6 +1,8 @@
 import type { BuiltEmail } from './build'
 import {
+  copiedCount,
   copyInput,
+  uploadCopiedShare,
   copyWords,
   photosFor,
   type LibraryCopyPort
@@ -150,6 +152,18 @@ export async function libraryStep(input: {
       reasonCode: 'library_leaks',
       reason: copyWords.leaks
     }
+  // DES-ENGINE-003b: an upload is copied only when most of it can be: at
+  // least half its sections, else coded blocks (never "your design was
+  // kept" over one section).
+  if (upload) {
+    const { copied, total } = copiedCount(record.sections)
+    if (total && copied / total < uploadCopiedShare)
+      return {
+        kind: 'coded',
+        reasonCode: 'library_too_little',
+        reason: copyWords.uploadTooLittle(copied, total)
+      }
+  }
   if (design === 'own' && record.look?.length)
     return {
       kind: 'coded',

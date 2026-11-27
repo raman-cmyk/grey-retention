@@ -112,4 +112,40 @@ describe('the keepLook swap (DES-ENGINE-003b)', () => {
       'has a picture on images.example, a site GROS doesn’t load pictures from'
     )
   })
+
+  it('rebuilds a section whose kept menu or picture words state an offer the facts do not give', () => {
+    const source = own()
+    source.sections[0]!.items = [
+      text({ role: 'nav', runs: [{ text: 'Sale: 40% off' }] }),
+      ...source.sections[0]!.items.slice(1)
+    ]
+    const menu = swapBrand({
+      source,
+      brand: testBrand,
+      products: testProducts,
+      words: testWords,
+      rules: testRules,
+      keepLook: true
+    })
+    expect(menu.ok && menu.blocked.get(1)).toBe(
+      'has menu words with an offer, a price or a condition GROS cannot check against your facts'
+    )
+    const banner = own()
+    banner.sections[0]!.items[0] = image({
+      role: 'hero_photo',
+      src: 'https://email-uploads.invalid/0.png',
+      alt: '40% OFF everything this weekend'
+    })
+    const pic = swapBrand({
+      source: banner,
+      brand: testBrand,
+      products: testProducts,
+      words: testWords,
+      rules: testRules,
+      keepLook: true
+    })
+    expect(pic.ok && pic.blocked.get(1)).toBe(
+      'has a picture whose words state an offer, a price or a condition GROS cannot check against your facts'
+    )
+  })
 })

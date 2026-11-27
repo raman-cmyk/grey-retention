@@ -26,6 +26,7 @@ import {
   cutTo,
   holdsFacts,
   wordPicker,
+  wordsAllowed,
   type Lengthen,
   type WordPools,
   type WordRules
@@ -262,7 +263,7 @@ export function swapBrand(input: SwapInput): SwapResult {
     : paletteMapper(brand)
   // The writers' words may state the email's own products' prices (and
   // their sale prices within the max), besides the facts given.
-  const picker = wordPicker(input.words, {
+  const allowedRules: WordRules = {
     ...rules,
     amounts: [
       ...(rules.amounts ?? []),
@@ -271,7 +272,21 @@ export function swapBrand(input: SwapInput): SwapResult {
         ...(saleWithin(p, rules.maxDiscountPercent) ?? [])
       ])
     ]
-  })
+  }
+  const picker = wordPicker(input.words, allowedRules)
+  /**
+   * DES-ENGINE-003b: words an own design keeps as they are (its menu, its
+   * pictures' alt texts) say no offer, price, percent, code, date or
+   * condition the brand's facts do not give.
+   */
+  const keptWordsOk = (words: string) =>
+    !words.trim() ||
+    (wordsAllowed(words, allowedRules) &&
+      // A plain number ("Slice 1", "Autumn 2026") is no offer; a percent,
+      // money, a date word or a condition is.
+      !holdsFacts(
+        words.replace(/(?<![$€£¥₹\d.,])\b\d+\b(?![.,]?\d|\s*%)/g, '')
+      ))
   const blocked = new Map<number, string>()
   const block = (s: Section, why: string) => {
     if (!blocked.has(s.ordinal)) blocked.set(s.ordinal, why)
@@ -473,6 +488,11 @@ export function swapBrand(input: SwapInput): SwapResult {
       }
       case 'nav': {
         // An own design's menu is the brand's own: its words stay.
+        if (keep && !keptWordsOk(words))
+          block(
+            ctx.section,
+            'has menu words with an offer, a price or a condition GROS cannot check against your facts'
+          )
         runs = keep
           ? p.runs
           : [{ ...style, text: navWords[navCursor++ % navWords.length]! }]
@@ -530,6 +550,12 @@ export function swapBrand(input: SwapInput): SwapResult {
         )
           ? p.alt
           : brand.name
+      // A picture whose words for when pictures are off state an offer,
+      // a price or a condition the facts do not give is not kept.
+      if (!keptWordsOk(alt))
+        return none(
+          'has a picture whose words state an offer, a price or a condition GROS cannot check against your facts'
+        )
       const kept = { ...p, alt, href: p.href ? link(ctx) : null }
       if (p.role === 'logo')
         return { ...kept, href: p.href ? brand.site : null }

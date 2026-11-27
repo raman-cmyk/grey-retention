@@ -1,5 +1,5 @@
 begin;
-select plan(20);
+select plan(23);
 
 -- DES-ENGINE-003b: Create email copies one of the workspace's own uploads.
 -- Workspace 101: owner ...01; another workspace (102): owner ...04.
@@ -78,20 +78,33 @@ select pg_temp.as_job();
 set local role service_role;
 select set_config('test.lease', pg_temp.to_design(current_setting('test.build')::uuid)::text, true);
 select throws_ok($$select public.request_email_copy(current_setting('test.build')::uuid, current_setting('test.lease')::uuid, null, '{}', 0, current_setting('test.other')::uuid)$$,
-  'PT409', 'The email of yours has no blueprint', 'only the build''s own upload');
+  'PT409', 'This build copies one of your own emails', 'only the build''s own upload');
 select throws_ok($$select public.request_email_copy(current_setting('test.build')::uuid, current_setting('test.lease')::uuid, gen_random_uuid(), '{}', 0, current_setting('test.ready')::uuid)$$,
   '22023', 'Invalid copy input', 'an inspiration email or an upload, not both');
 select throws_ok($$select public.request_email_copy(current_setting('test.build')::uuid, current_setting('test.lease')::uuid, null, '{}', 0, null)$$,
-  '22023', 'Invalid copy input', 'one of the two');
+  'PT409', 'This build copies one of your own emails', 'one of the two (never neither)');
 select is(public.request_email_copy(current_setting('test.build')::uuid, current_setting('test.lease')::uuid, null, '{"keepLook":true}', 2,
   current_setting('test.ready')::uuid)->>'state', 'queued', 'the copy of its upload is queued');
 select is((select (inbox_message_id is null)::text || ':' || upload_id || ':' || photos from public.email_copies where build_id = current_setting('test.build')::uuid),
   'true:' || current_setting('test.ready') || ':2', 'stored for the upload');
 select is((select count(*)::int from public.platform_jobs where kind = 'design.copy' and subject_key = current_setting('test.build')), 1, 'with one copy job');
 select throws_ok($$select public.request_email_copy(current_setting('test.build')::uuid, current_setting('test.lease')::uuid, gen_random_uuid(), '{}', 0)$$,
-  'PT409', 'This build copies another email', 'a build copies one email');
+  'PT409', 'This build copies one of your own emails', 'a build copies one email');
 select throws_ok($$select public.request_email_copy(current_setting('test.build')::uuid, current_setting('test.lease')::uuid, null, '{}', 0)$$,
-  'PT409', 'This build copies another email', 'and asks for it the same way');
+  'PT409', 'This build copies one of your own emails', 'and asks for it the same way');
+-- A build of an upload never asks for an inspiration email, nor for an
+-- upload once it is deleting.
+select set_config('test.lease2', pg_temp.to_design(current_setting('test.build2')::uuid)::text, true);
+select throws_ok($$select public.request_email_copy(current_setting('test.build2')::uuid, current_setting('test.lease2')::uuid, gen_random_uuid(), '{}', 0)$$,
+  'PT409', 'This build copies one of your own emails', 'a build of an upload asks for no inspiration email');
+select throws_ok($$select public.request_email_copy(current_setting('test.build2')::uuid, current_setting('test.lease2')::uuid, null, '{}', 0, current_setting('test.ready')::uuid)$$,
+  'PT409', 'This build copies one of your own emails', 'nor for another upload');
+reset role;
+update public.email_uploads set state = 'deleting' where id = current_setting('test.other')::uuid;
+select pg_temp.as_job();
+set local role service_role;
+select throws_ok($$select public.request_email_copy(current_setting('test.build2')::uuid, current_setting('test.lease2')::uuid, null, '{}', 0, current_setting('test.other')::uuid)$$,
+  'PT409', 'The email of yours has no blueprint', 'nor for its upload once it is deleting');
 reset role;
 
 -- 3a follow-ups: a retry of an unfinished add refreshes it; the sweep

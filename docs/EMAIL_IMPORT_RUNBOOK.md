@@ -1,6 +1,8 @@
 # Email file import — setup and operations
 
-Owner flow: **Add an email you like** → choose **Upload a file** (beside **Paste an email**) → pick one `.html`, `.htm`, `.txt` or `.eml` file → the saved email opens on the existing choice, **Copy this email** or **Rewrite for my brand** → saved, versioned result. Optional details (a name) stay closed. Nothing is sent and no AI is used to read the file.
+Owner flow (since DES-ENGINE-003, 27 Nov 2026): **Inspiration → Add your own email** (`/inspiration/add`) → pick one `.html`, `.htm` or `.eml` file → choose **This is my brand’s own design** or **This is another brand’s email** → an optional name → **Add email**. The email is a private library item of the workspace (Your emails); the design copies job reads its design; **Use this design** on a planned email → **Create email** → a Klaviyo draft (the brand's own design keeps its look, another brand's email is copied in the brand's look). Behind `DESIGN_UPLOAD_COPY=on`. Storage, limits and jobs of that flow: `features/email-uploads/`, migrations `090102` and `090104`, the ledger's Global decisions DES-ENGINE-003a and 003b.
+
+**Retired (DES-ENGINE-003b):** the old pages of this runbook (`/import-reference` paste or upload, `/import-reference/files/:id`, `/create-email/:id` Copy or Rewrite, and their results at `/emails/:id`) and their screens are gone; their addresses open Add your own email (results: the Plan). What stays below is the record of that flow and of what remains in the code: the `email_file_imports` table, the private `email-imports` bucket, the import worker, and the downloads (`/api/v1/email-imports/:id/file`, `/api/v1/emails/:id/export`), now tested by route tests (`features/email-import/download-routes.test.ts`).
 
 ## Server configuration (names only; never commit values)
 
