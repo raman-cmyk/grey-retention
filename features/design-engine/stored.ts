@@ -22,8 +22,9 @@ import { blueprintFrom } from './measure'
  * and the app may briefly run different code after a merge).
  * DES-ENGINE-003: the leak check's hidden marks, and the upload measuring
  * (.2: marks after a slash are removed too, more invisible characters).
+ * DES-ENGINE-004: the block job's quality drawing (`checkBlock`).
  */
-export const ENGINE_VERSION = '2026-11-27.1'
+export const ENGINE_VERSION = '2026-11-27.2'
 
 /** A web address written in words, blanked letter for letter (its length stays). */
 /**
