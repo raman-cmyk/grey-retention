@@ -40,9 +40,15 @@ export function sentEmail(email: EmailResult): SentEmail | null {
     return null
   const totals = numbers(email.results)
   if (!totals || totals.clickRate === null) return null
-  const edited = email.changed || email.designChanged
+  // A design difference first seen at the send check (stored, never
+  // confirmed by a second check) counts as his edit too.
+  const edited = email.changed || email.designChanged || email.designEvidence
   const known = email.results.some(
     (r) => typeof r.statistics.unsubscribe_uniques === 'number'
+  )
+  // #76: a spam count only when Klaviyo gave one (never a made-up 0).
+  const spamKnown = email.results.some(
+    (r) => typeof r.statistics.spam_complaints === 'number'
   )
   return {
     buildId: email.buildId,
@@ -53,6 +59,12 @@ export function sentEmail(email: EmailResult): SentEmail | null {
     unsubscribes: known
       ? email.results.reduce(
           (n, r) => n + (Number(r.statistics.unsubscribe_uniques) || 0),
+          0
+        )
+      : null,
+    spamComplaints: spamKnown
+      ? email.results.reduce(
+          (n, r) => n + (Number(r.statistics.spam_complaints) || 0),
           0
         )
       : null,
@@ -90,7 +102,7 @@ export async function learnFromResults(
   )
   const { data, error } = await db
     .from('agent_memory_rules')
-    .select('id,revision,idempotency_key,status,confidence')
+    .select('id,revision,idempotency_key,status,confidence,retired_by')
     .eq('tenant_id', tenantId)
     .eq('source', 'results')
     .limit(500)
@@ -100,7 +112,8 @@ export async function learnFromResults(
     revision: r.revision,
     key: r.idempotency_key,
     status: r.status as StoredRule['status'],
-    confidence: Number(r.confidence)
+    confidence: Number(r.confidence),
+    removedByOwner: r.retired_by != null
   }))
   const patterns = findPatterns(emails, now)
   const writes = planWrites({ tenantId, patterns, stored, emails, now })
@@ -218,7 +231,7 @@ export async function weeklyLearningFor(
   const since = new Date(now - 7 * 86_400_000).toISOString()
   const { data, error } = await db
     .from('agent_memory_rules')
-    .select('kind,rule,status,created_at,updated_at')
+    .select('kind,rule,status,created_at,updated_at,retired_by')
     .eq('tenant_id', tenantId)
     .or(`created_at.gte.${since},updated_at.gte.${since}`)
     .limit(200)
@@ -228,7 +241,8 @@ export async function weeklyLearningFor(
     rule: r.rule,
     status: r.status as LearnedRow['status'],
     createdAt: r.created_at,
-    updatedAt: r.updated_at
+    updatedAt: r.updated_at,
+    removedByOwner: r.retired_by != null
   }))
   return weeklyLearning(rows, now)
 }

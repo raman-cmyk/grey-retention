@@ -9,6 +9,13 @@ import type { CompetitorMove } from './competitors'
 import { failedWords, tryAgent, type AgentCtx, type TryResult } from './retry'
 import { statedFact } from './words'
 import {
+  sendTimeBases,
+  timeStrengths,
+  withSendTimes,
+  type PlanSendTime,
+  type SlotTiming
+} from './send-times'
+import {
   kindsWithoutOffer,
   kindWhen,
   letterKinds,
@@ -98,6 +105,19 @@ const planInputSchema = z.object({
     )
     .max(200),
   founderNote: z.boolean().optional(),
+  sendTimes: z
+    .array(
+      z.object({
+        audienceId: z.string().min(1).max(120),
+        time: hhmm.refine((t) => t >= sendHours.from && t <= sendHours.to),
+        basis: z.enum(sendTimeBases),
+        strength: z.enum(timeStrengths),
+        othersTried: z.boolean(),
+        weekday: z.string().max(3).nullable()
+      })
+    )
+    .max(50)
+    .optional(),
   // Checked on its own (`readGuidance`): a broken one is dropped, never thrown.
   guidance: z.unknown().optional()
 })
@@ -220,6 +240,11 @@ export type PlanInput = {
    * be a founder note (missing: it has none).
    */
   founderNote?: boolean
+  /**
+   * PICK-97: each audience's best send time, from the store's Klaviyo
+   * history (missing: the sample store; every email keeps `sendTime`).
+   */
+  sendTimes?: PlanSendTime[]
   /** PICK-WIRE (#33, #37, #48, #49): the goal, the mix and the competitors. */
   guidance?: PlanGuidance
 }
@@ -281,6 +306,8 @@ export type PlannedSlot = {
   format?: 'text'
   /** DST-PIC #24: a text email's kind; missing: a plain short note. */
   letterKind?: LetterKind
+  /** PICK-97: why it has its send time; missing: no history was read. */
+  timing?: SlotTiming
   /** Why this email: the brief's goal and the facts behind it. */
   why: string
   evidence: { id: string; fact: string }[]
@@ -556,7 +583,7 @@ const kindGuide = letterKinds
 export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
   name: 'calendar-planner',
   // PICK-WIRE: the brand's email mix and the revenue goal.
-  version: '2026-11-26.1',
+  version: '2026-11-27.1',
   // AGENT_MAP.md models: the Calendar planner runs on the plan model (3.8 Flash, AI-MDL-001).
   purpose: 'plan',
   usesBrandBook: true,
@@ -567,6 +594,7 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
     `letterKind, for a text email: ${kindGuide}, or "none" for a short note of no kind. A founder note only when founder_note_available is true; a quick question or a launch teaser never carries an offer. A designed email's letterKind is "none".`,
     'Use only the products, offers and audiences given, by id. Never use a day with no emails, or a product before its availableFrom day.',
     `Keep to sends_per_week. An email of type "offer" carries an offer; other types carry none. Offers: at most ${offerSharePercent}% of a week’s emails, and at least ${offerSpacingDays} days apart. One email per audience per day. Send times between ${sendHours.from} and ${sendHours.to}.`,
+    'If send_times is given, it is each audience’s best send time from the store’s history: basis "segment" is when that audience’s own people opened and clicked most, "store" is the store’s best time used for an audience with too little history of its own. Where opens_most_on is given, prefer that day for that audience when the brief allows. Code sets the final time.',
     'If email_mix is given, it is how many of these emails should be offer, story, education and product emails (launch, bestseller, gift guide, restock, reminder), learned from what earned most for this store: follow it where the brief allows. The rules above always win over it.',
     'If a sale has several offer emails, the code fills in the offers: it starts with the smallest allowed offer and steps up, never above the biggest one.',
     'If revenue_goal is given, use the emails that fit for the actions that bring the revenue still needed.',
@@ -586,6 +614,24 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
       offers: input.offers.map((o) => ({ id: o.id, until: o.until })),
       audiences: input.audiences,
       founder_note_available: input.founderNote === true,
+      // PICK-97: only times counted from the history, with their basis;
+      // a weekday only when it is the audience's own.
+      ...(input.sendTimes?.some(
+        (t) => t.basis === 'segment' || t.basis === 'store'
+      )
+        ? {
+            send_times: input.sendTimes
+              .filter((t) => t.basis === 'segment' || t.basis === 'store')
+              .map((t) => ({
+                audienceId: t.audienceId,
+                time: t.time,
+                basis: t.basis,
+                ...(t.basis === 'segment' && t.weekday
+                  ? { opens_most_on: t.weekday }
+                  : {})
+              }))
+          }
+        : {}),
       ...(input.guidance?.mix ? { email_mix: input.guidance.mix.counts } : {}),
       ...goalTask(input),
       ...(previous
@@ -1521,7 +1567,8 @@ function planOutput(
   const products = new Map(input.products.map((p) => [p.id, p]))
   const offers = new Map(input.offers.map((o) => [o.id, o]))
   const audiences = new Map(input.audiences.map((a) => [a.id, a]))
-  const slotsOut = kept
+  // PICK-97: each email at its audience's best time, kept apart that day.
+  const slotsOut = withSendTimes(kept, input.sendTimes)
     .map((s) => {
       const action = actions[s.actionIndex]
       const offer = s.offerId ? offers.get(s.offerId)! : null
@@ -1542,6 +1589,7 @@ function planOutput(
         ...(s.format === 'text' && s.letterKind
           ? { letterKind: s.letterKind }
           : {}),
+        ...(s.timing ? { timing: s.timing } : {}),
         why: action.goal,
         // #40: an offer fact names the code the ladder gave this email.
         evidence: [

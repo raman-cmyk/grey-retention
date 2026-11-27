@@ -39,7 +39,9 @@ function database(
     bug?: boolean
     /** PIC-29 part 2b: the drafts GROS pushed and what it built for them. */
     drafts?: { campaign: string; message: string; email: unknown }[]
-  } = {}
+  } = {},
+  /** PICK-97: this command is refused (the others answer). */
+  failRpc?: string
 ) {
   const calls: { name: string; args: Record<string, unknown> }[] = []
   const chain = (row: Record<string, unknown>) => {
@@ -112,7 +114,9 @@ function database(
                   ),
       rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
         calls.push({ name, args })
-        return { data: {}, error: null }
+        return name === failRpc
+          ? { data: null, error: { code: '23514' } }
+          : { data: {}, error: null }
       })
     } as unknown as Db
   }
@@ -148,6 +152,7 @@ const read = async (
     templatesGone?: string[]
     noTemplateScope?: boolean
     returns?: boolean
+    failRpc?: string
   } = {}
 ) => {
   const recordedAnswers = recordedHistoryTransport({
@@ -163,7 +168,11 @@ const read = async (
     options.instead?.(decodeURIComponent(request.url)) ??
     recordedAnswers(request)) as typeof recordedAnswers
   transport.calls = recordedAnswers.calls
-  const { db, calls } = database(options.timezone ?? null, options.voice)
+  const { db, calls } = database(
+    options.timezone ?? null,
+    options.voice,
+    options.failRpc
+  )
   const waits: number[] = []
   const run = await readBrandHistory(db, job, {
     client: klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
@@ -208,6 +217,77 @@ const gemini =
 beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
+})
+
+describe('readBrandHistory: best send time per audience (PICK-97)', () => {
+  type Times = {
+    timezone: string
+    times: {
+      audienceId: string
+      bestHour: number | null
+      rivals: number
+      compared: boolean
+      reason: string
+      facts: { sends: number; leftOut: number }
+    }[]
+  }
+  const timesOf = (calls: ReturnType<typeof database>['calls']) =>
+    calls.find((c) => c.name === 'record_send_times')?.args as
+      (Times & { job: string; lease: string }) | undefined
+
+  it('counts each list and segment’s sends from the campaigns’ audiences, and keeps them before the history', async () => {
+    const { calls, transport } = await read()
+    // The sent campaigns' audiences are read once, 100 ids at a time.
+    expect(
+      transport.calls.filter(
+        (c) => c.includes('/api/campaigns?') && c.includes('CmpA01')
+      )
+    ).toHaveLength(1)
+    const kept = timesOf(calls)!
+    expect(kept).toMatchObject({
+      job: 'job-1',
+      lease: 'lease-1',
+      timezone: 'America/Los_Angeles'
+    })
+    // Kept under the lease, before the history's write ends it.
+    expect(calls.map((c) => c.name).indexOf('record_send_times')).toBeLessThan(
+      calls.map((c) => c.name).indexOf('record_klaviyo_history')
+    )
+    const by = new Map(kept.times.map((t) => [t.audienceId, t]))
+    expect(kept.times[0]!.audienceId).toBe('*')
+    // The engaged got four sends of their own (two more went to them with
+    // the VIPs: shared, never counted as theirs): one at 10:00, three at
+    // 11:00 (the clocks went back on 1 November; one at each person's own
+    // 11:00). Only 11:00 was tried enough: nothing compared. The one at
+    // Klaviyo's times is left out.
+    expect(by.get('SegEng90')).toMatchObject({
+      bestHour: 11,
+      rivals: 0,
+      compared: false,
+      reason: 'enough',
+      facts: { sends: 4, leftOut: 1, shared: 2, within: ['SegEng90'] }
+    })
+    // Two sends to the VIPs: not enough history.
+    expect(by.get('SegVIP')).toMatchObject({
+      bestHour: null,
+      reason: 'few_sends'
+    })
+  })
+
+  it('a refused send-times write is logged and the history is still stored', async () => {
+    const { calls, run, stored } = await read({ failRpc: 'record_send_times' })
+    expect(calls.map((c) => c.name)).toContain('record_send_times')
+    expect(run.state).toBe('ready')
+    expect(stored.snapshot.sent).toHaveLength(10)
+  })
+
+  it('without the campaigns’ audiences, still keeps the store’s own row', async () => {
+    const { calls, run } = await read({
+      fail: { on: 'audiences', with: refused(400) }
+    })
+    expect(run.state).toBe('ready')
+    expect(timesOf(calls)!.times.map((t) => t.audienceId)).toEqual(['*'])
+  })
 })
 
 describe('readBrandHistory', () => {

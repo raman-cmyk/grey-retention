@@ -185,12 +185,32 @@ describe('learnedView (UI-LRNa)', () => {
       owner: true,
       do: [],
       avoid: [],
-      unread: true
+      unread: true,
+      week: null
     })
     const staff = { ...context, tenantRole: 'staff' as const }
     expect(learnedView({ context: staff, now, rows: [row()] }).owner).toBe(
       false
     )
+  })
+
+  it('carries this week’s report in plain words, or none when it was not read (#74)', () => {
+    const week = {
+      dos: ['A', 'B', 'C'],
+      donts: [],
+      retired: ['D'],
+      summary: "3 new do's, 1 retired"
+    }
+    expect(learnedView({ context, now, rows: [row()], week }).week).toEqual({
+      summary: "3 new do's, 1 retired",
+      dos: 3,
+      donts: 0,
+      retired: 1
+    })
+    expect(learnedView({ context, now, rows: [row()] }).week).toBeNull()
+    expect(
+      learnedView({ context, now, rows: [row()], week: null }).week
+    ).toBeNull()
   })
 })
 
@@ -213,9 +233,55 @@ describe('learnedReadModel (UI-LRNa)', () => {
     const { db, calls } = database({ data: [row()], error: null })
     mocks.createClient.mockResolvedValue(db)
     const view = await learnedReadModel(context, now)
-    expect(calls).toHaveLength(1)
-    expect(calls[0]!.filters).toContainEqual(['eq', 'tenant_id', 'tenant-1'])
+    // The rules in use, and this week's report (#74), both the workspace's own.
+    expect(calls).toHaveLength(2)
+    for (const call of calls)
+      expect(call.filters).toContainEqual(['eq', 'tenant_id', 'tenant-1'])
     expect(view.do.map((i) => i.rule)).toEqual(['Lead with one product'])
+    // Its one rule was learned on 10 November, within the last 7 days.
+    expect(view.week?.summary).toBe('1 new do')
+  })
+
+  it('counts this week’s new and retired rules for the report (#74)', async () => {
+    const at = (days: number) =>
+      new Date(now.getTime() - days * 86_400_000).toISOString()
+    const { db } = database({
+      data: [
+        { ...row({ id: 'n1', created_at: at(1) }), updated_at: at(1) },
+        {
+          ...row({ id: 'n2', kind: 'dont', created_at: at(2) }),
+          updated_at: at(2)
+        },
+        {
+          ...row({ id: 'old', status: 'retired', created_at: at(40) }),
+          updated_at: at(3)
+        }
+      ],
+      error: null
+    })
+    mocks.createClient.mockResolvedValue(db)
+    expect((await learnedReadModel(context, now)).week).toEqual({
+      summary: "1 new do, 1 new don't, 1 retired",
+      dos: 1,
+      donts: 1,
+      retired: 1
+    })
+  })
+
+  it('shows the rules when only the weekly report fails (#74)', async () => {
+    let n = 0
+    const { db } = database({ data: [row()], error: null })
+    mocks.createClient.mockResolvedValue({
+      from: (table: string) => {
+        // The second read (the weekly report) fails.
+        if (++n === 2) throw new Error('down')
+        return db.from(table)
+      }
+    })
+    const view = await learnedReadModel(context, now)
+    expect(view.unread).toBe(false)
+    expect(view.do).toHaveLength(1)
+    expect(view.week).toBeNull()
   })
 
   it('asks only for another workspace’s rows when signed into it (row rules refuse the rest)', async () => {
