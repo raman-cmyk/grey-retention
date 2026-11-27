@@ -9,7 +9,7 @@ import { changeWords, type ChangeKey } from './content'
 import { copiedLines } from './library-copy'
 import { reasonLines } from './reasons'
 import { allSteps } from './step-names'
-import { usableVersion, type VersionsView } from './versions'
+import { usableVersion, type RestoreRoute, type VersionsView } from './versions'
 import type { StatusKind } from '@/components/gros/status'
 import {
   stateNote,
@@ -353,17 +353,26 @@ export type VersionsPanel = VersionsView & {
   buildId: string
   /** It is a draft (in Klaviyo or a sample one), not being made. */
   drafted: boolean
-  /** The shown version as the previews show it; null when it cannot be shown. */
+  /**
+   * The shown version as the previews show it; null when it cannot be
+   * shown, or is the current one (the page shows that already).
+   */
   preview: EmailView | null
+  /** Where "Use this version" would put it (`restoreRoute`). */
+  route: RestoreRoute
 }
 
 /**
- * A stored version as the previews show it (both designs of a design
- * test), or null when it was stored the way an older app stored it.
+ * A stored version as the previews show it, as its draft holds it: one
+ * design unless it is a design test of a real draft, a text email's plain
+ * text; or null when it was stored the way an older app stored it.
  */
-export function versionPreview(email: unknown): EmailView | null {
+export function versionPreview(
+  email: unknown,
+  sampleDraft = false
+): EmailView | null {
   const usable = usableVersion(email)
-  return usable ? viewOf(usable, [], false) : null
+  return usable ? viewOf(usable, [], sampleDraft) : null
 }
 
 /** The email's page from its build row and its log lines (see above). */

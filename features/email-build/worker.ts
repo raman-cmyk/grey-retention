@@ -5,6 +5,7 @@ import type { Database } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import {
   fakeDraftPusher,
+  type DraftInput,
   type DraftPusher
 } from '@/lib/providers/klaviyo-draft'
 import { SupabaseOfferSource, type OfferSource } from '@/features/offers/source'
@@ -140,6 +141,15 @@ export async function runEmailBuilds(
       tenantId: string,
       pushKey: string
     ) => Promise<KlaviyoRefusal | null>
+    /**
+     * PICK-106: Klaviyo holds this planned email already (a push row of its
+     * key, or a restore of a real draft). Default: `realDraftOf(db)`.
+     */
+    realDraft?: (
+      tenantId: string,
+      pushKey: string,
+      build: string
+    ) => Promise<boolean>
   } = {}
 ) {
   const pusher = deps.pusher ?? fakeDraftPusher()
@@ -555,7 +565,7 @@ export async function runEmailBuilds(
             continue
           }
         }
-        const pushed = await pusher.createDraft({
+        const input: DraftInput = {
           tenantId: job.tenant_id,
           idempotencyKey: job.push_key,
           name: email.data.name,
@@ -590,7 +600,23 @@ export async function runEmailBuilds(
           ...(email.data.text !== undefined ? { text: email.data.text } : {}),
           // The live pusher saves its steps under this build's lease (PSH-001).
           lease: { build: job.id, token: job.lease_token }
-        })
+        }
+        // PICK-106: a planned email Klaviyo already holds (a real draft, or
+        // a key the live pusher wrote) never goes to the fake pusher, which
+        // would leave that draft as it is and call this a sample draft: the
+        // push switch was turned off. A restore goes back to its draft.
+        if (
+          pusher.fake?.(input) &&
+          (await (deps.realDraft ?? realDraftOf(db))(
+            job.tenant_id,
+            job.push_key,
+            job.id
+          ))
+        ) {
+          await fail('push_switched_off', true)
+          continue
+        }
+        const pushed = await pusher.createDraft(input)
         if (!pushed.ok) {
           // REL-084c: a refusal by the app's own checks keeps its reason,
           // on this build (an earlier try's push row may still say another).
@@ -661,6 +687,35 @@ export async function runEmailBuilds(
   }
   return { ran }
 }
+
+/**
+ * PICK-106: whether Klaviyo already holds this planned email: the live
+ * pusher wrote a push row for its key, or the build is a restore of a real
+ * draft. A read that fails throws (the push waits for its next try).
+ */
+export const realDraftOf =
+  (db: Db) => async (tenantId: string, pushKey: string, build: string) => {
+    const [pushes, builds] = await Promise.all([
+      db
+        .from('klaviyo_draft_pushes')
+        .select('push_key')
+        .eq('tenant_id', tenantId)
+        .eq('push_key', pushKey),
+      db
+        .from('email_builds')
+        .select('sample_draft,restore_version')
+        .eq('tenant_id', tenantId)
+        .eq('id', build)
+    ])
+    if (pushes.error) throw pushes.error
+    if (builds.error) throw builds.error
+    const b = (builds.data ?? [])[0] as
+      { sample_draft: boolean; restore_version: string | null } | undefined
+    return (
+      (pushes.data ?? []).length > 0 ||
+      (!!b && b.restore_version !== null && !b.sample_draft)
+    )
+  }
 
 type ReferenceLoader = (
   tenantId: string,

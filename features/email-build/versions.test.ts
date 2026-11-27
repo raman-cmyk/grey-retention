@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { maxEmailBytes } from './step-names'
 import {
   howText,
+  restoreRoute,
   restoreWords,
   usableVersion,
   versionTime,
@@ -50,7 +51,7 @@ describe('an email’s versions (PICK-106)', () => {
     )
     expect(view?.newest).toBe(3)
     expect(view?.lines.map((l) => l.label)).toEqual([
-      'Version 3 · Today 10:40 · Version 1 brought back',
+      'Version 3 · Today 10:40 · Version 1 brought back · Current',
       'Version 2 · 20 Nov, 8:00 · Made again with Try again',
       'Version 1 · Yesterday 9:05 · Made from scratch'
     ])
@@ -117,6 +118,54 @@ describe('an email’s versions (PICK-106)', () => {
     expect(usableVersion(email({ html: 'x'.repeat(maxEmailBytes) }))).toBeNull()
   })
 
+  it('keeps the newest version that reached the draft current', () => {
+    const view = versionsView(
+      [
+        row(1),
+        row(2, { how: 'restore', restoredFrom: 1, outcome: 'applied' }),
+        row(3, {
+          how: 'restore',
+          restoredFrom: 1,
+          outcome: 'failed',
+          failure: 'klaviyo_refused_not_a_draft'
+        }),
+        row(4, { how: 'restore', restoredFrom: 1, outcome: 'pending' })
+      ],
+      { timezone: 'UTC', now }
+    )
+    expect(view?.newest).toBe(4)
+    expect(view?.current).toBe(2)
+    expect(view?.lines.map((l) => [l.number, l.current, l.state])).toEqual([
+      [4, false, 'pending'],
+      [3, false, 'failed'],
+      [2, true, null],
+      [1, false, null]
+    ])
+    // None asked for: the current one is shown.
+    expect(view?.lines.find((l) => l.shown)?.number).toBe(2)
+    expect(view?.lines[1]?.failure).toMatch(/no longer a draft in Klaviyo/)
+  })
+
+  it('routes a restore exactly as the push would', () => {
+    const route = (
+      r: 'fake' | 'live' | 'locked',
+      sampleDraft: boolean,
+      pushRow = false
+    ) => restoreRoute({ route: r, sampleDraft, pushRow })
+    // A sample draft through the fake pusher stays one.
+    expect(route('fake', true)).toBe('sample')
+    // A real draft, or a key the live pusher wrote, never goes to the fake.
+    expect(route('fake', false)).toBe('off')
+    expect(route('fake', true, true)).toBe('off')
+    // The write lock on: nothing is queued.
+    expect(route('locked', false)).toBe('off')
+    expect(route('locked', true)).toBe('off')
+    expect(route('live', false)).toBe('replace')
+    expect(route('live', true, true)).toBe('replace')
+    // A sample draft of the store's own email, the switch turned on since.
+    expect(route('live', true)).toBe('new_draft')
+  })
+
   it('has plain words for every refusal of the command', () => {
     for (const hint of [
       'version_busy',
@@ -128,7 +177,9 @@ describe('an email’s versions (PICK-106)', () => {
       'version_scheduled',
       'version_gone',
       'version_edited',
-      'version_day_passed'
+      'version_day_passed',
+      'version_plan_replaced',
+      'version_no_email'
     ])
       expect(restoreWords[hint]).toMatch(/^[A-Z].+\.$/)
   })

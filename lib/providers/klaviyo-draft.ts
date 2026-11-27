@@ -96,6 +96,11 @@ export type DraftResult =
 
 export interface DraftPusher {
   createDraft(input: DraftInput): Promise<DraftResult>
+  /**
+   * PICK-106: true when this input would go to the fake pusher (no Klaviyo
+   * call, a sample draft). Missing: a live pusher.
+   */
+  fake?(input: DraftInput): boolean
 }
 
 /**
@@ -111,6 +116,7 @@ export function fakeDraftPusher(
   const calls: DraftInput[] = []
   return {
     calls,
+    fake: () => true,
     async createDraft(input) {
       calls.push(input)
       const v = input.variations

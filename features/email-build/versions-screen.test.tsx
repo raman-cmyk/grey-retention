@@ -7,7 +7,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 import { emailScreen, versionPreview } from './email-screen'
 import { loadEmailScreen } from './email-screen-load'
 import { EmailScreen } from './screen'
-import { versionsView, type VersionRow } from './versions'
+import { versionsView, type RestoreRoute, type VersionRow } from './versions'
 
 afterEach(cleanup)
 
@@ -48,11 +48,22 @@ const rows: VersionRow[] = [
   }
 ]
 const panel = (
-  over: { shown?: number; drafted?: boolean; preview?: unknown } = {}
+  over: {
+    shown?: number
+    drafted?: boolean
+    preview?: unknown
+    route?: RestoreRoute
+    rows?: VersionRow[]
+  } = {}
 ) => ({
-  ...versionsView(rows, { timezone: 'UTC', shown: over.shown ?? 1, now })!,
+  ...versionsView(over.rows ?? rows, {
+    timezone: 'UTC',
+    shown: over.shown ?? 1,
+    now
+  })!,
   buildId,
   drafted: over.drafted ?? true,
+  route: over.route ?? ('replace' as const),
   preview: versionPreview(
     'preview' in over
       ? over.preview
@@ -126,6 +137,125 @@ describe('the versions on an email’s page (PICK-106)', () => {
         'An older version can be used once the email is a draft again.'
       )
     ).toBeInTheDocument()
+  })
+
+  it('says what Use this version will do, exactly as the push would', () => {
+    const cases: [RestoreRoute, string][] = [
+      [
+        'replace',
+        'It becomes the current version and replaces GROS’s draft in Klaviyo. Nothing is scheduled or sent.'
+      ],
+      [
+        'sample',
+        'It becomes the current version of your sample draft. Nothing goes to Klaviyo.'
+      ],
+      [
+        'new_draft',
+        'It becomes the current version and goes into Klaviyo as a draft. Nothing is scheduled or sent.'
+      ]
+    ]
+    for (const [route, words] of cases) {
+      render(<EmailScreen view={view()} versions={panel({ route })} owner />)
+      expect(
+        screen.getByRole('button', { name: 'Use this version' })
+      ).toBeInTheDocument()
+      expect(screen.getByText(words)).toBeInTheDocument()
+      cleanup()
+    }
+    // Klaviyo holds the draft and cannot be written: no button, and why.
+    render(
+      <EmailScreen view={view()} versions={panel({ route: 'off' })} owner />
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Use this version' })
+    ).toBeNull()
+    expect(
+      screen.getByText(/switched off right now, so your draft in Klaviyo/)
+    ).toBeInTheDocument()
+  })
+
+  it('names a restore that did not reach the draft, and one being put there', () => {
+    const more: VersionRow[] = [
+      {
+        number: 4,
+        how: 'restore',
+        restoredFrom: 1,
+        outcome: 'pending',
+        subject: 'Cedar, for cold nights',
+        createdAt: '2026-11-27T11:00:00Z'
+      },
+      {
+        number: 3,
+        how: 'restore',
+        restoredFrom: 1,
+        outcome: 'failed',
+        failure: 'klaviyo_unavailable',
+        subject: 'Cedar, for cold nights',
+        createdAt: '2026-11-27T10:50:00Z'
+      },
+      ...rows
+    ]
+    render(<EmailScreen view={view()} versions={panel({ rows: more })} owner />)
+    const links = within(
+      screen.getByRole('region', { name: 'Versions' })
+    ).getAllByRole('link')
+    expect(links[0]).toHaveTextContent(
+      'Version 4 · Today 11:00 · Version 1 brought back · Being put on your draft'
+    )
+    expect(links[1]).toHaveTextContent(
+      'Version 3 · Today 10:50 · Version 1 brought back · Not used'
+    )
+    expect(links[1]).toHaveTextContent(
+      'Your draft kept the version it had. Klaviyo could not be reached. Try again later.'
+    )
+    // The current one is the newest that reached the draft.
+    expect(links[2]).toHaveTextContent(/· Current/)
+  })
+
+  it('says when the version a restore brought back is no longer kept', () => {
+    const view = versionsView(
+      [
+        {
+          number: 22,
+          how: 'restore',
+          restoredFrom: 1,
+          outcome: 'applied',
+          subject: 's',
+          createdAt: '2026-11-27T10:00:00Z'
+        }
+      ],
+      { timezone: 'UTC', now }
+    )
+    expect(view?.lines[0]?.label).toBe(
+      'Version 22 · Today 10:00 · Version 1 (no longer kept) brought back · Current'
+    )
+  })
+
+  it('shows a text version’s plain text, and one design unless its draft held two', () => {
+    const text = versionPreview(
+      email({ format: 'text', text: 'Hello from the shop' })
+    )
+    render(
+      <EmailScreen
+        view={view()}
+        versions={{ ...panel(), preview: text }}
+        owner
+      />
+    )
+    expect(
+      screen.getByRole('heading', { name: 'Version 1: its plain text' })
+    ).toBeInTheDocument()
+    expect(screen.getByText('Hello from the shop')).toBeInTheDocument()
+    cleanup()
+    const test = email({ designA: '<p>A</p>', approach: 'B' })
+    expect(versionPreview(test)?.designs.map((d) => d.name)).toEqual([
+      'Design A',
+      'Design B'
+    ])
+    // A sample draft never held the test: one design.
+    expect(versionPreview(test, true)?.designs.map((d) => d.name)).toEqual([
+      'The email'
+    ])
   })
 
   it('shows no second preview of the current version', () => {
@@ -236,6 +366,55 @@ describe('loading the versions (PICK-106)', () => {
       ['email_versions', ['slot', 1]],
       ['email_versions', ['number', 1]]
     ])
+  })
+
+  it('reads no email for the current version, and offers what the push would do', async () => {
+    const list = {
+      data: rows.map((r) => ({
+        number: r.number,
+        how: r.how,
+        restored_from: r.restoredFrom,
+        subject: r.subject,
+        created_at: r.createdAt
+      })),
+      error: null
+    }
+    const open = async (shown: number | null, env: Record<string, string>) => {
+      const { db, eqs } = fakeDb({
+        email_builds: [build],
+        strategy_runs: [plan],
+        agent_fallbacks: [none, none],
+        email_versions: [
+          { ...list },
+          { data: { email: email({ subject: 'Old' }) }, error: null }
+        ],
+        klaviyo_draft_pushes: [{ data: [{ push_key: 'k' }], error: null }]
+      })
+      const out = await loadEmailScreen(db, tenant, buildId, 'UTC', shown, env)
+      return { out, eqs }
+    }
+    const current = await open(null, {})
+    if (!current.out.ok) throw new Error('expected a page')
+    expect(current.out.versions?.preview).toBeNull()
+    expect(
+      current.eqs.filter(([t, [c]]) => t === 'email_versions' && c === 'number')
+    ).toEqual([])
+    // A real draft: the switch off or the write lock on, nothing is offered.
+    for (const env of [
+      {},
+      { KLAVIYO_MODE: 'live', KLAVIYO_DRAFT_PUSH: 'live' }
+    ] as Record<string, string>[]) {
+      const { out } = await open(1, env)
+      if (!out.ok) throw new Error('expected a page')
+      expect(out.versions?.route).toBe('off')
+    }
+    const { out } = await open(1, {
+      KLAVIYO_MODE: 'live',
+      KLAVIYO_DRAFT_PUSH: 'live',
+      KLAVIYO_WRITE_LOCK: 'unlocked'
+    })
+    if (!out.ok) throw new Error('expected a page')
+    expect(out.versions?.route).toBe('replace')
   })
 
   it('opens an old build with no versions, or when they cannot be read', async () => {

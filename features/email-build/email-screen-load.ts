@@ -12,7 +12,13 @@ import {
   type EmailScreen,
   type VersionsPanel
 } from './email-screen'
-import { versionsKept, versionsView, type VersionRow } from './versions'
+import { pushRoute } from '@/features/klaviyo-push/live'
+import {
+  restoreRoute,
+  versionsKept,
+  versionsView,
+  type VersionRow
+} from './versions'
 
 /** At most this many log lines a build, the newest (its steps record a few each). */
 const maxLines = 20
@@ -40,7 +46,9 @@ export async function loadEmailScreen(
   /** The store's time zone (the session's), for Klaviyo's send times. */
   timezone = 'UTC',
   /** PICK-106: the version whose preview is shown (the page's `?version=`). */
-  shown: number | null = null
+  shown: number | null = null,
+  /** PICK-106: the server's switches, for where "Use this version" would go. */
+  env: Record<string, string | undefined> = process.env
 ): Promise<
   | { ok: true; screen: EmailScreen | null; versions?: VersionsPanel | null }
   | { ok: false }
@@ -86,7 +94,7 @@ export async function loadEmailScreen(
     // PICK-106: the planned email's versions (its emails are read when shown).
     db
       .from('email_versions')
-      .select('number,how,restored_from,subject,created_at')
+      .select('number,how,restored_from,outcome,failure,subject,created_at')
       .eq('tenant_id', tenantId)
       .eq('run_id', row.run_id)
       .eq('slot', row.slot)
@@ -131,7 +139,8 @@ export async function loadEmailScreen(
     row,
     kept.error || !Array.isArray(kept.data) ? [] : kept.data,
     timezone,
-    shown
+    shown,
+    env
   )
   return {
     ok: true,
@@ -161,28 +170,44 @@ export async function loadEmailScreen(
 
 /**
  * PICK-106: the planned email's versions and the one shown, with its
- * preview. Not read (or none kept, as for an email made before version
- * history): no panel, and the page opens as before.
+ * preview (its email read only when it is not the current one, which the
+ * page shows already). Where "Use this version" would put it is worked out
+ * as the push would (`pushRoute`, `restoreRoute`). Not read (or none kept,
+ * as for an email made before version history): no panel, and the page
+ * opens as before.
  */
 async function versionsPanel(
   db: SupabaseClient<Database>,
   tenantId: string,
-  row: { id: string; run_id: string; slot: number; state: string },
+  row: {
+    id: string
+    run_id: string
+    slot: number
+    state: string
+    sample_draft: boolean
+    push_key: string
+    email: unknown
+  },
   rows: readonly {
     number: number
     how: string
     restored_from: number | null
+    outcome?: string | null
+    failure?: string | null
     subject: string
     created_at: string
   }[],
   timezone: string,
-  shown: number | null
+  shown: number | null,
+  env: Record<string, string | undefined>
 ): Promise<VersionsPanel | null> {
   const view = versionsView(
     rows.map((r): VersionRow => ({
       number: r.number,
       how: r.how,
       restoredFrom: r.restored_from,
+      outcome: r.outcome ?? null,
+      failure: r.failure ?? null,
       subject: r.subject,
       createdAt: r.created_at
     })),
@@ -190,19 +215,39 @@ async function versionsPanel(
   )
   if (!view) return null
   const pick = view.lines.find((l) => l.shown)!
-  const email = await db
-    .from('email_versions')
-    .select('email')
-    .eq('tenant_id', tenantId)
-    .eq('run_id', row.run_id)
-    .eq('slot', row.slot)
-    .eq('number', pick.number)
-    .maybeSingle()
+  const [email, pushes] = pick.current
+    ? [null, null]
+    : await Promise.all([
+        db
+          .from('email_versions')
+          .select('email')
+          .eq('tenant_id', tenantId)
+          .eq('run_id', row.run_id)
+          .eq('slot', row.slot)
+          .eq('number', pick.number)
+          .maybeSingle(),
+        db
+          .from('klaviyo_draft_pushes')
+          .select('push_key')
+          .eq('tenant_id', tenantId)
+          .eq('push_key', row.push_key)
+      ])
+  const preview =
+    email && !email.error && email.data
+      ? versionPreview(email.data.email, row.sample_draft)
+      : null
+  const sampleStore =
+    (row.email as { sample?: unknown } | null)?.sample === true
   return {
     ...view,
     buildId: row.id,
     drafted: row.state === 'drafted',
-    preview:
-      email.error || !email.data ? null : versionPreview(email.data.email)
+    preview,
+    route: restoreRoute({
+      route: pushRoute(env, sampleStore),
+      sampleDraft: row.sample_draft,
+      // Unread: as if Klaviyo holds it (never offered while it may).
+      pushRow: !pushes || !!pushes.error || (pushes.data ?? []).length > 0
+    })
   }
 }

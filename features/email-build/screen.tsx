@@ -16,7 +16,7 @@ import type {
   KlaviyoLink,
   VersionsPanel
 } from './email-screen'
-import { versionsKept } from './versions'
+import { restoreRouteWords, versionsKept } from './versions'
 import { EmailViews } from './email-views'
 
 /**
@@ -319,6 +319,7 @@ function Notes({ notes }: { notes: readonly string[] }) {
 function Versions({ panel, owner }: { panel: VersionsPanel; owner: boolean }) {
   const shown = panel.lines.find((l) => l.shown)!
   const base = `/plan/email/${panel.buildId}`
+  const offer = owner && panel.drafted && !!panel.preview
   return (
     <section
       id="versions"
@@ -344,12 +345,15 @@ function Versions({ panel, owner }: { panel: VersionsPanel; owner: boolean }) {
                   line.shown ? 'bg-[var(--lime-soft)]' : 'bg-[var(--mist)]'
                 )}
               >
-                <span className="type-body-strong">
-                  {line.current ? `${line.label} · Current` : line.label}
-                </span>
+                <span className="type-body-strong">{line.label}</span>
                 <span className="type-caption text-[var(--stone)]">
                   {line.subject}
                 </span>
+                {line.failure && (
+                  <span className="type-caption text-[var(--stone)]">
+                    {`Your draft kept the version it had. ${line.failure}`}
+                  </span>
+                )}
               </Link>
             </li>
           ))}
@@ -369,6 +373,12 @@ function Versions({ panel, owner }: { panel: VersionsPanel; owner: boolean }) {
                 <dt className="type-label">Subject</dt>
                 <dd className="type-body-strong">{panel.preview.subject}</dd>
               </div>
+              {panel.preview.subjectB && (
+                <div>
+                  <dt className="type-label">Subject B (half the audience)</dt>
+                  <dd className="type-body-strong">{panel.preview.subjectB}</dd>
+                </div>
+              )}
               <div>
                 <dt className="type-label">Preview line</dt>
                 <dd className="type-body">{panel.preview.preview}</dd>
@@ -380,7 +390,7 @@ function Versions({ panel, owner }: { panel: VersionsPanel; owner: boolean }) {
               be shown.
             </p>
           )}
-          {owner && panel.drafted && panel.preview && (
+          {offer && panel.route !== 'off' && (
             <div className="mt-[var(--space-6)]">
               <ActionButton
                 action={restoreEmailVersion}
@@ -392,10 +402,14 @@ function Versions({ panel, owner }: { panel: VersionsPanel; owner: boolean }) {
                 }}
               />
               <p className="type-caption mt-[var(--space-3)] text-[var(--stone)]">
-                It becomes the current version and replaces your draft in
-                Klaviyo. Nothing is scheduled or sent.
+                {restoreRouteWords[panel.route]}
               </p>
             </div>
+          )}
+          {offer && panel.route === 'off' && (
+            <p className="type-caption mt-[var(--space-5)] text-[var(--stone)]">
+              {restoreRouteWords.off}
+            </p>
           )}
           {owner && !panel.drafted && (
             <p className="type-caption mt-[var(--space-5)] text-[var(--stone)]">
@@ -414,6 +428,14 @@ function Versions({ panel, owner }: { panel: VersionsPanel; owner: boolean }) {
             />
           </Card>
         ))}
+      {!shown.current && panel.preview?.text && (
+        <Card>
+          <h2 className="type-heading">{`Version ${shown.number}: its plain text`}</h2>
+          <pre className="type-body mt-[var(--space-5)] whitespace-pre-wrap">
+            {panel.preview.text}
+          </pre>
+        </Card>
+      )}
     </section>
   )
 }

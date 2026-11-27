@@ -91,6 +91,11 @@ type Context = {
   builtAt: number
   templates: { approach?: unknown; variation?: unknown; deleted?: unknown }[]
   written: string | null
+  /**
+   * PICK-106: where a push under way is taking the variations (null when
+   * none is): while it is set, a difference from `written` may be ours.
+   */
+  target: string | null
   /** What the push left on each variation (PSH-001), for the edit check. */
   shown: string | null
   /** The push's key, to read `shown` again after a check (PICK-99). */
@@ -114,7 +119,7 @@ async function contexts(
   const pushes = keys.length
     ? await db
         .from('klaviyo_draft_pushes')
-        .select('tenant_id,push_key,templates,written,shown')
+        .select('tenant_id,push_key,templates,written,target,shown')
         .in('push_key', keys)
     : { data: [], error: null }
   if (pushes.error) throw pushes.error
@@ -133,6 +138,7 @@ async function contexts(
         ? (push.templates as Context['templates'])
         : [],
       written: push?.written ?? null,
+      target: push?.target ?? null,
       shown: push?.shown ?? null,
       pushKey: push ? push.push_key : null
     })
@@ -226,12 +232,42 @@ async function checkDesign(
   }
 }
 
+/**
+ * PICK-99, PICK-106: the draft's subject or preview differs from what our
+ * last push wrote. Unknown (false) while a push is under way (its `target`
+ * set, as the pusher's own check reads it) or when the push's record
+ * changed while we looked (a push ran meanwhile): a restore's own write is
+ * never taken for the owner's edit, which would stay seen for good.
+ */
+async function wordsEdited(
+  db: Db,
+  row: ResultRow,
+  draft: DraftRead | null,
+  ctx: Context
+): Promise<boolean> {
+  if (!draft || ctx.written === null || ctx.target !== null) return false
+  if (fingerprints(draft.variations) === ctx.written) return false
+  if (!ctx.pushKey) return true
+  const again = await db
+    .from('klaviyo_draft_pushes')
+    .select('written,target')
+    .eq('tenant_id', row.tenant_id)
+    .eq('push_key', ctx.pushKey)
+    .maybeSingle()
+  return (
+    !again.error &&
+    !!again.data &&
+    again.data.written === ctx.written &&
+    again.data.target === null
+  )
+}
+
 /** A draft's status read, as the checks compare it with what we left. */
 function statusRead(
   row: ResultRow,
   draft: DraftRead | null,
-  ctx: Context,
-  design: DesignMismatch | false | null
+  design: DesignMismatch | false | null,
+  edited: boolean
 ): StatusRead {
   return draft
     ? {
@@ -240,10 +276,7 @@ function statusRead(
         sendTime: draft.sendTime,
         firstSendTime: draft.firstSendTime,
         sendStrategy: draft.sendStrategy,
-        changed:
-          draft.campaignId !== row.campaign_id ||
-          (ctx.written !== null &&
-            fingerprints(draft.variations) !== ctx.written),
+        changed: draft.campaignId !== row.campaign_id || edited,
         design
       }
     : { found: false }
@@ -511,7 +544,12 @@ export async function runEmailResults(
         const design = draft
           ? await designCheck(row, draft, ctx, due.length)
           : null
-        const read = statusRead(row, draft, ctx, design)
+        const read = statusRead(
+          row,
+          draft,
+          design,
+          await wordsEdited(db, row, draft, ctx)
+        )
         const checked = afterStatus(row, read, now(), ctx.builtAt)
         const sentAt = checked.patch.sent_at ?? row.sent_at
         if (checked.pullDue && sentAt && read.found)
@@ -880,7 +918,7 @@ async function checkEmailWork(
         : null
       const checked = afterStatus(
         row,
-        statusRead(row, draft, ctx, design),
+        statusRead(row, draft, design, await wordsEdited(db, row, draft, ctx)),
         now(),
         ctx.builtAt
       )

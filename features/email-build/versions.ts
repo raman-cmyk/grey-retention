@@ -1,5 +1,6 @@
 import { storeTime } from '@/features/results/klaviyo-state'
 import { builtEmail } from './build'
+import { buildReason } from './failure-words'
 import { maxEmailBytes } from './step-names'
 
 /**
@@ -29,6 +30,10 @@ export type VersionRow = {
   number: number
   how: string
   restoredFrom: number | null
+  /** A restore's push: pending, applied or failed (null: made by GROS). */
+  outcome?: string | null
+  /** A failed restore's code (`buildReason` words). */
+  failure?: string | null
   subject: string
   createdAt: string
 }
@@ -38,16 +43,22 @@ export type VersionLine = {
   number: number
   label: string
   subject: string
-  /** The newest: what the email is now. */
+  /** What the email is now: the newest not pending or failed restore. */
   current: boolean
   /** The one whose preview is shown. */
   shown: boolean
+  /** A restore still being put on the draft, or one that did not get there (and why). */
+  state: 'pending' | 'failed' | null
+  /** Why a failed restore did not get there, in the owner's words. */
+  failure: string | null
 }
 
 export type VersionsView = {
   lines: VersionLine[]
   /** The newest version's number: the page sends it with "Use this version". */
   newest: number
+  /** The current version's number (null: none, all pending or failed). */
+  current: number | null
   /** True when as many are kept as the limit: older ones were let go. */
   full: boolean
 }
@@ -61,11 +72,18 @@ const howWords: Record<VersionHow, string> = {
   restore: 'Brought back'
 }
 
-/** How it was made, in the owner's words. */
-export function howText(how: string, restoredFrom: number | null) {
+/**
+ * How it was made, in the owner's words. `kept`: the numbers still kept
+ * (a restore whose source was let go says so).
+ */
+export function howText(
+  how: string,
+  restoredFrom: number | null,
+  kept?: ReadonlySet<number>
+) {
   if (how === 'restore')
     return restoredFrom
-      ? `Version ${restoredFrom} brought back`
+      ? `Version ${restoredFrom}${kept && !kept.has(restoredFrom) ? ' (no longer kept)' : ''} brought back`
       : 'Brought back'
   return (versionHows as readonly string[]).includes(how)
     ? howWords[how as VersionHow]
@@ -111,25 +129,43 @@ export function versionsView(
   if (!rows.length) return null
   const sorted = [...rows].sort((a, b) => b.number - a.number)
   const newest = sorted[0]!.number
-  const shown = sorted.some((r) => r.number === options.shown)
+  const current =
+    sorted.find((r) => r.outcome !== 'pending' && r.outcome !== 'failed')
+      ?.number ?? null
+  const kept = new Set(sorted.map((r) => r.number))
+  const shown = kept.has(options.shown ?? -1)
     ? options.shown!
-    : newest
+    : (current ?? newest)
   return {
     newest,
+    current,
     full: sorted.length >= versionsKept,
-    lines: sorted.map((r) => ({
-      number: r.number,
-      label: [
-        `Version ${r.number}`,
-        versionTime(r.createdAt, options.timezone, options.now),
-        howText(r.how, r.restoredFrom)
-      ]
-        .filter(Boolean)
-        .join(' · '),
-      subject: r.subject,
-      current: r.number === newest,
-      shown: r.number === shown
-    }))
+    lines: sorted.map((r) => {
+      const state =
+        r.outcome === 'pending' || r.outcome === 'failed' ? r.outcome : null
+      return {
+        number: r.number,
+        label: [
+          `Version ${r.number}`,
+          versionTime(r.createdAt, options.timezone, options.now),
+          howText(r.how, r.restoredFrom, kept),
+          r.number === current
+            ? 'Current'
+            : state === 'pending'
+              ? 'Being put on your draft'
+              : state === 'failed'
+                ? 'Not used'
+                : null
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        subject: r.subject,
+        current: r.number === current,
+        shown: r.number === shown,
+        state,
+        failure: state === 'failed' ? buildReason(r.failure ?? null) : null
+      }
+    })
   }
 }
 
@@ -166,5 +202,45 @@ export const restoreWords: Record<string, string> = {
   version_edited:
     'You changed this draft in Klaviyo, so GROS leaves it as it is.',
   version_day_passed:
-    'This email’s day has passed, so its draft is not changed any more.'
+    'This email’s day has passed, so its draft is not changed any more.',
+  version_plan_replaced:
+    'This email’s plan has been replaced by a newer one, so it is not changed any more.',
+  version_no_email: 'This email is not one of yours.'
+}
+
+/**
+ * PICK-106: where "Use this version" would put the email, exactly as the
+ * push would (`pushRoute`, the live pusher's write lock included):
+ * - `sample`: a sample draft stays one (the fake pusher, no Klaviyo call);
+ * - `replace`: GROS's draft in Klaviyo is updated;
+ * - `new_draft`: a sample draft of the store's own email becomes a real
+ *   draft in Klaviyo (the push switch was turned on since);
+ * - `off`: Klaviyo holds the draft and cannot be written now (the switch
+ *   off or the write lock on): nothing happens.
+ */
+export type RestoreRoute = 'sample' | 'replace' | 'new_draft' | 'off'
+
+export function restoreRoute(input: {
+  /** `pushRoute` for the version's email. */
+  route: 'fake' | 'live' | 'locked'
+  /** The build is a sample draft (it never reached Klaviyo). */
+  sampleDraft: boolean
+  /** The live pusher wrote a push row for this planned email's key. */
+  pushRow: boolean
+}): RestoreRoute {
+  const inKlaviyo = !input.sampleDraft || input.pushRow
+  if (input.route === 'locked') return 'off'
+  if (input.route === 'fake') return inKlaviyo ? 'off' : 'sample'
+  return inKlaviyo ? 'replace' : 'new_draft'
+}
+
+/** What happens on "Use this version", in the owner's words. */
+export const restoreRouteWords: Record<RestoreRoute, string> = {
+  sample:
+    'It becomes the current version of your sample draft. Nothing goes to Klaviyo.',
+  replace:
+    'It becomes the current version and replaces GROS’s draft in Klaviyo. Nothing is scheduled or sent.',
+  new_draft:
+    'It becomes the current version and goes into Klaviyo as a draft. Nothing is scheduled or sent.',
+  off: 'Putting emails into Klaviyo is switched off right now, so your draft in Klaviyo cannot be changed.'
 }

@@ -3314,6 +3314,9 @@ export type Database = {
           progress: Json
           push_key: string
           reference_id: string | null
+          restore_campaign_id: string | null
+          restore_email: Json | null
+          restore_version: string | null
           run_id: string
           sample_draft: boolean
           slot: number
@@ -3339,6 +3342,9 @@ export type Database = {
           progress?: Json
           push_key?: string
           reference_id?: string | null
+          restore_campaign_id?: string | null
+          restore_email?: Json | null
+          restore_version?: string | null
           run_id: string
           sample_draft?: boolean
           slot: number
@@ -3364,6 +3370,9 @@ export type Database = {
           progress?: Json
           push_key?: string
           reference_id?: string | null
+          restore_campaign_id?: string | null
+          restore_email?: Json | null
+          restore_version?: string | null
           run_id?: string
           sample_draft?: boolean
           slot?: number
@@ -4194,9 +4203,11 @@ export type Database = {
           created_at: string
           created_by: string | null
           email: Json
+          failure: string | null
           how: string
           id: string
           number: number
+          outcome: string | null
           restored_from: number | null
           run_id: string
           slot: number
@@ -4208,9 +4219,11 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           email: Json
+          failure?: string | null
           how: string
           id?: string
           number: number
+          outcome?: string | null
           restored_from?: number | null
           run_id: string
           slot: number
@@ -4222,9 +4235,11 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           email?: Json
+          failure?: string | null
           how?: string
           id?: string
           number?: number
+          outcome?: string | null
           restored_from?: number | null
           run_id?: string
           slot?: number
