@@ -4,6 +4,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { inspirationBlueprint } from '@/features/inbox/blueprints'
 import {
+  recentPicks,
+  storedPick,
+  workspaceLibrary
+} from '@/features/block-library/read'
+import {
   blueprintWords,
   copyFailures,
   copyInputSchema,
@@ -125,11 +130,18 @@ const placeholderLeft = /https:\/\/email-copies\.invalid\//
 
 export function libraryPortsFor(
   db: Db,
-  input: { tenant: string; build: string; lease: string; upload?: string }
+  input: {
+    tenant: string
+    build: string
+    lease: string
+    upload?: string
+    /** DES-ENGINE-004b: a Scratch build with the library on. */
+    scratch?: boolean
+  }
 ): LibraryCopyPort {
   /** Asks for the copy (stored once), reads it, and signs its cut photos. */
   const ask = async (
-    source: { message: string } | { upload: string },
+    source: { message: string } | { upload: string } | { blocks: string[] },
     copyIn: CopyInput,
     photos: number
   ): Promise<CopyState> => {
@@ -141,13 +153,30 @@ export function libraryPortsFor(
       lease: input.lease,
       ...('upload' in source
         ? { upload: source.upload, message: null }
-        : { message: source.message }),
+        : 'blocks' in source
+          ? { blocks: source.blocks, message: null }
+          : { message: source.message }),
       input: copyIn as unknown as Json,
       photos
     } as never)
     if (asked.error) {
       if (asked.error.details === 'no_blueprint')
-        return { state: 'failed', reason: copyFailures.blueprint_gone }
+        return {
+          state: 'failed',
+          reason:
+            'blocks' in source
+              ? copyFailures.block_unusable
+              : copyFailures.blueprint_gone
+        }
+      // DES-ENGINE-004b: a Scratch request the database will refuse every
+      // time (another pick stored for this build, or not a Scratch build):
+      // the coded blocks, never a step stuck on it.
+      if (
+        'blocks' in source &&
+        (asked.error.details === 'other_email' ||
+          asked.error.details === 'not_scratch')
+      )
+        return { state: 'failed', reason: copyFailures.copy_failed }
       throw asked.error
     }
     return settled(asked.data)
@@ -225,6 +254,28 @@ export function libraryPortsFor(
     return { state: 'done', record: { ...record.data, html } }
   }
   return {
+    ...(input.scratch
+      ? {
+          scratch: {
+            // The blocks this workspace may use (hidden ones left out) and
+            // its last Scratch emails' picks (this build's own left out).
+            async library() {
+              const [blocks, recent] = await Promise.all([
+                workspaceLibrary(db, input.tenant),
+                recentPicks(db, input.tenant, input.build)
+              ])
+              return { blocks, recent }
+            },
+            // The pick this build's copy already asked for (a saved pick lost).
+            stored: () => storedPick(db, input.tenant, input.build),
+            copy: (
+              blocks: readonly string[],
+              copyIn: CopyInput,
+              photos: number
+            ) => ask({ blocks: [...blocks] }, copyIn, photos)
+          }
+        }
+      : {}),
     ...(input.upload
       ? {
           upload: input.upload,

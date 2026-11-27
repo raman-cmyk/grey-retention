@@ -58,6 +58,12 @@ export type LibraryCopyInput = {
    * changes; no leak check against itself, the look kept check instead.
    */
   keepLook?: boolean
+  /**
+   * DES-ENGINE-004b: a Scratch email built from library blocks of several
+   * emails: the copy is checked against **every** source email it took a
+   * layout from (each with its own brand's names), not only `sourceHtml`.
+   */
+  leakSources?: readonly { html: string; names: readonly string[] }[]
 }
 
 export type LibraryCopyResult =
@@ -178,15 +184,27 @@ export async function libraryCopy(
     if (!result.ok) return { ...result, retry: transientError(result.error) }
     // The brand's own design is not checked against itself (its words,
     // pictures and links are the brand's own); its look must be kept.
+    const vocabulary = [...input.vocabulary, ...swapOwnWords(input.brand)]
     const leaks = input.keepLook
       ? []
-      : leaksOf({
-          source: input.source,
-          sourceHtml: input.sourceHtml,
-          html: result.html,
-          sourceNames: input.sourceNames,
-          vocabulary: [...input.vocabulary, ...swapOwnWords(input.brand)]
-        })
+      : input.leakSources?.length
+        ? dedupeLeaks(
+            input.leakSources.flatMap((s) =>
+              leaksOf({
+                sourceHtml: s.html,
+                html: result.html,
+                sourceNames: s.names,
+                vocabulary
+              })
+            )
+          )
+        : leaksOf({
+            source: input.source,
+            sourceHtml: input.sourceHtml,
+            html: result.html,
+            sourceNames: input.sourceNames,
+            vocabulary
+          })
     const look = input.keepLook
       ? lookProblems(
           source,
@@ -215,6 +233,13 @@ export async function libraryCopy(
     }
   }
 }
+
+/** Each leak once (several sources can find the same word). */
+const dedupeLeaks = (leaks: readonly Leak[]) =>
+  leaks.filter(
+    (l, i) =>
+      leaks.findIndex((x) => x.kind === l.kind && x.value === l.value) === i
+  )
 
 /** The copy's HTML with each cut photo inline (previews and the gate's pictures). */
 export const withCutsInline = (html: string, cuts: readonly Cut[]) =>

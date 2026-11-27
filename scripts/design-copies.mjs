@@ -169,14 +169,28 @@ export async function run({
           body: JSON.stringify({ job: job.job, lease: job.lease, ...body })
         }).catch(() => null)
       let sourceHtml
-      try {
-        if (!linkOk(job.html)) throw new Error('html')
-        const got = await fetch(job.html, {
+      // DES-ENGINE-004b: a Scratch copy is checked against every email a
+      // library block came from.
+      let leakSources
+      const read = async (url) => {
+        if (!linkOk(url)) throw new Error('html')
+        const got = await fetch(url, {
           redirect: 'error',
           signal: AbortSignal.timeout(20_000)
         })
         if (!got.ok) throw new Error('html')
-        sourceHtml = await got.text()
+        return got.text()
+      }
+      try {
+        sourceHtml = await read(job.html)
+        if (Array.isArray(job.sources) && job.sources.length) {
+          leakSources = []
+          for (const s of job.sources.slice(0, 12))
+            leakSources.push({
+              html: await read(s.html),
+              names: Array.isArray(s.names) ? s.names.map(String) : []
+            })
+        }
       } catch {
         counts.retry++
         await report({ retry: 'html_unreadable' })
@@ -198,6 +212,7 @@ export async function run({
             mode: input.mode,
             // DES-ENGINE-003b: the brand's own uploaded design keeps its look.
             ...(input.keepLook === true ? { keepLook: true } : {}),
+            ...(leakSources ? { leakSources } : {}),
             crop: 'canvas',
             // Photos only from the server's fixed list (never the input's).
             tools: toolsFor(photoHosts(job.origins))
