@@ -163,6 +163,12 @@ export const builtEmail = z.object({
   library: z
     .object({
       emailId: z.string().max(80),
+      /**
+       * DES-ENGINE-003b: a copy of one of the workspace's own uploaded
+       * emails (`emailId` is then the upload's id): the brand's own design
+       * (its look kept) or another brand's (copied like a library email).
+       */
+      upload: z.enum(['own', 'other']).optional(),
       sections: z.array(copiedSection).max(41),
       footerAdded: z.boolean()
     })

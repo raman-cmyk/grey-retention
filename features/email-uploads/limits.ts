@@ -80,7 +80,7 @@ export function uploadRefusal(code: string | null | undefined): string {
     case 'upload_hourly_limit':
       return 'You added many emails in the last hour. Try again later.'
     case 'upload_changed':
-      return 'This upload did not finish, and its pictures have changed since. Open the page again and add the file.'
+      return 'This upload did not finish, and its pictures have changed since (or it was added in another window). Open the page again and add the file.'
     case 'upload_gone':
       return 'This email was deleted while it was added. Add it again.'
     case 'upload_files_missing':

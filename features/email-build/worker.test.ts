@@ -699,7 +699,7 @@ describe('saved steps (REL-081)', () => {
     ).toEqual([
       // DST-002b: the build's mode (UI-USE: and its chosen email), once,
       // at the sections step.
-      ['email_builds.select', 'mode,reference_id'],
+      ['email_builds.select', 'mode,reference_id,upload_id'],
       ['email_builds.eq', 'id', 'build-1'],
       ['email_builds.eq', 'tenant_id', tenant],
       [

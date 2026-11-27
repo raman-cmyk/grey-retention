@@ -185,7 +185,8 @@ describe('the upload measuring job (DES-ENGINE-003)', () => {
           lease,
           design: 'own',
           pictures: 2,
-          html: `https://db.test/sign/${tenant}/${upload}/email.html`
+          html: `https://db.test/sign/${tenant}/${upload}/email.html`,
+          etag: '"e1"'
         }
       ],
       skew: false

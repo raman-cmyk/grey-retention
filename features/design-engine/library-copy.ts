@@ -2,6 +2,7 @@ import type { Browser } from '@playwright/test'
 import type { Blueprint, Section } from './blueprint'
 import { copyBlueprint, type CopyResult } from './copy'
 import { leaksOf, LeakCheckError, type Leak } from './leaks'
+import { lookProblems } from './look'
 import {
   photoTools,
   sizedPhotos,
@@ -51,11 +52,22 @@ export type LibraryCopyInput = {
   crop?: 'canvas' | Cropper | null
   /** The photo tools (tests); default: `photoTools` in this browser. */
   tools?: PhotoTools
+  /**
+   * DES-ENGINE-003b: the brand's own design (an upload the owner marked
+   * as his): its look is kept (`swapBrand` `keepLook`), only the content
+   * changes; no leak check against itself, the look kept check instead.
+   */
+  keepLook?: boolean
 }
 
 export type LibraryCopyResult =
   | (Extract<CopyResult, { ok: true }> & {
       leaks: Leak[]
+      /**
+       * DES-ENGINE-003b: an own design's look as drawn against the
+       * original (`lookProblems`); empty when kept, or not an own design.
+       */
+      look: string[]
       /** The library Footer block was added (the original had no footer text). */
       footerAdded: boolean
       /**
@@ -137,7 +149,8 @@ export async function libraryCopy(
       brand,
       products,
       words: input.words,
-      rules: input.rules
+      rules: input.rules,
+      ...(input.keepLook ? { keepLook: true } : {})
     }
     const swapped =
       crop === 'canvas'
@@ -163,16 +176,32 @@ export async function libraryCopy(
       mode: input.mode ?? 'preview'
     })
     if (!result.ok) return { ...result, retry: transientError(result.error) }
-    const leaks = leaksOf({
-      source: input.source,
-      sourceHtml: input.sourceHtml,
-      html: result.html,
-      sourceNames: input.sourceNames,
-      vocabulary: [...input.vocabulary, ...swapOwnWords(input.brand)]
-    })
+    // The brand's own design is not checked against itself (its words,
+    // pictures and links are the brand's own); its look must be kept.
+    const leaks = input.keepLook
+      ? []
+      : leaksOf({
+          source: input.source,
+          sourceHtml: input.sourceHtml,
+          html: result.html,
+          sourceNames: input.sourceNames,
+          vocabulary: [...input.vocabulary, ...swapOwnWords(input.brand)]
+        })
+    const look = input.keepLook
+      ? lookProblems(
+          source,
+          result.drawn,
+          new Set(
+            result.sections
+              .filter((s) => s.result !== 'copied')
+              .map((s) => s.ordinal)
+          )
+        )
+      : []
     return {
       ...result,
       leaks,
+      look,
       footerAdded,
       cuts: ((swapped as { cuts?: Cut[] }).cuts ?? []) as Cut[]
     }

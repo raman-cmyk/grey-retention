@@ -3321,6 +3321,7 @@ export type Database = {
           step: string
           tenant_id: string
           updated_at: string
+          upload_id: string | null
           waits: number
         }
         Insert: {
@@ -3345,6 +3346,7 @@ export type Database = {
           step?: string
           tenant_id: string
           updated_at?: string
+          upload_id?: string | null
           waits?: number
         }
         Update: {
@@ -3369,6 +3371,7 @@ export type Database = {
           step?: string
           tenant_id?: string
           updated_at?: string
+          upload_id?: string | null
           waits?: number
         }
         Relationships: [
@@ -3401,39 +3404,42 @@ export type Database = {
           cleaned_at: string | null
           created_at: string
           failure: string | null
-          inbox_message_id: string
+          inbox_message_id: string | null
           input: Json
           photos: number
           result: Json | null
           state: string
           tenant_id: string
           updated_at: string
+          upload_id: string | null
         }
         Insert: {
           build_id: string
           cleaned_at?: string | null
           created_at?: string
           failure?: string | null
-          inbox_message_id: string
+          inbox_message_id?: string | null
           input: Json
           photos?: number
           result?: Json | null
           state?: string
           tenant_id: string
           updated_at?: string
+          upload_id?: string | null
         }
         Update: {
           build_id?: string
           cleaned_at?: string | null
           created_at?: string
           failure?: string | null
-          inbox_message_id?: string
+          inbox_message_id?: string | null
           input?: Json
           photos?: number
           result?: Json | null
           state?: string
           tenant_id?: string
           updated_at?: string
+          upload_id?: string | null
         }
         Relationships: [
           {
@@ -8101,6 +8107,7 @@ export type Database = {
           run: string
           slot: number
           t: string
+          upload?: string
         }
         Returns: string
       }
@@ -8865,6 +8872,7 @@ export type Database = {
           lease: string
           message: string
           photos?: number
+          upload?: string
         }
         Returns: Json
       }

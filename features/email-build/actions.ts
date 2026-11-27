@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { after } from 'next/server'
 import { z } from 'zod'
+import { uploadCopyOn } from '@/features/email-uploads/switch'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import type { Database } from '@/lib/supabase/database.types'
 import { createClient } from '@/lib/supabase/server'
@@ -128,6 +129,12 @@ function refusal(
       error:
         'This email is no longer in your Inspiration. Choose another one there.'
     }
+  // DES-ENGINE-003b: one of the workspace's own uploaded emails.
+  if (error.code === '22023' && error.hint === 'build_upload_unknown')
+    return {
+      error:
+        'This email of yours is not ready, or was deleted. Choose another one in Your emails.'
+    }
   if (error.code === '22023')
     return { error: 'This plan has no such email. Reload the page.' }
   return { error: 'We could not create the email. Try again.' }
@@ -221,3 +228,66 @@ const alreadyMade =
 
 type CreateEmailBuildArgs =
   Database['public']['Functions']['create_email_build']['Args']
+
+const uploadUseForm = z.object({
+  run: z.uuid(),
+  slot: createForm.shape.slot,
+  upload: z.uuid()
+})
+
+/**
+ * DES-ENGINE-003b: "Use this design" on one of the workspace's own
+ * uploaded emails ("Add your own email"): Create email on the planned
+ * email the owner picked, copied from his upload (his brand's own design
+ * keeps its look; another brand's email is copied like a library email).
+ * Only the owner starts it, with the owner's switch on.
+ */
+export async function createEmailFromUpload(
+  _state: CreateEmailState,
+  form: FormData
+): Promise<CreateEmailState> {
+  const context = await requireRequestContext('client')
+  if (context.tenantRole !== 'owner')
+    return { error: 'Only this workspace’s owner creates emails.' }
+  if (!uploadCopyOn(process.env))
+    return { error: 'Copying your own emails is not turned on yet.' }
+  const parsed = uploadUseForm.safeParse({
+    run: form.get('run'),
+    slot: form.get('slot'),
+    upload: form.get('upload')
+  })
+  if (!parsed.success) {
+    const fields = new Set(parsed.error.issues.map((i) => i.path[0]))
+    return {
+      error: fields.has('upload')
+        ? 'Choose one of your emails first.'
+        : 'Choose a planned email.'
+    }
+  }
+  const db = await createClient()
+  if (!db) return { error: 'Creating emails is unavailable right now.' }
+  const { data, error } = await db.rpc('create_email_build', {
+    t: context.tenantId,
+    run: parsed.data.run,
+    slot: parsed.data.slot,
+    mode: 'copy',
+    upload: parsed.data.upload
+  })
+  const refused = refusal(error)
+  if (refused) return refused
+  if (typeof data !== 'string')
+    return { error: 'We could not create the email. Try again.' }
+  const made = await db
+    .from('email_builds')
+    .select('mode,reference_id,upload_id')
+    .eq('id', data)
+    .eq('tenant_id', context.tenantId)
+    .maybeSingle()
+  if (made.data && made.data.upload_id !== parsed.data.upload) {
+    revalidatePath('/plan')
+    return { error: alreadyMade }
+  }
+  buildSoon(data)
+  revalidatePath('/plan')
+  redirect(`/plan/email/${data}` as Route)
+}

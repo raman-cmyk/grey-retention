@@ -189,20 +189,18 @@ export async function addUploadFile(input: {
     const put = (f: (typeof files)[number]) =>
       bucket.upload(f.path, f.body, { contentType: f.type, upsert: false })
     for (const f of files) {
-      let stored = await put(f)
+      const stored = await put(f)
       // Never over a stored file: one already there is this upload's own
-      // (an earlier try of it). The original and the pictures are the
-      // same bytes (the same hash); the prepared HTML of an earlier try
-      // that differs (its size) is replaced, since nothing uses an
-      // unfinished upload yet. The finish pins each one's size and tag.
+      // (an earlier try of it, or the same file added at the same time in
+      // another window). The original and the pictures are the same bytes
+      // (the same hash); a prepared HTML of another size is never
+      // replaced (the other add may have finished with it): refused.
       if (stored.error && /exists|duplicate/i.test(stored.error.message)) {
         if (!f.path.endsWith('/email.html')) continue
         const listed = await bucket.list(base, { search: 'email.html' })
         const now = listed.data?.find((o) => o.name === 'email.html')
         if (Number(now?.metadata?.size) === f.body.byteLength) continue
-        const removed = await bucket.remove([f.path])
-        if (removed.error) return refused('storage')
-        stored = await put(f)
+        return refused('upload_changed')
       }
       if (stored.error) return refused('storage')
     }

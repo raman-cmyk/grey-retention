@@ -48,11 +48,11 @@ $$;
 -- Grants, row level security and the private bucket.
 select ok(not bool_or(has_function_privilege(r, f, 'execute')), 'browser roles cannot ask for, claim, record or hand back a copy')
   from unnest(array['anon','authenticated']) r,
-       unnest(array['public.request_email_copy(uuid,uuid,uuid,jsonb,integer)','public.claim_email_copy()',
+       unnest(array['public.request_email_copy(uuid,uuid,uuid,jsonb,integer,uuid)','public.claim_email_copy()',
                     'public.record_email_copy(uuid,uuid,jsonb,text)','public.release_email_copy(uuid,uuid)',
                     'public.clean_email_copy(uuid)']) f;
 select ok(bool_and(has_function_privilege('service_role', f, 'execute')), 'jobs can')
-  from unnest(array['public.request_email_copy(uuid,uuid,uuid,jsonb,integer)','public.claim_email_copy()',
+  from unnest(array['public.request_email_copy(uuid,uuid,uuid,jsonb,integer,uuid)','public.claim_email_copy()',
                     'public.record_email_copy(uuid,uuid,jsonb,text)','public.release_email_copy(uuid,uuid)',
                     'public.clean_email_copy(uuid)']) f;
 select ok(not bool_or(has_function_privilege(r, f, 'execute')), 'the failure trigger and the role check are not callable')
