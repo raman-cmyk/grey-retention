@@ -357,6 +357,28 @@ describe('with the lock released by the server (exactly "unlocked")', () => {
       ).kind
     ).toBe('rejected')
     expect(calls).toHaveLength(1)
+    // PICK-101: GROS's own list-hygiene segment is the one segment write.
+    await client
+      .write(
+        'POST',
+        '/api/segments',
+        {
+          data: {
+            type: 'segment',
+            attributes: {
+              name: 'GROS list hygiene · 180 days · v1',
+              definition: { condition_groups: [] },
+              is_starred: false
+            }
+          }
+        },
+        'segments:write'
+      )
+      .catch(() => null)
+    expect(calls).toEqual([
+      { method: 'POST', url: `${host}/api/templates` },
+      { method: 'POST', url: `${host}/api/segments` }
+    ])
   })
 
   it('never lets fetchTransport send the key off Klaviyo', async () => {

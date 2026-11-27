@@ -16,7 +16,7 @@ export type SegmentFaults = {
   /** One request to this path prefix answers 503, once. */
   outage?: string
   /** Metrics the account does not have. */
-  without?: string[]
+  without?: readonly string[]
 }
 
 export type FakeSegmentAccount = {

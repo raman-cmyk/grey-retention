@@ -8,6 +8,8 @@ import {
   fakeDraftPusher,
   type DraftPusher
 } from '@/lib/providers/klaviyo-draft'
+import { hygieneDefaults } from '@/features/audiences/hygiene'
+import { HygieneBusy, type HygieneState, type HygieneStore } from './hygiene'
 import {
   liveDraftPusher,
   type PushProgress,
@@ -91,6 +93,70 @@ export function databasePushStore(db: Db): PushStore {
 }
 
 /**
+ * PICK-101: the owner's list-hygiene setting (`list_hygiene_settings`, the
+ * default without a row) and GROS's exclusion segment per rule
+ * (`klaviyo_hygiene_segments`), saved through `save_hygiene_segment` under
+ * the build's push lease. Another push making it now is `HygieneBusy`.
+ */
+export function databaseHygieneStore(db: Db): HygieneStore {
+  return {
+    async settings(tenantId) {
+      const { data, error } = await db
+        .from('list_hygiene_settings')
+        .select('enabled,days')
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+      if (error) throw error
+      return data ? { enabled: data.enabled, days: data.days } : hygieneDefaults
+    },
+    async load(tenantId, ruleKey) {
+      const { data, error } = await db
+        .from('klaviyo_hygiene_segments')
+        .select(
+          'state,segment_id,reason,create_started_at,profile_count,counted_at,updated_at'
+        )
+        .eq('tenant_id', tenantId)
+        .eq('rule_key', ruleKey)
+        .maybeSingle()
+      if (error) throw error
+      return data
+        ? {
+            state: data.state as HygieneState,
+            segmentId: data.segment_id,
+            reason: data.reason,
+            createStartedAt: data.create_started_at,
+            profileCount: data.profile_count,
+            countedAt: data.counted_at,
+            updatedAt: data.updated_at
+          }
+        : null
+    },
+    async save({ build, lease }, ruleKey, step) {
+      const row: Record<string, unknown> = {}
+      const names = [
+        ['state', 'state'],
+        ['segmentId', 'segment_id'],
+        ['reason', 'reason'],
+        ['createStartedAt', 'create_started_at'],
+        ['profileCount', 'profile_count'],
+        ['countedAt', 'counted_at']
+      ] as const
+      for (const [from, to] of names)
+        if (from in step) row[to] = step[from] ?? null
+      const { error } = await db.rpc('save_hygiene_segment', {
+        build,
+        lease,
+        rule: ruleKey,
+        step: row as Json
+      })
+      if (error?.code === 'PT409' && error.message.includes('hygiene'))
+        throw new HygieneBusy()
+      if (error) throw error
+    }
+  }
+}
+
+/**
  * The workspace's live Klaviyo: only when the owner's switch is on
  * (`KLAVIYO_MODE=live`), at the revision this client is written for, and
  * with the key the owner connected (`klaviyo_api_key`: a live, connected
@@ -151,6 +217,7 @@ export function draftPusherFor(
   const live = liveDraftPusher({
     source: liveSource(db, env),
     store: databasePushStore(db),
+    hygiene: databaseHygieneStore(db),
     budgetMs: options.budgetMs,
     deadline: options.deadline,
     callMs: pushCallMs

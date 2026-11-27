@@ -30,6 +30,10 @@ Everything else is refused with the error `write_locked`, **before any network c
 
 A push of a draft ("Create email" with `KLAVIYO_DRAFT_PUSH=live`) stops before it even reads the workspace's key, and the email's build fails as refused (it is not tried again).
 
+## What the app may write once unlocked
+
+Even with the lock released, the client writes only what makes or changes a draft campaign (the campaign, its message and variations, templates and imported pictures) and, since PICK-101, **one segment: GROS's own list-hygiene segment** (`POST /api/segments`, only with a name like `GROS list hygiene · 180 days · v1`, a definition, and nothing starred). It is made once per rule and reused; the app never changes or deletes a segment, and never makes any other one. Nothing it can write schedules or sends.
+
 ## How it is enforced (twice)
 
 1. **In the client** (`lib/providers/klaviyo/client.ts`): every request goes through `send()`, which checks the method and the address it is about to send before calling the transport. `write()` checks it first too, so a write of any kind says `write_locked`.
