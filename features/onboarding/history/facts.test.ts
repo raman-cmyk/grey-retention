@@ -22,7 +22,12 @@ import {
   readHistory,
   sampleHistory
 } from './historian'
-import { planFromHistory, readKlaviyoHistory, unknownAudience } from './read'
+import {
+  planFromHistory,
+  readKlaviyoHistory,
+  unknownAudience,
+  windowCampaigns
+} from './read'
 
 const now = Date.parse('2026-11-11T12:00:00Z')
 const day = 86_400_000
@@ -744,5 +749,66 @@ describe('the Klaviyo historian', () => {
         answered: false,
         reason
       })
+  })
+})
+
+describe('planFromHistory: the offers GROS drafted (PLN-040b)', () => {
+  const window = { start: '2026-11-12', days: 15 }
+
+  it('names the Klaviyo campaigns of the sends it hands on, once each', () => {
+    // C1 was sent before the window and is scheduled in it; C2 is after it.
+    expect(windowCampaigns(snapshot(), window)).toEqual(['C1', 'C3'])
+  })
+
+  it('gives a send the percent of the code GROS drafted for its campaign, as an offer email', () => {
+    const plan = planFromHistory(snapshot(), window, new Map([['C3', 25]]))
+    expect(plan.existing).toEqual([
+      { date: '2026-11-05', audienceId: unknownAudience, offer: false },
+      { date: '2026-11-20', audienceId: 'SegA', offer: true },
+      // Klaviyo's words did not read as an offer; GROS drafted its code.
+      {
+        date: '2026-11-21',
+        audienceId: unknownAudience,
+        offer: true,
+        percent: 25
+      }
+    ])
+    expect(plan.saleOffers).toEqual([{ date: '2026-11-21', percent: 25 }])
+    // A campaign GROS drafted nothing for (or none at all) keeps no percent.
+    expect(
+      planFromHistory(snapshot(), window, new Map([['C9', 25]])).existing
+    ).toEqual(planFromHistory(snapshot(), window).existing)
+  })
+
+  it('looks 14 days back for the ladder only; the checks keep their 7', () => {
+    const history = snapshot({
+      sent: sentEmails(
+        [
+          message({ id: 'A', subject: 'Twenty off', sendAt: iso(6) }),
+          // 10 days before the window: 2 Nov in Los Angeles.
+          message({ id: 'B', campaignId: 'C7', sendAt: iso(9) }),
+          // 16 days before: outside both.
+          message({ id: 'O', campaignId: 'C8', sendAt: iso(15) })
+        ],
+        [],
+        now
+      )
+    })
+    expect(windowCampaigns(history, window)).toEqual(['C7', 'C1', 'C3'])
+    const plan = planFromHistory(
+      history,
+      window,
+      new Map([
+        ['C7', 25],
+        ['C8', 30]
+      ])
+    )
+    expect(plan.saleOffers).toEqual([{ date: '2026-11-02', percent: 25 }])
+    expect(plan.existing.map((e) => e.date)).toEqual([
+      '2026-11-05',
+      '2026-11-20',
+      '2026-11-21'
+    ])
+    expect(planFromHistory(history, window).saleOffers).toBeUndefined()
   })
 })
