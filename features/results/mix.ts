@@ -27,6 +27,10 @@ const kindByType = new Map<string, MixKind>(
   } satisfies Record<EmailType, MixKind>)
 )
 
+/** A planned email type's kind (PICK-WIRE: the plan step counts its mix). */
+export const mixKindOf = (type: EmailType): MixKind =>
+  kindByType.get(type) ?? 'product'
+
 /** The mix before a brand has results: shares of the window's emails. */
 export const defaultMix: Readonly<Record<MixKind, number>> = Object.freeze({
   offer: 0.3,
