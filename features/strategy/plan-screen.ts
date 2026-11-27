@@ -1,3 +1,7 @@
+import {
+  buildProgress,
+  type BuildProgress
+} from '@/features/email-build/create-all'
 import type { EmailBuildView, PlanRun } from './load'
 import type { EmailType } from './plan'
 import { timingWords } from './send-times'
@@ -64,6 +68,16 @@ export type PlanScreen =
       none: string | null
       /** "3 in Klaviyo · 1 sample draft · 5 planned", for the card's label. */
       counts: { inKlaviyo: number; sampleDrafts: number; planned: number }
+      /**
+       * PICK-102: how far the plan's emails got ("6 of 15 ready · 1 failed
+       * · 8 working"); shown while any is being made or has failed.
+       */
+      progress: BuildProgress
+      /**
+       * PICK-102: emails "Create all" would queue (the owner's rows with
+       * Create email); the button shows for two or more.
+       */
+      toCreate: number
       /** Plan again (the owner only). */
       canPlan: boolean
     }
@@ -102,8 +116,21 @@ export type EmailAction =
   /** The email's own page: its preview, its run log, Open in Klaviyo. */
   | { kind: 'open'; buildId: string }
 
+/**
+ * PICK-102: how far one planned email got, for the plan's progress and
+ * "Create all": whatever the viewer may do about it.
+ */
+export type EmailStage =
+  | 'not_started'
+  | 'working'
+  | 'ready'
+  | 'failed'
+  /** Its send time passed before it was made: it is never made. */
+  | 'too_late'
+
 export type PlanEmail = {
   slot: number
+  stage: EmailStage
   date: string
   /** "Fri 20". */
   day: string
@@ -252,9 +279,25 @@ function emailState(
       action: { kind: 'open', buildId: build.id }
     }
   return {
-    status: { kind: 'working', word: stepWords[build.step] ?? 'Working' },
+    // PICK-102 review: still queued after its send time passed, it waits
+    // for the job, which stops it (send_time_passed): never "Writing".
+    status: {
+      kind: 'working',
+      word: passed ? 'Overdue' : (stepWords[build.step] ?? 'Working')
+    },
     action: { kind: 'open', buildId: build.id }
   }
+}
+
+/** PICK-102: how far one planned email got, from its latest build. */
+function emailStage(
+  build: EmailBuildView | undefined,
+  passed: boolean
+): EmailStage {
+  if (!build) return passed ? 'too_late' : 'not_started'
+  if (build.state === 'failed') return passed ? 'too_late' : 'failed'
+  if (build.state === 'drafted') return 'ready'
+  return 'working'
 }
 
 /** How far a day's emails got, the furthest first. */
@@ -336,6 +379,7 @@ export function planScreen(
       const lead = s.products[0]?.title
       return {
         slot,
+        stage: emailStage(run.builds[slot], passed),
         date: s.date,
         day: dayLabel(s.date),
         title: lead ? `${kind}: ${lead}` : kind,
@@ -412,6 +456,10 @@ export function planScreen(
       sampleDrafts,
       planned: emails.length - inKlaviyo - sampleDrafts
     },
+    progress: buildProgress(emails),
+    toCreate: emails.filter(
+      (e) => e.stage === 'not_started' && e.action?.kind === 'create'
+    ).length,
     canPlan: owner
   }
 }
