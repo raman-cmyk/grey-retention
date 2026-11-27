@@ -1,3 +1,6 @@
+import type { Route } from 'next'
+import Link from 'next/link'
+import { ActionButton } from '@/components/gros/action'
 import { ButtonLink, buttonClasses } from '@/components/gros/button'
 import { Card } from '@/components/gros/card'
 import { AppPage, CardRow } from '@/components/gros/nav'
@@ -5,11 +8,15 @@ import { Progress } from '@/components/gros/progress'
 import { Status } from '@/components/gros/status'
 import { ErrorState } from '@/components/gros/states'
 import { KeepFresh } from '@/features/strategy/refresh'
+import { cn } from '@/lib/utils'
+import { restoreEmailVersion } from './actions'
 import type {
   EmailScreen as View,
   EmailView,
-  KlaviyoLink
+  KlaviyoLink,
+  VersionsPanel
 } from './email-screen'
+import { versionsKept } from './versions'
 import { EmailViews } from './email-views'
 
 /**
@@ -19,7 +26,17 @@ import { EmailViews } from './email-views'
  * line, its designs at desktop, phone and dark, a text email's plain text,
  * what the team changed, and Open in Klaviyo for a real draft.
  */
-export function EmailScreen({ view }: { view: View }) {
+export function EmailScreen({
+  view,
+  versions = null,
+  owner = false
+}: {
+  view: View
+  /** PICK-106: the planned email's versions (null: none kept). */
+  versions?: VersionsPanel | null
+  /** The workspace's owner: "Use this version" is his. */
+  owner?: boolean
+}) {
   const title =
     view.kind === 'email'
       ? view.title
@@ -29,6 +46,7 @@ export function EmailScreen({ view }: { view: View }) {
   return (
     <AppPage current="plan" title={title}>
       <Body view={view} />
+      {versions && <Versions panel={versions} owner={owner} />}
     </AppPage>
   )
 }
@@ -289,5 +307,113 @@ function Notes({ notes }: { notes: readonly string[] }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+/**
+ * PICK-106: every version of the email, newest first ("Version 3 · Today
+ * 10:40 · Made again with Try again"). Each opens its preview here (the
+ * same safe rendering as the email's own); the owner puts an older one
+ * back with Use this version, which is kept as a new version.
+ */
+function Versions({ panel, owner }: { panel: VersionsPanel; owner: boolean }) {
+  const shown = panel.lines.find((l) => l.shown)!
+  const base = `/plan/email/${panel.buildId}`
+  return (
+    <section
+      id="versions"
+      aria-labelledby="versions-title"
+      className="flex flex-col gap-[var(--space-5)]"
+    >
+      <Card>
+        <h2 id="versions-title" className="type-heading">
+          Versions
+        </h2>
+        <ul className="mt-[var(--space-5)] flex flex-col gap-[var(--space-2)]">
+          {panel.lines.map((line) => (
+            <li key={line.number}>
+              <Link
+                href={
+                  (line.current
+                    ? `${base}#versions`
+                    : `${base}?version=${line.number}#versions`) as Route
+                }
+                aria-current={line.shown ? 'true' : undefined}
+                className={cn(
+                  'flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] px-[var(--space-4)] py-[var(--space-3)]',
+                  line.shown ? 'bg-[var(--lime-soft)]' : 'bg-[var(--mist)]'
+                )}
+              >
+                <span className="type-body-strong">
+                  {line.current ? `${line.label} · Current` : line.label}
+                </span>
+                <span className="type-caption text-[var(--stone)]">
+                  {line.subject}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+        {panel.full && (
+          <p className="type-caption mt-[var(--space-4)] text-[var(--stone)]">
+            The {versionsKept} newest versions are kept.
+          </p>
+        )}
+      </Card>
+      {!shown.current && (
+        <Card>
+          <h2 className="type-heading">{`Version ${shown.number}`}</h2>
+          {panel.preview ? (
+            <dl className="mt-[var(--space-5)] flex flex-col gap-[var(--space-4)]">
+              <div>
+                <dt className="type-label">Subject</dt>
+                <dd className="type-body-strong">{panel.preview.subject}</dd>
+              </div>
+              <div>
+                <dt className="type-label">Preview line</dt>
+                <dd className="type-body">{panel.preview.preview}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="type-body mt-[var(--space-5)]">
+              This version was kept by an older version of the app, so it cannot
+              be shown.
+            </p>
+          )}
+          {owner && panel.drafted && panel.preview && (
+            <div className="mt-[var(--space-6)]">
+              <ActionButton
+                action={restoreEmailVersion}
+                label="Use this version"
+                fields={{
+                  build: panel.buildId,
+                  version: String(shown.number),
+                  shown: String(panel.newest)
+                }}
+              />
+              <p className="type-caption mt-[var(--space-3)] text-[var(--stone)]">
+                It becomes the current version and replaces your draft in
+                Klaviyo. Nothing is scheduled or sent.
+              </p>
+            </div>
+          )}
+          {owner && !panel.drafted && (
+            <p className="type-caption mt-[var(--space-5)] text-[var(--stone)]">
+              An older version can be used once the email is a draft again.
+            </p>
+          )}
+        </Card>
+      )}
+      {!shown.current &&
+        panel.preview?.designs.map((d) => (
+          <Card key={d.name}>
+            <h2 className="type-heading mb-[var(--space-5)]">{`Version ${shown.number}: ${d.name.toLowerCase()}`}</h2>
+            <EmailViews
+              name={`Version ${shown.number}, ${d.name.toLowerCase()}`}
+              html={d.html}
+            />
+          </Card>
+        ))}
+    </section>
   )
 }

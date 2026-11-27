@@ -11,7 +11,8 @@ import type { Database } from '@/lib/supabase/database.types'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logger } from '@/lib/logger'
-import { draftPusherFor } from '@/features/klaviyo-push/live'
+import { draftPushLive, draftPusherFor } from '@/features/klaviyo-push/live'
+import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import { pushBudgetMs } from '@/features/klaviyo-push/pusher'
 import { latestPlanRun } from '@/features/strategy/load'
 import { planScreen } from '@/features/strategy/plan-screen'
@@ -23,6 +24,7 @@ import {
   queueAll,
   type QueueAnswer
 } from './create-all'
+import { restoreWords, usableVersion } from './versions'
 import { runEmailBuilds } from './worker'
 
 export type CreateEmailState = { error?: string; message?: string }
@@ -430,3 +432,105 @@ async function allowanceUsed(
   if (error || !data) return false
   return data.used_micro + data.reserved_micro >= data.allocation_micro
 }
+
+const restoreForm = z.object({
+  build: z.uuid(),
+  version: z
+    .string()
+    .regex(/^\d{1,6}$/)
+    .transform(Number)
+    .pipe(z.int().min(1)),
+  // The newest version the page showed: a page older than that is stale.
+  shown: z
+    .string()
+    .regex(/^\d{1,6}$/)
+    .transform(Number)
+    .pipe(z.int().min(1))
+})
+
+/** Klaviyo cannot be written now: a real draft is left as it is. */
+const pushOff =
+  'Putting emails into Klaviyo is switched off right now, so your draft was not changed.'
+
+/**
+ * PICK-106 (owner pick #106): "Use this version" on an email's page. Only
+ * the workspace's owner (checked here and again by the command, under the
+ * workspace lock). The older version becomes the current one as a new
+ * version (history is never rewritten), and the email goes back through
+ * the same push as "Create email": the same worker, the planned email's
+ * push key (so the pusher updates the same GROS draft), every check and
+ * switch of the push (KLAVIYO_DRAFT_PUSH, the write lock, the final
+ * checks, the offer check, PICK-99's never-overwrite). Nothing is
+ * scheduled or sent. A real draft is not touched while Klaviyo cannot be
+ * written; a draft the owner scheduled, sent, deleted or changed in
+ * Klaviyo is refused by the command, in plain words.
+ */
+export async function restoreEmailVersion(
+  _state: CreateEmailState,
+  form: FormData
+): Promise<CreateEmailState> {
+  const started = Date.now()
+  const context = await requireRequestContext('client')
+  if (context.tenantRole !== 'owner')
+    return { error: 'Only this workspace’s owner changes emails.' }
+  const parsed = restoreForm.safeParse({
+    build: form.get('build'),
+    version: form.get('version'),
+    shown: form.get('shown')
+  })
+  if (!parsed.success) return { error: 'Reload the page to see the versions.' }
+  const db = await createClient()
+  if (!db) return { error: 'Changing emails is unavailable right now.' }
+  const build = await db
+    .from('email_builds')
+    .select('run_id,slot,sample_draft')
+    .eq('tenant_id', context.tenantId)
+    .eq('id', parsed.data.build)
+    .maybeSingle()
+  if (build.error) return { error: couldNotRestore }
+  if (!build.data) return { error: 'This email is not one of yours.' }
+  const version = await db
+    .from('email_versions')
+    .select('email')
+    .eq('tenant_id', context.tenantId)
+    .eq('run_id', build.data.run_id)
+    .eq('slot', build.data.slot)
+    .eq('number', parsed.data.version)
+    .maybeSingle()
+  if (version.error) return { error: couldNotRestore }
+  if (!version.data) return { error: restoreWords.version_unknown! }
+  // The push would refuse it: an email stored the way an older app did,
+  // or larger than an email is kept.
+  const email = usableVersion(version.data.email)
+  if (!email)
+    return {
+      error:
+        'This version was kept by an older version of the app, so it cannot be used again.'
+    }
+  // A real draft goes back only while Klaviyo can be written: the fake
+  // pusher would leave it as it is and say it was put there.
+  if (
+    !build.data.sample_draft &&
+    !email.sample &&
+    !(draftPushLive(process.env) && klaviyoWritesUnlocked(process.env))
+  )
+    return { error: pushOff }
+  const { error } = await db.rpc('restore_email_version', {
+    t: context.tenantId,
+    build: parsed.data.build,
+    version: parsed.data.version,
+    shown: parsed.data.shown
+  })
+  if (error) {
+    if (error.code === '42501')
+      return { error: 'Only this workspace’s owner changes emails.' }
+    const words = error.hint ? restoreWords[error.hint] : undefined
+    return { error: words ?? couldNotRestore }
+  }
+  // The push runs after the reply, as a click on Create email does.
+  buildSoon(started, parsed.data.build)
+  revalidatePath('/plan')
+  redirect(`/plan/email/${parsed.data.build}` as Route)
+}
+
+const couldNotRestore = 'We could not use this version. Try again.'

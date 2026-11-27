@@ -7,9 +7,12 @@ import type { KlaviyoState } from '@/features/results/klaviyo-state'
 import type { EmailStatus } from '@/features/results/sync'
 import {
   emailScreen,
+  versionPreview,
   type EmailLogLine,
-  type EmailScreen
+  type EmailScreen,
+  type VersionsPanel
 } from './email-screen'
+import { versionsKept, versionsView, type VersionRow } from './versions'
 
 /** At most this many log lines a build, the newest (its steps record a few each). */
 const maxLines = 20
@@ -35,8 +38,13 @@ export async function loadEmailScreen(
   tenantId: string,
   buildId: string,
   /** The store's time zone (the session's), for Klaviyo's send times. */
-  timezone = 'UTC'
-): Promise<{ ok: true; screen: EmailScreen | null } | { ok: false }> {
+  timezone = 'UTC',
+  /** PICK-106: the version whose preview is shown (the page's `?version=`). */
+  shown: number | null = null
+): Promise<
+  | { ok: true; screen: EmailScreen | null; versions?: VersionsPanel | null }
+  | { ok: false }
+> {
   const build = await db
     .from('email_builds')
     .select(
@@ -57,7 +65,7 @@ export async function loadEmailScreen(
       .order('last_seen_at', { ascending: false })
       .limit(maxLines)
   // A build id and a push key are uuids: no LIKE wildcard in either.
-  const [run, own, test, synced] = await Promise.all([
+  const [run, own, test, synced, kept] = await Promise.all([
     db
       .from('strategy_runs')
       .select('plan')
@@ -74,7 +82,16 @@ export async function loadEmailScreen(
       )
       .eq('tenant_id', tenantId)
       .eq('build_id', row.id)
-      .maybeSingle()
+      .maybeSingle(),
+    // PICK-106: the planned email's versions (its emails are read when shown).
+    db
+      .from('email_versions')
+      .select('number,how,restored_from,subject,created_at')
+      .eq('tenant_id', tenantId)
+      .eq('run_id', row.run_id)
+      .eq('slot', row.slot)
+      .order('number', { ascending: false })
+      .limit(versionsKept)
   ])
   if (run.error || own.error || test.error) return { ok: false }
   // Not read: the page still opens, saying what it knows without it.
@@ -108,8 +125,17 @@ export async function loadEmailScreen(
         instead: line.instead
       }
     })
+  const versions = await versionsPanel(
+    db,
+    tenantId,
+    row,
+    kept.error || !Array.isArray(kept.data) ? [] : kept.data,
+    timezone,
+    shown
+  )
   return {
     ok: true,
+    versions,
     screen: emailScreen(
       {
         id: row.id,
@@ -130,5 +156,53 @@ export async function loadEmailScreen(
       },
       log
     )
+  }
+}
+
+/**
+ * PICK-106: the planned email's versions and the one shown, with its
+ * preview. Not read (or none kept, as for an email made before version
+ * history): no panel, and the page opens as before.
+ */
+async function versionsPanel(
+  db: SupabaseClient<Database>,
+  tenantId: string,
+  row: { id: string; run_id: string; slot: number; state: string },
+  rows: readonly {
+    number: number
+    how: string
+    restored_from: number | null
+    subject: string
+    created_at: string
+  }[],
+  timezone: string,
+  shown: number | null
+): Promise<VersionsPanel | null> {
+  const view = versionsView(
+    rows.map((r): VersionRow => ({
+      number: r.number,
+      how: r.how,
+      restoredFrom: r.restored_from,
+      subject: r.subject,
+      createdAt: r.created_at
+    })),
+    { timezone, shown }
+  )
+  if (!view) return null
+  const pick = view.lines.find((l) => l.shown)!
+  const email = await db
+    .from('email_versions')
+    .select('email')
+    .eq('tenant_id', tenantId)
+    .eq('run_id', row.run_id)
+    .eq('slot', row.slot)
+    .eq('number', pick.number)
+    .maybeSingle()
+  return {
+    ...view,
+    buildId: row.id,
+    drafted: row.state === 'drafted',
+    preview:
+      email.error || !email.data ? null : versionPreview(email.data.email)
   }
 }

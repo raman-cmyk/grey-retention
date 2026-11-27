@@ -9,6 +9,7 @@ import { changeWords, type ChangeKey } from './content'
 import { copiedLines } from './library-copy'
 import { reasonLines } from './reasons'
 import { allSteps } from './step-names'
+import { usableVersion, type VersionsView } from './versions'
 import type { StatusKind } from '@/components/gros/status'
 import {
   stateNote,
@@ -339,6 +340,30 @@ function viewOf(
     copied: email.library ? copiedLines(email.library) : null,
     reasons: reasonLines(email.reasons)
   }
+}
+
+/**
+ * PICK-106: the planned email's versions on its page: the list (newest
+ * first), the one shown with its preview (the same safe rendering as the
+ * email's own), and whether its build is a draft an older version can be
+ * put back on.
+ */
+export type VersionsPanel = VersionsView & {
+  /** The build the page is for ("Use this version" acts on it). */
+  buildId: string
+  /** It is a draft (in Klaviyo or a sample one), not being made. */
+  drafted: boolean
+  /** The shown version as the previews show it; null when it cannot be shown. */
+  preview: EmailView | null
+}
+
+/**
+ * A stored version as the previews show it (both designs of a design
+ * test), or null when it was stored the way an older app stored it.
+ */
+export function versionPreview(email: unknown): EmailView | null {
+  const usable = usableVersion(email)
+  return usable ? viewOf(usable, [], false) : null
 }
 
 /** The email's page from its build row and its log lines (see above). */
