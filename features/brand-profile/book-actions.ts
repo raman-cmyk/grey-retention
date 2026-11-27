@@ -7,6 +7,7 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { rewriteBrandBookSoon } from '@/features/onboarding/brand-book-writes'
 import { createClient } from '@/lib/supabase/server'
 import { factInput, factKeys, type FactKey } from './book-facts'
+import { tokenInput, tokenKeys } from './book-design'
 
 /**
  * The owner's corrections typed into the Brand book (UI-BRAND-2). A
@@ -209,6 +210,46 @@ const factCorrection = (key: FactKey, value: string | null): Correction => ({
   action: value === null ? 'remove' : 'replace',
   value
 })
+
+/**
+ * PICK-006: corrects the brand's design tokens. Each token the owner
+ * changed becomes his (checked against its email-safe range here and in
+ * the database); an emptied field takes his own correction back, so the
+ * website's value (or the default) returns. `was_<token>` holds the value
+ * the form showed and `own_<token>` whether it was his, so unchanged
+ * tokens are left alone.
+ */
+export async function correctBrandBookDesign(
+  _state: ActionResult,
+  form: FormData
+): Promise<ActionResult> {
+  const expected = version.safeParse(form.get('version'))
+  if (!expected.success)
+    return { error: 'Open the Brand book again, then correct it.' }
+  const corrections: Correction[] = []
+  for (const key of tokenKeys) {
+    const typed = tokenInput(key, String(form.get(key) ?? ''))
+    if ('error' in typed) return { error: typed.error }
+    const was = tokenInput(key, String(form.get(`was_${key}`) ?? ''))
+    if ('value' in was && was.value === typed.value) continue
+    // Emptied: only his own correction can be taken back.
+    if (typed.value === null && form.get(`own_${key}`) !== '1') continue
+    corrections.push({
+      section: `tokens.${key}`,
+      original: null,
+      action: typed.value === null ? 'remove' : 'replace',
+      value: typed.value
+    })
+  }
+  if (!corrections.length) return { error: 'Change a value first.' }
+  if (corrections.length > 10)
+    return { error: 'Change at most 10 values at a time.' }
+  return correct(
+    expected.data,
+    corrections,
+    'Design saved. Rewriting the Brand book.'
+  )
+}
 
 const withdrawForm = z.object({
   version,

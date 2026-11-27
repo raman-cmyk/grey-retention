@@ -1,3 +1,5 @@
+import type { TokenValues } from '@/features/design-engine/tokens'
+
 /**
  * The brand a block is drawn in (BLK-001), with the colour roles of the
  * Step 0 reference kit (docs/step0/example_spec.json): `ink` for text,
@@ -22,6 +24,12 @@ export type BlockBrand = {
   dark: string
   /** Corner radius for buttons and photos, e.g. "8px". */
   radius?: string
+  /**
+   * PICK-006: the brand's design tokens (spacing, type scale, corners,
+   * button style), already clamped (`resolveTokens`). Absent: GROS's
+   * defaults, which are the blocks' own look, so nothing changes.
+   */
+  tokens?: TokenValues
 }
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i

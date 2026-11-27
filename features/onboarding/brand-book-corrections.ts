@@ -1,6 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BrandFacts } from '@/features/copy-qa/check'
 import type { Database } from '@/lib/supabase/database.types'
+import {
+  resolveTokens,
+  tokenFromText,
+  tokenKeys,
+  type DesignTokens,
+  type TokenKey
+} from '@/features/design-engine/tokens'
 
 /**
  * The owner's corrections of the Brand book (owner pick #58, ONB-058). The
@@ -24,9 +31,50 @@ export const correctableSections = [
   'facts.freeShipping',
   'facts.returnDays',
   'facts.guaranteeDays',
-  'facts.deliveryDays'
+  'facts.deliveryDays',
+  // PICK-006: the design tokens, corrected like facts (replace or remove).
+  ...tokenKeys.map((k) => `tokens.${k}` as const)
 ] as const
 export type CorrectableSection = (typeof correctableSections)[number]
+export type TokenSection = `tokens.${TokenKey}`
+
+/** The token a section corrects, or null when it is no token's. */
+export const tokenOfSection = (section: string): TokenKey | null => {
+  const key = section.startsWith('tokens.') ? section.slice(7) : ''
+  return (tokenKeys as readonly string[]).includes(key)
+    ? (key as TokenKey)
+    : null
+}
+
+/**
+ * PICK-006: the owner's design tokens from his live corrections: each one
+ * he set (a removal gives the site's value, or the default, back). A
+ * stored value that no longer reads is skipped.
+ */
+export function ownerTokens(
+  corrections: readonly Correction[]
+): Partial<Record<TokenKey, unknown>> {
+  const out: Partial<Record<TokenKey, unknown>> = {}
+  for (const c of corrections) {
+    const key = tokenOfSection(c.section)
+    if (!key) continue
+    if (c.action === 'remove') {
+      delete out[key]
+      continue
+    }
+    const value = tokenFromText(key, c.value)
+    if (value !== undefined) out[key] = value
+  }
+  return out
+}
+
+/** The site's own values of a book's tokens (those it marked `site`). */
+const siteOf = (design: DesignTokens) =>
+  Object.fromEntries(
+    tokenKeys.flatMap((k) =>
+      design[k]?.source === 'site' ? [[k, design[k].value]] : []
+    )
+  )
 
 export type Correction = {
   id: string
@@ -186,6 +234,8 @@ export type CorrectableBook = {
   }
   /** The sections the owner corrected. */
   corrected?: string[]
+  /** PICK-006: the design tokens with their sources. */
+  design?: DesignTokens
 }
 
 /**
@@ -199,7 +249,16 @@ export function applyCorrections<T extends CorrectableBook>(
 ): T & { corrected: string[] } {
   const out = structuredClone(book) as T & { corrected: string[] }
   const corrected = new Set(out.corrected ?? [])
+  // PICK-006: the owner's tokens win over the site's (resolved again, so
+  // headings still never shrink below the text under them).
+  const tokens = ownerTokens(corrections)
+  if (out.design && Object.keys(tokens).length)
+    out.design = resolveTokens({ site: siteOf(out.design), owner: tokens })
   for (const c of corrections) {
+    if (tokenOfSection(c.section)) {
+      if (out.design) corrected.add(c.section)
+      continue
+    }
     if (c.section.startsWith('facts.')) {
       const fact = c.section.slice('facts.'.length) as Fact
       const value = factValue(fact, c.action === 'remove' ? null : c.value)

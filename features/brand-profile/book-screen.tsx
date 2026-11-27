@@ -11,10 +11,12 @@ import { formatBrandDate } from '@/lib/brand-time'
 import { retryBrandBookRewrite } from './book-actions'
 import {
   CorrectionsList,
+  DesignForm,
   FactsForm,
   OwnMark,
   SeenGroups
 } from './book-corrections'
+import { sourceText } from './book-design'
 import type { BookLines, BrandBookView } from './book-view'
 import type { BrandBookPageView } from './page-model'
 import { rewriteSteps, type RewriteState } from './rewrite-view'
@@ -276,6 +278,7 @@ function Book({
           )}
         </Section>
       </CardRow>
+      <DesignCard book={book} assistant={assistant} editable={editable} />
       {book.corrections.length ? (
         <Section title="Your corrections">
           <p className="type-caption text-[var(--stone)]">
@@ -390,6 +393,79 @@ function Book({
         )}
       </Section>
     </>
+  )
+}
+
+/**
+ * PICK-006: the brand's design tokens, by group, each with where it came
+ * from; Correct design for the owner. A book written before tokens says
+ * the next rewrite adds them.
+ */
+function DesignCard({
+  book,
+  assistant,
+  editable
+}: {
+  book: BrandBookView
+  assistant: string
+  editable: boolean
+}) {
+  return (
+    <Section title="Design">
+      <p className="type-caption text-[var(--stone)]">
+        Spacing, type sizes, corners and buttons {assistant} uses in every email
+        section, kept inside what inboxes show well.
+        {editable ? ' Correct any value.' : ''}
+      </p>
+      {book.design ? (
+        <div className="grid gap-[var(--space-5)] sm:grid-cols-2 xl:grid-cols-4">
+          {book.design.map((group) => (
+            <div
+              key={group.label}
+              className="flex flex-col gap-[var(--space-3)]"
+            >
+              <p className="type-body-strong">{group.label}</p>
+              <dl
+                aria-label={group.label}
+                className="flex flex-col gap-[var(--space-3)]"
+              >
+                {group.lines.map((line) => (
+                  <div
+                    key={line.key}
+                    className="flex flex-col gap-[var(--space-1)]"
+                  >
+                    <dt className="type-label text-[var(--stone)]">
+                      {line.label}
+                    </dt>
+                    <dd className="type-body break-words">{line.value}</dd>
+                    <dd
+                      className={
+                        line.source === 'owner'
+                          ? 'type-caption text-[var(--forest)]'
+                          : 'type-caption text-[var(--stone)]'
+                      }
+                    >
+                      {sourceText(line.source, assistant)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="type-body text-[var(--stone)]">
+          Not in this version yet. The next rewrite adds them.
+        </p>
+      )}
+      {editable && book.design ? (
+        <DesignForm
+          texts={book.designTexts}
+          own={book.designOwn}
+          version={book.version}
+        />
+      ) : null}
+    </Section>
   )
 }
 

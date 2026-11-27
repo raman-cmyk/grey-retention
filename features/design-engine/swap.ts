@@ -1,5 +1,11 @@
 import type { BlockBrand } from '@/features/blocks/brand'
 import {
+  givenTokens,
+  tokenValues,
+  type DesignTokens,
+  type SiteTokens
+} from './tokens'
+import {
   blueprintSchema,
   textOf,
   type Blueprint,
@@ -53,7 +59,14 @@ import {
  *   block (`blocked`, with the reason);
  * - words: the brand's own (`words.ts`), prices, old prices and codes
  *   only from the facts, the footer from the brand with Klaviyo's tags;
- * - links: the brand's own (the product's page, else the store).
+ * - links: the brand's own (the product's page, else the store);
+ * - design tokens (PICK-006), the values the brand's site or owner gave
+ *   (a default leaves the layout's own): its buttons' corners, filled or
+ *   outline look, case and weight, its pictures' corners (a picture as
+ *   wide as its section keeps its own) and its cards' (a column with a
+ *   fill or a line). Sizes and spaces stay: they are the structure (rule
+ *   8); Scratch puts the brand's spaces and type scale on its layouts
+ *   before the swap (`withTokens`). An own design keeps its own.
  *
  * Never a word, picture address, link, logo or name of the source in the
  * result: every part is rebuilt from the brand's content, and
@@ -90,6 +103,8 @@ export type SwapBrand = {
   icons?: readonly (SwapPicture & { href?: string })[]
   /** Corner radius of its buttons, px. */
   radius?: number
+  /** PICK-006: the brand's design tokens, with their sources. */
+  tokens?: DesignTokens
   /** The store's address, for previews (Klaviyo writes its own). */
   address?: string | null
 }
@@ -289,6 +304,10 @@ export function swapBrand(input: SwapInput): SwapResult {
   const block = (s: Section, why: string) => {
     if (!blocked.has(s.ordinal)) blocked.set(s.ordinal, why)
   }
+  // PICK-006: only what the site or the owner gave (a default leaves the
+  // layout's own look), never on an own design.
+  const given: SiteTokens =
+    !keep && brand.tokens ? givenTokens(brand.tokens) : {}
   const heading = safeFamily(brand.headingFont, 'Georgia')
   const bodyFont = safeFamily(brand.bodyFont, 'Helvetica')
   const usedPhotos = new Set<string>()
@@ -526,6 +545,16 @@ export function swapBrand(input: SwapInput): SwapResult {
     }
   }
 
+  /**
+   * PICK-006: a photo with the brand's picture corners, unless it is as
+   * wide as the space it sits in (a full-width picture keeps its own).
+   */
+  const rounded = (p: ImagePart, ctx: Ctx): ImagePart => {
+    const r = given['radius.image']
+    if (r === undefined || (p.x <= 1 && p.width >= ctx.avail - 1)) return p
+    return { ...p, radius: Math.min(r, p.width / 2, p.height / 2) }
+  }
+
   const picture = (p: ImagePart, ctx: Ctx): ImagePart => {
     const base = { ...p, alt: '', href: link(ctx) as string | null }
     // A section no picture fits is built from a library block, which draws
@@ -623,7 +652,7 @@ export function swapBrand(input: SwapInput): SwapResult {
       const got = photo && fitted(photo, p.width, p.height, input.cropper)
       if (usable(got)) {
         usedPhotos.add(photo!.src)
-        return { ...base, src: got.src, alt: ctx.product.title }
+        return { ...rounded(base, ctx), src: got.src, alt: ctx.product.title }
       }
       if (typeof got === 'string')
         return none(
@@ -642,7 +671,11 @@ export function swapBrand(input: SwapInput): SwapResult {
       const got = fitted(ph, p.width, p.height, input.cropper)
       if (usable(got)) {
         usedPhotos.add(ph.src)
-        return { ...base, src: got.src, alt: ph.alt || brand.name }
+        return {
+          ...rounded(base, ctx),
+          src: got.src,
+          alt: ph.alt || brand.name
+        }
       }
       if (typeof got === 'string') why ??= got
     }
@@ -671,7 +704,7 @@ export function swapBrand(input: SwapInput): SwapResult {
       : face
         ? pal.label(face)
         : pal.text(p.color, ctx.behind, p.font.size)
-    return {
+    const swapped: ButtonPart = {
       ...p,
       label: holdsFacts(label)
         ? label
@@ -689,6 +722,51 @@ export function swapBrand(input: SwapInput): SwapResult {
         ? { radius: Math.min(p.radius, brand.radius, p.height / 2) }
         : {})
     }
+    return keep ? swapped : tokenButton(swapped, p, ctx)
+  }
+
+  /**
+   * PICK-006: the brand's button look on a swapped button, in the same
+   * box (its size is the structure): its corners (at most a pill), filled
+   * in the brand's button colour or an outline of it (a 2 px line, the
+   * words in it readable on what it sits on), its case and weight.
+   */
+  const tokenButton = (
+    b: ButtonPart,
+    source: ButtonPart,
+    ctx: Ctx
+  ): ButtonPart => {
+    let out = b
+    const r = given['radius.button']
+    if (r !== undefined) out = { ...out, radius: Math.min(r, out.height / 2) }
+    const style = given['button.style']
+    // The brand's button colour, whatever the original's look was.
+    const ink =
+      out.background ??
+      (out.border ? out.border.color : pal.button(brand.accent, ctx.behind))
+    if (style === 'outline') {
+      const line = Math.max(2, Math.min(4, source.border?.width ?? 2))
+      out = {
+        ...out,
+        background: null,
+        border: { width: line, color: ink },
+        color: nudged(ink, ctx.behind, neededContrast(out.font.size))
+      }
+    } else if (style === 'filled' && !out.background) {
+      out = {
+        ...out,
+        background: ink,
+        border: null,
+        color: pal.label(ink)
+      }
+    }
+    const font = { ...out.font }
+    const upper = given['button.case']
+    if (upper !== undefined)
+      font.transform = upper === 'uppercase' ? 'uppercase' : 'none'
+    const weight = given['button.weight']
+    if (weight !== undefined) font.weight = weight
+    return { ...out, font }
   }
 
   const dividerPart = (p: DividerPart, ctx: Ctx): DividerPart => ({
@@ -716,12 +794,18 @@ export function swapBrand(input: SwapInput): SwapResult {
             : null
           const behind = fill ?? ctx.behind
           const product = hasProduct(c.items) ? nextProduct() : ctx.product
+          // PICK-006: a card (a column with a fill or a line) takes the
+          // brand's card corners.
+          const card = given['radius.card']
           return {
             ...c,
             background: fill,
             border: c.border
               ? { ...c.border, color: pal.line(c.border.color, behind) }
               : null,
+            ...(card !== undefined && (fill || c.border)
+              ? { radius: Math.min(card, c.width / 2, c.height / 2) }
+              : {}),
             items: items(c.items, { ...ctx, behind, product, avail: c.width })
           }
         })
@@ -786,7 +870,10 @@ export function swapBrand(input: SwapInput): SwapResult {
       background: brand.background,
       accent: brand.accent,
       dark: brand.dark,
-      radius: `${Math.min(24, Math.round(brand.radius ?? 8))}px`
+      radius: `${Math.min(24, Math.round(brand.radius ?? 8))}px`,
+      // PICK-006: a section built from a library block in the brand's
+      // tokens too (an own design's blocks in the defaults, as before).
+      ...(!keep && brand.tokens ? { tokens: tokenValues(brand.tokens) } : {})
     }
   }
 }

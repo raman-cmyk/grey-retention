@@ -11,6 +11,7 @@ import {
 import { leaksOf } from '@/features/design-engine/leaks'
 import { photoOrigins } from '@/features/design-engine/photos'
 import { ENGINE_VERSION } from '@/features/design-engine/stored'
+import type { DesignTokens } from '@/features/design-engine/tokens'
 import { swapOwnWords, type SwapBrand } from '@/features/design-engine/swap'
 import {
   copyInputSchema,
@@ -308,7 +309,8 @@ async function handOutScratch(
   }
 ): Promise<CopyJob | null> {
   const got = await scratchSources(db, c.tenant_id, c.blocks ?? [], {
-    html: false
+    html: false,
+    tokens: inputTokens(c.input)
   })
   if (got === 'unreadable') {
     await retry(db, job.id, job.lease_token, 'copy_read_failed')
@@ -347,6 +349,18 @@ async function handOutScratch(
   }
 }
 
+/**
+ * PICK-006: the brand's design tokens a copy's input carries (checked by
+ * the input's own schema), so its Scratch layouts take the brand's spaces
+ * and type scale; none when the input has none or cannot be read.
+ */
+function inputTokens(input: unknown): DesignTokens | null {
+  const parsed = copyInputSchema.safeParse(input)
+  return parsed.success
+    ? ((parsed.data.brand.tokens as DesignTokens | undefined) ?? null)
+    : null
+}
+
 type ScratchSource = {
   bucket: 'inbox-raw' | 'email-uploads'
   path: string
@@ -365,7 +379,7 @@ async function scratchSources(
   db: Db,
   tenant: string,
   blocks: readonly string[],
-  { html }: { html: boolean }
+  { html, tokens }: { html: boolean; tokens?: DesignTokens | null }
 ): Promise<
   | { blueprint: unknown; sources: ScratchSource[] }
   | 'blueprint_gone'
@@ -391,7 +405,10 @@ async function scratchSources(
   }
   const usable = new Map(checked.map((c) => [c.id, c]))
   if (blocks.some((b) => !usable.has(b))) return 'block_unusable'
-  const blueprint = composeScratch(blocks.map((b) => prints.get(b)!))
+  const blueprint = composeScratch(
+    blocks.map((b) => prints.get(b)!),
+    tokens
+  )
   // The leak check reads the email each block's geometry came from first,
   // then the other emails that used the same layouts, up to
   // `scratchLeakSources` emails in all (the gate reads them all).

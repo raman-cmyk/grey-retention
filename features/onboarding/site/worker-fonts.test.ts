@@ -84,6 +84,8 @@ describe('readBrandSite keeps the fonts (FONT-b)', () => {
     expect(calls.map((c) => c.name)).toEqual([
       'record_site_photos',
       'record_site_fonts',
+      // PICK-006: the design tokens, read with the same stylesheets.
+      'record_site_tokens',
       'record_site_findings'
     ])
     expect(calls[1]!.args).toMatchObject({ job: 'job-1', lease: 'lease-1' })

@@ -9,6 +9,11 @@ import {
   type FactTopic
 } from './brand-facts'
 import { applyCorrections, type Correction } from './brand-book-corrections'
+import {
+  resolveTokens,
+  type DesignTokens,
+  type SiteTokens
+} from '@/features/design-engine/tokens'
 import type { CatalogEntry } from './catalog/read'
 import { claimsSafety } from './claims-safety'
 import type { Finding, FindingSource, FindingTopic } from './findings'
@@ -90,6 +95,13 @@ export type BrandBookContent = {
   products: { count: number; bestsellers: string[]; newArrivals: string[] }
   /** Why some claims are off limits for this kind of brand (ONB-062). */
   avoid: string[]
+  /**
+   * PICK-006: the brand's design tokens (spacing, type, corners, buttons),
+   * each with its source: read from its website, GROS's default, or the
+   * owner's correction (`features/design-engine/tokens.ts`). Absent in a
+   * book written before them.
+   */
+  design?: DesignTokens
   sources: FindingSource[]
   /**
    * ONB-058: the sections the owner corrected (his facts are in `facts`,
@@ -116,6 +128,8 @@ export type BrandBookParts = {
   catalogStatus: { featurable: number; live: boolean } | null
   /** The approved brand profile's words, when approved. */
   owner: BrandBookContent['owner']
+  /** PICK-006: the tokens the Site reader kept from the current website. */
+  tokens?: SiteTokens | null
 }
 
 const bySureness = (a: Finding, b: Finding) =>
@@ -266,7 +280,8 @@ function bookFrom(parts: BrandBookParts): BrandBookContent {
         .map((p) => p.title)
     },
     avoid: claimsSafety(industryWords).groups.map((g) => g.reason),
-    sources: [...new Set(used.map((f) => f.source))].sort()
+    sources: [...new Set(used.map((f) => f.source))].sort(),
+    design: resolveTokens({ site: parts.tokens })
   }
 }
 
@@ -349,6 +364,8 @@ export type BookReads = {
   timezone: (db: Db, t: string) => Promise<string>
   /** ONB-058: the owner's live corrections, oldest first. */
   corrections: (db: Db, t: string) => Promise<Correction[]>
+  /** PICK-006: the tokens the Site reader kept (none: the defaults). */
+  tokens?: (db: Db, t: string) => Promise<SiteTokens | null>
 }
 
 /**
@@ -362,16 +379,25 @@ export async function composeBrandBook(
   tenantId: string,
   reads: BookReads
 ): Promise<BrandBookContent | null> {
-  const [findings, catalog, history, timezone, profile, status, corrections] =
-    await Promise.all([
-      reads.findings(db, tenantId),
-      reads.catalog(db, tenantId),
-      reads.history(db, tenantId),
-      reads.timezone(db, tenantId),
-      profileOf(db, tenantId),
-      catalogStatusOf(db, tenantId),
-      reads.corrections(db, tenantId)
-    ])
+  const [
+    findings,
+    catalog,
+    history,
+    timezone,
+    profile,
+    status,
+    corrections,
+    tokens
+  ] = await Promise.all([
+    reads.findings(db, tenantId),
+    reads.catalog(db, tenantId),
+    reads.history(db, tenantId),
+    reads.timezone(db, tenantId),
+    profileOf(db, tenantId),
+    catalogStatusOf(db, tenantId),
+    reads.corrections(db, tenantId),
+    reads.tokens?.(db, tenantId) ?? Promise.resolve(null)
+  ])
   const approved =
     profile !== null &&
     profile.approved_revision !== null &&
@@ -394,7 +420,8 @@ export async function composeBrandBook(
           voice: profile.voice,
           prohibitions: profile.prohibitions
         }
-      : null
+      : null,
+    tokens
   })
   if (book.sample && profile?.synthetic !== true) return null
   return withCorrections(book, corrections)

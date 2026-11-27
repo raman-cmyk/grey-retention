@@ -9,11 +9,14 @@ import {
 } from '@/components/gros/action'
 import { Button, buttonClasses } from '@/components/gros/button'
 import { Field } from '@/components/gros/input'
+import type { TokenKey } from '@/features/design-engine/tokens'
 import {
+  correctBrandBookDesign,
   correctBrandBookFacts,
   correctBrandBookLine,
   withdrawBrandBookCorrection
 } from './book-actions'
+import { designGroups, tokenHelp, tokenLabels } from './book-design'
 import { factHelp, factKeys, factLabels, type FactKey } from './book-facts'
 import type { CorrectionLine, OwnLine, SeenGroup } from './book-view'
 
@@ -294,6 +297,88 @@ export function FactsForm({
           <Button
             kind="outline"
             label="Correct facts"
+            onClick={() => setOpen(true)}
+          />
+        </div>
+      )}
+    </ActionAnswers>
+  )
+}
+
+/**
+ * PICK-006: Correct design: every token as the owner writes it, by group.
+ * An emptied field takes his own correction back, so the website's value
+ * (or the default) returns.
+ */
+export function DesignForm({
+  texts,
+  own,
+  version
+}: {
+  texts: Record<TokenKey, string>
+  own: readonly TokenKey[]
+  version: number
+}) {
+  const [open, setOpen] = useState(false)
+  const close = useCallback(() => setOpen(false), [])
+  const save = useCloseOnSuccess(correctBrandBookDesign, close)
+  const id = useId()
+  const keys = designGroups.flatMap((g) => g.keys)
+  return (
+    <ActionAnswers>
+      {open ? (
+        <div className="flex flex-col gap-[var(--space-3)]">
+          <ActionButton
+            action={save}
+            label="Save design"
+            fields={{
+              version: String(version),
+              ...Object.fromEntries(keys.map((k) => [`was_${k}`, texts[k]])),
+              ...Object.fromEntries(own.map((k) => [`own_${k}`, '1'] as const))
+            }}
+          >
+            {designGroups.map((group, g) => (
+              <fieldset
+                key={group.label}
+                className="flex flex-col gap-[var(--space-3)]"
+              >
+                <legend className="type-label text-[var(--stone)]">
+                  {group.label}
+                </legend>
+                {group.keys.map((key, i) => (
+                  <div key={key} className="flex flex-col gap-[var(--space-1)]">
+                    <Field
+                      label={tokenLabels[key]}
+                      name={key}
+                      defaultValue={texts[key]}
+                      maxLength={40}
+                      autoComplete="off"
+                      aria-describedby={`${id}-${key.replace('.', '-')}`}
+                      autoFocus={g === 0 && i === 0}
+                    />
+                    <p
+                      id={`${id}-${key.replace('.', '-')}`}
+                      className="type-caption text-[var(--stone)]"
+                    >
+                      {tokenHelp(key)}.
+                      {own.includes(key)
+                        ? ' Leave it empty to use your website’s value again.'
+                        : ''}
+                    </p>
+                  </div>
+                ))}
+              </fieldset>
+            ))}
+          </ActionButton>
+          <div>
+            <Button kind="quiet" label="Cancel" onClick={close} />
+          </div>
+        </div>
+      ) : (
+        <div>
+          <Button
+            kind="outline"
+            label="Correct design"
             onClick={() => setOpen(true)}
           />
         </div>

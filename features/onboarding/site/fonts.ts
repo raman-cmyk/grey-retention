@@ -128,7 +128,7 @@ function stringEnd(s: string, i: number) {
 }
 
 /** Splits at `sep` outside strings and brackets. */
-function split(text: string, sep: ',' | ';' | ' ') {
+export function split(text: string, sep: ',' | ';' | ' ') {
   const out: string[] = []
   let parens = 0
   let from = 0
@@ -168,10 +168,12 @@ function uncommented(css: string) {
  * nested rules split them), and each top-level statement (`@import …`).
  * Strings and brackets are skipped as CSS reads them; nesting deeper than
  * `maxDepth` is counted, not read; a rule never closed is not read.
+ * `open` is also told how deep the rule is (0: top level), so a caller can
+ * keep the rules it sits in (PICK-006 reads none inside a width query).
  */
-function scanCss<C>(
+export function scanCss<C>(
   css: string,
-  open: (prelude: string) => C,
+  open: (prelude: string, depth: number) => C,
   rule: (at: C, body: string) => void,
   statement: (text: string) => void
 ) {
@@ -193,7 +195,10 @@ function scanCss<C>(
       if (depth > 0 && depth <= maxDepth && head > start)
         rule(opened[depth - 1]!, s.slice(start, head))
       if (c === '{' && depth < maxDepth)
-        opened[depth] = open(cutAt(s.slice(head, i), maxValue, ',').trim())
+        opened[depth] = open(
+          cutAt(s.slice(head, i), maxValue, ',').trim(),
+          depth
+        )
       depth = c === '{' ? depth + 1 : Math.max(0, depth - 1)
       ;[start, semi, parens] = [i + 1, -1, 0]
     }
@@ -202,7 +207,7 @@ function scanCss<C>(
   if (depth === 0 && start < s.length) statement(s.slice(start))
 }
 
-function declarations(body: string): [string, string][] {
+export function declarations(body: string): [string, string][] {
   return split(body, ';').flatMap((part): [string, string][] => {
     const colon = part.indexOf(':')
     if (colon < 0) return []
