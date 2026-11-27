@@ -41,6 +41,7 @@ import type { Store } from './ports'
 import type { LibraryCopyPort } from './library-copy'
 import { libraryStep } from './library-step'
 import { reasonsFor } from './reasons'
+import { scratchStep } from './scratch-step'
 import { buildSteps, type BuildStep, type RoundStep } from './step-names'
 
 /**
@@ -560,6 +561,55 @@ async function runStep(
       attempts: 1,
       detail: {},
       dedupeKey: `design-library:${keyPart(ctx.callerKey)}:${keyPart(library.reasonCode)}`
+    })
+  }
+  // DES-ENGINE-004b: Scratch with the library on: the sections picked from
+  // the whole block library and drawn in the brand's look by the copying
+  // job; short of an email that passes, the coded blocks (or the studio),
+  // and the log says why (D16).
+  const scratchPorts =
+    !copyOf && !sections.reference ? ctx.library?.scratch : undefined
+  if (scratchPorts) {
+    const coded = draw(plain)
+    if (!coded.ok) return coded
+    const scratch = await scratchStep({
+      port: scratchPorts,
+      buildId: ctx.callerKey,
+      emailType: planned.emailType,
+      store,
+      draft: plain.draft,
+      rules: sections.rules,
+      coded: coded.email,
+      saved,
+      checks: checksOf
+    })
+    if (scratch.kind === 'waiting')
+      return {
+        ok: true,
+        waiting: 'design',
+        work: scratch.work,
+        seconds: scratch.seconds
+      }
+    if (scratch.kind === 'email')
+      return {
+        ok: true,
+        done: 'design',
+        email: withSubjectB(
+          scratch.email,
+          plain,
+          subjectBSafe(store, scratch.email)
+        )
+      }
+    await ctx.fallbacks.record({
+      tenantId: ctx.tenantId,
+      campaignId: ctx.campaignId ?? null,
+      agent: 'design-scratch',
+      reasonCode: scratch.reasonCode,
+      reason: clip(scratch.reason, 500),
+      fallback: 'Drew the email with its coded blocks.',
+      attempts: 1,
+      detail: {},
+      dedupeKey: `design-scratch:${keyPart(ctx.callerKey)}:${keyPart(scratch.reasonCode)}`
     })
   }
   if (studioPorts) {

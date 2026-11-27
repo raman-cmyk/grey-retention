@@ -31,12 +31,15 @@ import type { InspirationView } from './read-model'
 export function InspirationScreen({
   view,
   timezone,
-  uploads = false
+  uploads = false,
+  library = false
 }: {
   view: InspirationView
   timezone: string
   /** DES-ENGINE-003: "Add your own email" is on (`DESIGN_UPLOAD_COPY`). */
   uploads?: boolean
+  /** DES-ENGINE-004b: Scratch from the block library is on (`DESIGN_LIBRARY_SCRATCH`). */
+  library?: boolean
 }) {
   return (
     <AppPage current="inspiration" title="Inspiration">
@@ -55,6 +58,7 @@ export function InspirationScreen({
           </CardRow>
           <EmailsCard view={view} timezone={timezone} />
           {uploads ? <OwnEmailsCard /> : null}
+          {library ? <LibraryCard /> : null}
         </>
       )}
     </AppPage>
@@ -72,6 +76,28 @@ function OwnEmailsCard() {
       <div className="flex flex-col items-start gap-[var(--space-5)]">
         <h2 className="type-heading">{title}</h2>
         <ButtonLink href={addOwnHref} label="Add your own email" />
+      </div>
+    </Card>
+  )
+}
+
+const libraryHref: Route = '/inspiration/library'
+
+/**
+ * DES-ENGINE-004b: the block library GROS builds Scratch emails from: the
+ * layouts of the emails here and of your own, each in your brand's look.
+ */
+function LibraryCard() {
+  const title = 'Block library'
+  return (
+    <Card label={title}>
+      <div className="flex flex-col items-start gap-[var(--space-5)]">
+        <h2 className="type-heading">{title}</h2>
+        <p className="type-body">
+          The layouts GROS builds your Scratch emails from, taken from the
+          emails above and your own, shown in your brand’s look.
+        </p>
+        <ButtonLink href={libraryHref} label="See the layouts" />
       </div>
     </Card>
   )

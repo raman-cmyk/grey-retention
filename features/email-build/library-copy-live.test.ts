@@ -765,3 +765,215 @@ describe('the copy browser job’s side in the app (DES-ENGINE-002b2)', () => {
     ).toEqual([{ build }, { build: other }])
   })
 })
+
+describe('a Scratch copy of library blocks (DES-ENGINE-004b)', () => {
+  const b1 = '00000000-0000-4000-8000-0000000000e1'
+  const b2 = '00000000-0000-4000-8000-0000000000e2'
+  const m2 = '00000000-0000-4000-8000-0000000000d2'
+  const one = blueprint({ sections: [blueprint().sections[0]!] })
+  const scratchRows: Rows = {
+    email_copies: [{ ...queued, inbox_message_id: null, blocks: [b1, b2] }],
+    email_builds: [{ id: build, state: 'build_queued', step: 'design' }],
+    library_blocks: [
+      { id: b1, tenant_id: null, blueprint: one },
+      { id: b2, tenant_id: null, blueprint: one }
+    ],
+    library_block_sources: [
+      { block_id: b1, inbox_message_id: message, upload_id: null },
+      { block_id: b2, inbox_message_id: m2, upload_id: null }
+    ],
+    inbox_messages: [
+      { id: message, marked_html_path: 'marked/m1.html', capture_id: 'pine' },
+      { id: m2, marked_html_path: 'marked/m2.html', capture_id: 'oak' }
+    ],
+    competitor_captures: [
+      { id: 'pine', brand_name: 'Pine & Co', domain: 'pine.example' },
+      { id: 'oak', brand_name: 'Oak House', domain: 'oak.example' }
+    ],
+    platform_jobs: [{ id: job, kind: 'design.copy', subject_key: build }]
+  }
+  const scratchOn = { DESIGN_LIBRARY_SCRATCH: 'on' }
+  const usable = (ids: string[], geometry: Record<string, string>) =>
+    ids.map((id) => ({
+      id,
+      tenant_id: null,
+      geometry_message: geometry[id] ?? null,
+      geometry_upload: null,
+      emails: [
+        {
+          id: `e-${id}`,
+          message: geometry[id] ?? null,
+          external_id: `x-${id}`,
+          synthetic: true
+        }
+      ]
+    }))
+  const checked = {
+    library_blocks_check: {
+      data: usable([b1, b2], { [b1]: message, [b2]: m2 })
+    }
+  }
+
+  it('hands out the blocks composed into one email and every email they came from, with its brand’s names', async () => {
+    const { db } = fakeDb({
+      rows: scratchRows,
+      rpc: { ...claimed, ...checked }
+    })
+    const got = await copyJobs(db, ENGINE_VERSION, scratchOn)
+    expect(got.jobs).toHaveLength(1)
+    const j = got.jobs[0]!
+    expect((j.source as { sections: unknown[] }).sections).toHaveLength(2)
+    expect(j.sources).toEqual([
+      {
+        html: expect.stringContaining('marked/m1.html'),
+        names: ['Pine & Co', 'pine.example']
+      },
+      {
+        html: expect.stringContaining('marked/m2.html'),
+        names: ['Oak House', 'oak.example']
+      }
+    ])
+    expect(j.html).toBe(j.sources![0]!.html)
+  })
+
+  it('records a Scratch copy that can never be made: a block gone, or an email it came from gone', async () => {
+    for (const [rows, failure] of [
+      [
+        { library_blocks: [{ id: b1, tenant_id: null, blueprint: one }] },
+        'blueprint_gone'
+      ],
+      [
+        {
+          inbox_messages: [
+            {
+              id: message,
+              marked_html_path: 'marked/m1.html',
+              capture_id: 'pine'
+            }
+          ]
+        },
+        'source_missing'
+      ],
+      [
+        {
+          library_blocks: [
+            { id: b1, tenant_id: 'another', blueprint: one },
+            { id: b2, tenant_id: null, blueprint: one }
+          ]
+        },
+        'blueprint_gone'
+      ]
+    ] as [Rows, string][]) {
+      const { db, calls } = fakeDb({
+        rows: { ...scratchRows, ...rows },
+        rpc: { ...claimed, ...checked }
+      })
+      expect((await copyJobs(db, ENGINE_VERSION, scratchOn)).jobs).toEqual([])
+      expect(calls.at(-1)).toEqual({
+        fn: 'record_email_copy',
+        args: { job, lease, failure }
+      })
+    }
+  })
+
+  it('checks the copy against every email a block came from before recording it', async () => {
+    const texts = {
+      'marked/m1.html': '<p>Pine and Co summer edit for everyone</p>',
+      'marked/m2.html': '<p>Oak House winter sale starts today</p>'
+    }
+    const leaked = fakeDb({
+      rows: scratchRows,
+      texts,
+      rpc: { ...checked, record_email_copy: { data: 'failed' } }
+    })
+    await finishCopy(
+      leaked.db,
+      copyResult.parse({
+        job,
+        lease,
+        engine: ENGINE_VERSION,
+        record: record({
+          html: '<p>Cedar Studio winter sale starts today</p>',
+          photos: []
+        })
+      })
+    )
+    expect(leaked.calls.at(-1)).toEqual({
+      fn: 'record_email_copy',
+      args: { job, lease, failure: 'copy_leaked' }
+    })
+    const ok = record({ html: '<p>Cedar Studio</p>', photos: [] })
+    const clean = fakeDb({
+      rows: scratchRows,
+      texts,
+      rpc: { ...checked, record_email_copy: { data: 'done' } }
+    })
+    expect(
+      await finishCopy(
+        clean.db,
+        copyResult.parse({ job, lease, engine: ENGINE_VERSION, record: ok })
+      )
+    ).toEqual({ ok: true, state: 'done' })
+    expect(
+      clean.calls.filter((c) => c.fn === 'download:inbox-raw').length
+    ).toBe(2)
+  })
+
+  it('records a Scratch copy whose layout the workspace may no longer use (reference time)', async () => {
+    const { db, calls } = fakeDb({
+      rows: scratchRows,
+      rpc: {
+        ...claimed,
+        library_blocks_check: { data: usable([b1], { [b1]: message }) }
+      }
+    })
+    expect((await copyJobs(db, ENGINE_VERSION, scratchOn)).jobs).toEqual([])
+    expect(calls.at(-1)).toEqual({
+      fn: 'record_email_copy',
+      args: { job, lease, failure: 'block_unusable' }
+    })
+  })
+
+  it('hands out a Copy only with DESIGN_LIBRARY_COPY, a Scratch copy only with DESIGN_LIBRARY_SCRATCH', async () => {
+    const copy = fakeDb({ rows: handOutRows, rpc: claimed })
+    expect((await copyJobs(copy.db, ENGINE_VERSION, scratchOn)).jobs).toEqual(
+      []
+    )
+    expect(copy.calls.at(-1)).toEqual({
+      fn: 'park_email_copy',
+      args: { job, lease }
+    })
+    const scratch = fakeDb({
+      rows: scratchRows,
+      rpc: { ...claimed, ...checked }
+    })
+    expect((await copyJobs(scratch.db, ENGINE_VERSION, on)).jobs).toEqual([])
+    expect(scratch.calls.at(-1)).toEqual({
+      fn: 'park_email_copy',
+      args: { job, lease }
+    })
+  })
+
+  it('counts as waiting only the copies whose switch is on, so a parked one never wakes the runner', async () => {
+    const rows: Rows = {
+      platform_jobs: [
+        {
+          kind: 'design.copy',
+          status: 'retry_wait',
+          subject_key: 'copy-build'
+        },
+        { kind: 'design.copy', status: 'queued', subject_key: 'scratch-build' },
+        { kind: 'design.copy', status: 'queued', subject_key: 'no-row' }
+      ],
+      email_copies: [
+        { build_id: 'copy-build', blocks: null },
+        { build_id: 'scratch-build', blocks: [b1] }
+      ]
+    }
+    expect(await copiesWaiting(fakeDb({ rows }).db, scratchOn)).toBe(2)
+    expect(await copiesWaiting(fakeDb({ rows }).db, on)).toBe(2)
+    expect(
+      await copiesWaiting(fakeDb({ rows }).db, { ...on, ...scratchOn })
+    ).toBe(3)
+  })
+})

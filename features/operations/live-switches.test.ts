@@ -16,6 +16,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
       'Design studio',
       'Copy the chosen design',
       'Your own emails',
+      'Scratch from the library',
       'Klaviyo reading',
       'Klaviyo drafts',
       'Website reading',
@@ -29,6 +30,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
       'Design studio',
       'Copy the chosen design',
       'Your own emails',
+      'Scratch from the library',
       'Klaviyo reading',
       'Klaviyo drafts',
       'Website reading',
@@ -39,6 +41,9 @@ describe('the go-live switches (OPS-LIVE)', () => {
       'DESIGN_LIBRARY_COPY=on'
     )
     expect(s['Your own emails']!.detail).toContain('DESIGN_UPLOAD_COPY=on')
+    expect(s['Scratch from the library']!.detail).toContain(
+      'DESIGN_LIBRARY_SCRATCH=on'
+    )
     expect(s['Real AI']!.detail).toContain('GEMINI_API_KEY')
     expect(s['Klaviyo reading']!.detail).toContain('KLAVIYO_MODE=live')
     expect(s['Background jobs']!.detail).toContain('SCHEDULED_JOBS_ENABLED')
@@ -53,6 +58,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
       DESIGN_STUDIO: 'on',
       DESIGN_LIBRARY_COPY: 'on',
       DESIGN_UPLOAD_COPY: 'on',
+      DESIGN_LIBRARY_SCRATCH: 'on',
       KLAVIYO_MODE: 'live',
       KLAVIYO_DRAFT_PUSH: 'live',
       KLAVIYO_WRITE_LOCK: 'unlocked',
@@ -66,6 +72,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
       'Design studio',
       'Copy the chosen design',
       'Your own emails',
+      'Scratch from the library',
       'Klaviyo reading',
       'Klaviyo drafts',
       'Website reading'
