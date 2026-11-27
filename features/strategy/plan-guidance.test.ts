@@ -20,6 +20,7 @@ import {
 } from './plan'
 import { sampleCompetitors, sampleStore } from './sample'
 import { storedPlan } from './stored'
+import { plannedEmail } from '@/features/email-build/build'
 
 /**
  * PICK-WIRE: the owner picks the plan works toward and from: the revenue
@@ -393,6 +394,26 @@ describe('the offer ladder in the plan (#40)', () => {
     expect(offer.evidence.map((e) => e.id)).toContain('offer:CANDLE10')
     expect(offer.evidence.map((e) => e.id)).not.toContain('offer:WELCOME15')
     expect(storedPlan.safeParse(plan).success).toBe(true)
+  })
+
+  it('keeps each offer email’s place on the ladder with the plan (PICK-104)', () => {
+    const plan = samplePlan(input)
+    const offer = plan.slots.find((s) => s.offer)!
+    // CANDLE10 is the smallest code of at least 10% that works that day.
+    expect(offer.ladder).toEqual({
+      step: 1,
+      steps: 1,
+      before: null,
+      lowest: true
+    })
+    expect(plan.slots.filter((s) => !s.offer).every((s) => !s.ladder)).toBe(
+      true
+    )
+    // The build reads it from the stored slot.
+    expect(plannedEmail.parse(offer).ladder).toEqual(offer.ladder)
+    expect(plannedEmail.parse({ ...offer, ladder: 'odd' }).ladder).toBe(
+      undefined
+    )
   })
 })
 
