@@ -1,5 +1,5 @@
 begin;
-select plan(63);
+select plan(65);
 
 -- DES-ENGINE-004: every section of a stored Inspiration blueprint, and of
 -- a workspace's own upload, becomes a library block (structure only), one
@@ -153,6 +153,10 @@ select public.record_library_blocks((current_setting('test.c2')::jsonb->>'job'):
   jsonb_build_array(pg_temp.block(1, pg_temp.fp(1)), pg_temp.block(2, pg_temp.fp(2))));
 select is((select uses || '/' || brands from public.library_blocks where fingerprint = pg_temp.fp(1)), '2/2', 'two emails by two brands');
 select is((select quality from public.library_blocks where fingerprint = pg_temp.fp(2)), 'passed', 'a structure that now passes is kept');
+select is((select geometry_message::text from public.library_blocks where fingerprint = pg_temp.fp(2)), current_setting('test.m2'),
+  'with the geometry of the email that drew back alike');
+select is((select geometry_message::text from public.library_blocks where fingerprint = pg_temp.fp(1)), current_setting('test.m1'),
+  'a block keeps the geometry of its first email');
 select is((select count(*)::int from public.library_blocks where tenant_id is null), 2, 'still two shared blocks');
 
 -- A retry records nothing twice.

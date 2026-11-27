@@ -5571,6 +5571,8 @@ export type Database = {
           failure: string | null
           family: string | null
           fingerprint: string
+          geometry_message: string | null
+          geometry_upload: string | null
           id: string
           industries: string[]
           kind: string
@@ -5594,6 +5596,8 @@ export type Database = {
           failure?: string | null
           family?: string | null
           fingerprint: string
+          geometry_message?: string | null
+          geometry_upload?: string | null
           id?: string
           industries?: string[]
           kind: string
@@ -5617,6 +5621,8 @@ export type Database = {
           failure?: string | null
           family?: string | null
           fingerprint?: string
+          geometry_message?: string | null
+          geometry_upload?: string | null
           id?: string
           industries?: string[]
           kind?: string
@@ -5632,6 +5638,20 @@ export type Database = {
           version?: number
         }
         Relationships: [
+          {
+            foreignKeyName: 'library_blocks_geometry_message_fkey'
+            columns: ['geometry_message']
+            isOneToOne: false
+            referencedRelation: 'inbox_messages'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_blocks_geometry_upload_fkey'
+            columns: ['geometry_upload']
+            isOneToOne: false
+            referencedRelation: 'email_uploads'
+            referencedColumns: ['id']
+          },
           {
             foreignKeyName: 'library_blocks_tenant_id_fkey'
             columns: ['tenant_id']
