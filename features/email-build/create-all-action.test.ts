@@ -92,7 +92,14 @@ const form = (fields: Record<string, string>) => {
  * planned email, so asking again returns the same build.
  */
 const open = new Map<number, string>()
-const command = async (_name: string, args: { slot: number }) => {
+type Answer = {
+  data: string | undefined
+  error: { code: string; message: string } | null
+}
+const command = async (
+  _name: string,
+  args: { slot: number }
+): Promise<Answer> => {
   if (!open.has(args.slot)) open.set(args.slot, `build-${args.slot}`)
   return { data: open.get(args.slot), error: null }
 }

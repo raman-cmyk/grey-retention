@@ -552,7 +552,9 @@ describe('Create all emails on the Plan screen (PICK-102)', () => {
     const bar = screen.getByRole('progressbar', { name: 'Emails made' })
     expect(bar).toHaveAttribute('aria-valuenow', '1')
     expect(bar).toHaveAttribute('aria-valuemax', '3')
-    expect(screen.getByText('1 of 3 ready · 1 failed · 1 working')).toBeVisible()
+    expect(
+      screen.getByText('1 of 3 ready · 1 failed · 1 working')
+    ).toBeVisible()
     expect(
       within(screen.getByRole('list', { name: 'What needs you' })).getByText(
         /Its design could not be drawn\./
