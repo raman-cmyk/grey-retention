@@ -45,6 +45,42 @@ describe('NoticesButton (PICK-107)', () => {
     }
   })
 
+  it('clears a number it showed when a later answer is not a count', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, data: { unread: 4 } })
+      })
+      .mockResolvedValueOnce({ ok: false, json: async () => ({ ok: false }) })
+    vi.stubGlobal('fetch', fetch)
+    render(<NoticesButton className="round" />)
+    await screen.findByRole('link', { name: 'Notifications, 4 new' })
+    // The window comes back into view: the bell asks again.
+    document.dispatchEvent(new Event('visibilitychange'))
+    await screen.findByRole('link', { name: 'Notifications' })
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows the count the page read, and asks nothing while a page loads', () => {
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    const { rerender } = render(<NoticesButton className="round" count={2} />)
+    expect(
+      screen.getByRole('link', { name: 'Notifications, 2 new' })
+    ).toBeInTheDocument()
+    // After Mark all read the page reads 0 again.
+    rerender(<NoticesButton className="round" count={0} />)
+    expect(
+      screen.getByRole('link', { name: 'Notifications' })
+    ).toBeInTheDocument()
+    rerender(<NoticesButton className="round" count="wait" />)
+    expect(
+      screen.getByRole('link', { name: 'Notifications' })
+    ).toBeInTheDocument()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('caps the spoken number', () => {
     expect(noticesLabel(0)).toBe('Notifications')
     expect(noticesLabel(1)).toBe('Notifications, 1 new')

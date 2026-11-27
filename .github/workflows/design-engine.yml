@@ -113,7 +113,7 @@ jobs:
       # load everything that job loads the same way, so a TypeScript form
       # Node cannot strip, or an import it cannot find, fails here first.
       - name: The blueprint job loads the engine as production does
-        run: node --import ./scripts/ts-register.mjs -e "const m = await import('./features/design-engine/stored.ts'); await import('./scripts/inbox-blueprints.mjs'); await import('./features/design-engine/library-copy.ts'); await import('./features/design-engine/photos.ts'); await import('./scripts/design-copies.mjs'); await import('./features/email-build/library-copy.ts'); const u = await import('./features/email-uploads/measure.ts'); await import('./scripts/design-uploads.mjs'); if (typeof u.measureUpload !== 'function' || typeof m.measureForStorage !== 'function' || !m.ENGINE_VERSION) process.exit(1)"
+        run: node --import ./scripts/ts-register.mjs -e "const m = await import('./features/design-engine/stored.ts'); await import('./scripts/inbox-blueprints.mjs'); await import('./features/design-engine/library-copy.ts'); await import('./features/design-engine/photos.ts'); await import('./scripts/design-copies.mjs'); await import('./features/email-build/library-copy.ts'); const u = await import('./features/email-uploads/measure.ts'); await import('./scripts/design-uploads.mjs'); const b = await import('./features/design-engine/blocks.ts'); await import('./scripts/design-blocks.mjs'); if (typeof b.checkBlock !== 'function' || typeof u.measureUpload !== 'function' || typeof m.measureForStorage !== 'function' || !m.ENGINE_VERSION) process.exit(1)"
       - name: Golden set and browser tests
         env:
           DESIGN_ENGINE_BROWSER: 'on'

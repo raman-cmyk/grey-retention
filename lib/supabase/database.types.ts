@@ -5512,6 +5512,155 @@ export type Database = {
           }
         ]
       }
+      library_block_sources: {
+        Row: {
+          block_id: string
+          brand: string | null
+          created_at: string
+          inbox_message_id: string | null
+          ordinal: number
+          upload_id: string | null
+        }
+        Insert: {
+          block_id: string
+          brand?: string | null
+          created_at?: string
+          inbox_message_id?: string | null
+          ordinal: number
+          upload_id?: string | null
+        }
+        Update: {
+          block_id?: string
+          brand?: string | null
+          created_at?: string
+          inbox_message_id?: string | null
+          ordinal?: number
+          upload_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'library_block_sources_block_id_fkey'
+            columns: ['block_id']
+            isOneToOne: false
+            referencedRelation: 'library_blocks'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_block_sources_inbox_message_id_fkey'
+            columns: ['inbox_message_id']
+            isOneToOne: false
+            referencedRelation: 'inbox_messages'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_block_sources_upload_id_fkey'
+            columns: ['upload_id']
+            isOneToOne: false
+            referencedRelation: 'email_uploads'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      library_blocks: {
+        Row: {
+          blueprint: Json
+          brands: number
+          created_at: string
+          email_types: string[]
+          facts: Json
+          failure: string | null
+          family: string | null
+          fingerprint: string
+          geometry_message: string | null
+          geometry_upload: string | null
+          id: string
+          industries: string[]
+          kind: string
+          layout: string | null
+          purpose: string | null
+          quality: string
+          roles: string[]
+          source: string
+          styles: string[] | null
+          tenant_id: string | null
+          updated_at: string
+          uses: number
+          version: number
+        }
+        Insert: {
+          blueprint: Json
+          brands?: number
+          created_at?: string
+          email_types?: string[]
+          facts: Json
+          failure?: string | null
+          family?: string | null
+          fingerprint: string
+          geometry_message?: string | null
+          geometry_upload?: string | null
+          id?: string
+          industries?: string[]
+          kind: string
+          layout?: string | null
+          purpose?: string | null
+          quality: string
+          roles: string[]
+          source: string
+          styles?: string[] | null
+          tenant_id?: string | null
+          updated_at?: string
+          uses?: number
+          version: number
+        }
+        Update: {
+          blueprint?: Json
+          brands?: number
+          created_at?: string
+          email_types?: string[]
+          facts?: Json
+          failure?: string | null
+          family?: string | null
+          fingerprint?: string
+          geometry_message?: string | null
+          geometry_upload?: string | null
+          id?: string
+          industries?: string[]
+          kind?: string
+          layout?: string | null
+          purpose?: string | null
+          quality?: string
+          roles?: string[]
+          source?: string
+          styles?: string[] | null
+          tenant_id?: string | null
+          updated_at?: string
+          uses?: number
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'library_blocks_geometry_message_fkey'
+            columns: ['geometry_message']
+            isOneToOne: false
+            referencedRelation: 'inbox_messages'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_blocks_geometry_upload_fkey'
+            columns: ['geometry_upload']
+            isOneToOne: false
+            referencedRelation: 'email_uploads'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_blocks_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       notification_deliveries: {
         Row: {
           channel: string
@@ -7996,6 +8145,17 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_library_blocks: {
+        Args: never
+        Returns: {
+          attempt: number
+          blueprint: Json
+          id: string
+          lease_token: string
+          subject_key: string
+          tenant_id: string
+        }[]
+      }
       claim_notification_emails: {
         Args: { lim?: number }
         Returns: {
@@ -8601,6 +8761,23 @@ export type Database = {
       }
       klaviyo_api_key: { Args: { t: string }; Returns: string }
       klaviyo_results_waiting: { Args: never; Returns: number }
+      known_library_blocks: {
+        Args: { prints: string[]; t: string }
+        Returns: string[]
+      }
+      library_block_counts: {
+        Args: never
+        Returns: {
+          blocks: number
+          kind: string
+          quality: string
+          reused: number
+          source: string
+          two_brands: number
+          uses: number
+        }[]
+      }
+      library_block_jobs_waiting: { Args: never; Returns: number }
       mark_notifications_read: {
         Args: { ids?: string[]; t: string }
         Returns: number
@@ -8836,6 +9013,10 @@ export type Database = {
         }
         Returns: Json
       }
+      record_library_blocks: {
+        Args: { blocks: Json; job: string; lease: string }
+        Returns: Json
+      }
       record_never_words: {
         Args: { job: string; lease: string; words: Json }
         Returns: number
@@ -8946,6 +9127,14 @@ export type Database = {
       release_inbox_blueprint: {
         Args: { job: string; lease: string }
         Returns: undefined
+      }
+      release_library_blocks: {
+        Args: { code?: string; job: string; lease: string }
+        Returns: undefined
+      }
+      renew_library_blocks: {
+        Args: { job: string; lease: string }
+        Returns: string
       }
       reply_support: {
         Args: {

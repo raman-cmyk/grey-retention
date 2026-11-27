@@ -10,6 +10,15 @@ export const noticesHref: Route = '/notifications'
 /** Where the button asks how many notices are new. */
 export const unreadUrl = '/api/v1/notifications'
 
+/**
+ * How the bell knows the number: `ask` (it asks when the page opens and
+ * when the window comes back), `wait` (a loading frame: the page that
+ * follows asks, so a navigation asks once), or the number itself, read by
+ * the page on the server (Notifications, which re-reads it after Open or
+ * Mark all read).
+ */
+export type NoticeCount = 'ask' | 'wait' | number
+
 /** "Notifications, 3 new": the button's spoken label. */
 export function noticesLabel(unread: number) {
   return unread > 0
@@ -18,41 +27,50 @@ export function noticesLabel(unread: number) {
 }
 
 /**
- * PICK-107: the round Notifications button in the top bar, beside Settings.
- * It asks how many of the person's notices are new when the page opens and
- * when the window comes back into view, and shows the number beside the
- * bell (the button widens to hold it). Until it knows, or when the answer
- * does not come, it is the plain bell: never a wrong number.
+ * PICK-107: the round Notifications button in the top bar, beside Settings,
+ * with how many of the person's notices are new beside the bell (the
+ * button widens to hold it). Until it knows, or when the answer is not a
+ * count, it is the plain bell: never a wrong or an old number.
  */
 export function NoticesButton({
   current = false,
-  className
+  className,
+  count = 'ask'
 }: {
   current?: boolean
   /** The round white pill of the bar (`roundPillClass`). */
   className: string
+  count?: NoticeCount
 }) {
-  const [unread, setUnread] = useState(0)
+  const [asked, setAsked] = useState(0)
+  const ask = count === 'ask'
   useEffect(() => {
+    if (!ask) return
     let live = true
-    const ask = () => {
+    const read = () => {
       if (document.visibilityState === 'hidden') return
       fetch(unreadUrl, { cache: 'no-store', credentials: 'same-origin' })
         .then((response) => (response.ok ? response.json() : null))
         .then((body: { data?: { unread?: unknown } } | null) => {
-          const count = body?.data?.unread
-          if (live && typeof count === 'number' && Number.isInteger(count))
-            setUnread(Math.max(0, count))
+          const n = body?.data?.unread
+          if (live)
+            setAsked(
+              typeof n === 'number' && Number.isInteger(n) ? Math.max(0, n) : 0
+            )
         })
-        .catch(() => {})
+        .catch(() => {
+          if (live) setAsked(0)
+        })
     }
-    ask()
-    document.addEventListener('visibilitychange', ask)
+    read()
+    document.addEventListener('visibilitychange', read)
     return () => {
       live = false
-      document.removeEventListener('visibilitychange', ask)
+      document.removeEventListener('visibilitychange', read)
     }
-  }, [])
+  }, [ask])
+  const unread =
+    typeof count === 'number' ? Math.max(0, count) : ask ? asked : 0
   return (
     <Link
       href={noticesHref}

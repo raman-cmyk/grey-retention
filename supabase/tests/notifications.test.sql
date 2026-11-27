@@ -211,19 +211,19 @@ update public.email_builds set state = 'drafted', klaviyo_campaign_id = 'CmpN05'
 select is(pg_temp.line('00000000-0000-4000-8000-000000000001', 'drafts_ready'), 'Your draft is in Klaviyo', 'a one-email plan''s draft');
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 set local role service_role;
-select is((select string_agg(kind || ':' || message, ',' order by recipient_id) from public.claim_notification_emails(50)),
-  'plan_ready:Your 15-day plan is ready,plan_ready:Your 15-day plan is ready,plan_ready:Your 15-day plan is ready',
-  'the new plan is emailed to each member; a fresh drafts item waits');
+select is((select string_agg(recipient_id || ':' || kind || ':' || message, ',') from public.claim_notification_emails(50)),
+  '00000000-0000-4000-8000-000000000001:plan_ready:Your 15-day plan is ready',
+  'the new plan is emailed to the owner only; a fresh drafts item waits');
 select is((select count(*)::integer from public.claim_notification_emails(50)), 0, 'a second sweep emails nothing again');
 reset role;
 select is((select count(*)::integer from public.notification_deliveries d join public.notifications n on n.id = d.notification_id
-  where n.kind = 'plan_ready' and d.state = 'simulated' and d.provider = 'fixture'), 3, 'recorded as simulated, never as sent');
+  where n.kind = 'plan_ready' and d.state = 'simulated' and d.provider = 'fixture'), 1, 'recorded as simulated, never as sent');
 -- Once the drafts item has been quiet for an hour, it goes.
 update public.notifications set updated_at = now() - interval '61 minutes'
   where kind = 'drafts_ready' and entity_id = '00000000-0000-4000-8000-00000000e904';
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 set local role service_role;
-select is((select count(*)::integer from public.claim_notification_emails(50)), 3, 'the settled drafts item is emailed');
+select is((select count(*)::integer from public.claim_notification_emails(50)), 1, 'the settled drafts item is emailed to the owner');
 reset role;
 -- Turned off: nothing more goes.
 select pg_temp.as_member('00000000-0000-4000-8000-000000000001');

@@ -214,6 +214,8 @@ test('STAB-001 scheduled sweep finishes queued work once per job across workspac
         'live',
         // EML-004 part 2: "Create email" steps run in each sweep.
         'emails',
+        // PICK-107: notification emails (the fake mailer) run in each sweep.
+        'notices',
         // STR-003 part 2: "Plan next 15 days" steps run in each sweep.
         'plans',
         'processed',
@@ -223,6 +225,7 @@ test('STAB-001 scheduled sweep finishes queued work once per job across workspac
     )
     expect(body.plans).toEqual({ ran: expect.any(Number) })
     expect(body.emails).toEqual({ ran: expect.any(Number) })
+    expect(body.notices).toEqual({ sent: expect.any(Number) })
     // INB-001: each sweep reads the sample inbox first; of three at once,
     // the ones that find a poll already running say so.
     expect(body.inbox).toMatchObject({

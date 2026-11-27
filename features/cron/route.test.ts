@@ -113,6 +113,8 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
     expect((await response.json()).inbox.ready).toBe(true)
     expect(inbox.runInboxStep).toHaveBeenCalledOnce()
     expect(scheduler.runScheduledJobs).not.toHaveBeenCalled()
+    // PICK-107: notification emails sit behind the same gate.
+    expect(notices.sendNoticeEmails).not.toHaveBeenCalled()
   })
 
   it('reports unavailable server configuration', async () => {

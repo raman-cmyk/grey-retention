@@ -14,7 +14,8 @@ import type { Notice, NoticeKind } from './view'
  * plain line and an Open button that marks it read and opens its page;
  * how many are new, and Mark all read. Beside it, the owner's email
  * switch (off unless he turns it on; this build only records the emails).
- * Opened from the bell in the top bar, which is then current.
+ * Opened from the bell in the top bar, which is then current. Email is
+ * the owner's only, for a ready plan and drafts (results stay in the app).
  */
 export function NotificationsScreen({
   view,
@@ -24,7 +25,14 @@ export function NotificationsScreen({
   assistant?: string
 }) {
   return (
-    <AppPage current="notices" title="Notifications" assistant={assistant}>
+    <AppPage
+      current="notices"
+      title="Notifications"
+      assistant={assistant}
+      // The bell shows the count this page read (again after Open or Mark
+      // all read), rather than asking a second time.
+      notices={view.state === 'ready' ? view.unread : 'ask'}
+    >
       {view.state === 'unread' ? (
         <ErrorState
           title="Notifications did not open"
@@ -122,8 +130,8 @@ function EmailCard({ on, owner }: { on: boolean; owner: boolean }) {
           <p className="type-number-lg">{on ? 'On' : 'Off'}</p>
           <p className="type-caption text-[var(--stone)]">
             {on
-              ? 'Each notification is also emailed to the team. This build records the emails but sends none yet.'
-              : 'Notifications stay in the app. Turn on to also email them to the team.'}
+              ? 'A ready plan and new drafts are also emailed to you. This build records the emails but sends none yet.'
+              : 'Notifications stay in the app. Turn on to also email you when a plan or drafts are ready.'}
           </p>
         </div>
         {owner ? (

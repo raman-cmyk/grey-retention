@@ -64,11 +64,12 @@ describe('NotificationsScreen (PICK-107)', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
       'Notifications'
     )
-    // The bell is current in the bar.
-    expect(screen.getByRole('link', { name: 'Notifications' })).toHaveAttribute(
-      'aria-current',
-      'page'
-    )
+    // The bell is current in the bar, with the count this page read: it
+    // does not ask again.
+    expect(
+      screen.getByRole('link', { name: 'Notifications, 1 new' })
+    ).toHaveAttribute('aria-current', 'page')
+    expect(fetch).not.toHaveBeenCalled()
     const list = screen.getByRole('list', { name: 'Notifications' })
     const rows = within(list).getAllByRole('listitem')
     expect(rows.map((r) => r.textContent)).toEqual([

@@ -4,7 +4,10 @@ import { ButtonLink } from '@/components/gros/button'
 import { ErrorState } from '@/components/gros/states'
 import { adminAlsoMember } from '@/features/auth/application/admin-member'
 import { requireRequestContext } from '@/features/auth/application/request-context'
+import { BlockLibraryCard } from '@/features/block-library/admin-card'
+import { readBlockLibraryCount } from '@/features/block-library/count'
 import { inboxAdminData } from '@/features/inbox/admin/data'
+import { createClient } from '@/lib/supabase/server'
 import {
   AddBrand,
   BrandDirectory,
@@ -13,12 +16,18 @@ import {
 
 export const metadata: Metadata = { title: 'Inspiration inbox' }
 
-/** The inbox ops queue and the competitor brand directory (INB-004). */
+/**
+ * The inbox ops queue and the competitor brand directory (INB-004), and
+ * the block library's count (DES-ENGINE-004).
+ */
 export default async function InboxAdminPage() {
   await requireRequestContext('admin')
-  const [data, member] = await Promise.all([
+  const [data, member, blocks] = await Promise.all([
     inboxAdminData(),
-    adminAlsoMember()
+    adminAlsoMember(),
+    createClient()
+      .then((db) => (db ? readBlockLibraryCount(db) : null))
+      .catch(() => null)
   ])
   return (
     <AdminPage current="inbox" title="Inspiration inbox" member={member}>
@@ -32,6 +41,7 @@ export default async function InboxAdminPage() {
         <>
           <OpsQueue tasks={data.tasks} brands={data.brands} />
           <BrandDirectory brands={data.brands} />
+          <BlockLibraryCard count={blocks} />
           <AddBrand />
         </>
       )}

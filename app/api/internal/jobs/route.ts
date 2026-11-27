@@ -109,7 +109,18 @@ export async function GET(request: NextRequest) {
     })
     return { ran: 0 }
   })
-  // PICK-107: notification emails, where the owner turned them on. The
+  if (!scheduledDispatchAllowed(process.env.ADAPTER_MODE))
+    return NextResponse.json(
+      {
+        error: 'Scheduled jobs run only with sample providers in this build.',
+        inbox,
+        plans,
+        emails
+      },
+      { status: 503, headers: noStore }
+    )
+  // PICK-107: notification emails, where the owner turned them on, behind
+  // the same dispatch gate as the workspace jobs. The
   // mailer is the fake one (nothing is sent); each notice is claimed once.
   const notices = await sendNoticeEmails(db, notificationMailer()).catch(
     (error) => {
@@ -119,17 +130,6 @@ export async function GET(request: NextRequest) {
       return { sent: 0 }
     }
   )
-  if (!scheduledDispatchAllowed(process.env.ADAPTER_MODE))
-    return NextResponse.json(
-      {
-        error: 'Scheduled jobs run only with sample providers in this build.',
-        inbox,
-        plans,
-        emails,
-        notices
-      },
-      { status: 503, headers: noStore }
-    )
   if (Date.now() - started > schedulerLatestMs) {
     logger.warn('Scheduled jobs left for the next run', {
       code: 'sweep_out_of_time'

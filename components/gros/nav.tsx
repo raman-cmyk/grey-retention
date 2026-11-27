@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { Card } from './card'
 import { grosRoot } from './font'
 import { Mark } from './mark'
-import { NoticesButton } from './notices-button'
+import { NoticesButton, type NoticeCount } from './notices-button'
 
 /**
  * Nav (BRAND.md): the top bar is the only navigation. The mark and the page
@@ -104,12 +104,19 @@ export function MenuBar({
 export function TopBar({
   current,
   title,
-  assistant = defaultAssistant
+  assistant = defaultAssistant,
+  notices = 'ask'
 }: {
   current?: NavPlace
   /** The page title; on Home it greets the store. */
   title: string
   assistant?: string
+  /**
+   * PICK-107: how the bell knows how many notices are new: it asks (a
+   * page), it waits (a loading frame, so a navigation asks once), or the
+   * page already read the number (Notifications).
+   */
+  notices?: NoticeCount
 }) {
   const here = (place: NavPlace) => (place === current ? 'page' : undefined)
   return (
@@ -133,6 +140,7 @@ export function TopBar({
           <NoticesButton
             current={current === 'notices'}
             className={roundPillClass}
+            count={notices}
           />
           <Link
             href={settingsHref}
@@ -221,16 +229,26 @@ export function AppPage({
   current,
   title,
   assistant,
+  notices,
   children
 }: {
   current?: NavPlace
   title: string
   assistant?: string
+  /** The bell's count when the page read it (see `TopBar`). */
+  notices?: NoticeCount
   children: ReactNode
 }) {
   return (
     <PageFrame
-      bar={<TopBar current={current} title={title} assistant={assistant} />}
+      bar={
+        <TopBar
+          current={current}
+          title={title}
+          assistant={assistant}
+          notices={notices}
+        />
+      }
     >
       {children}
     </PageFrame>
@@ -252,7 +270,14 @@ export function LoadingPage({
 }) {
   return (
     <LoadingFrame
-      bar={<TopBar current={current} title={title} assistant={assistant} />}
+      bar={
+        <TopBar
+          current={current}
+          title={title}
+          assistant={assistant}
+          notices="wait"
+        />
+      }
       words={words}
     />
   )

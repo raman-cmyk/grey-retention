@@ -1,25 +1,16 @@
+import type { NotificationPort } from '@/features/workflow/domain/contracts'
+
 /**
- * PICK-107: the email side of notifications. `NotificationMailer` has the
- * shape of the existing `NotificationPort` (V2-000,
- * features/workflow/domain/contracts.ts), kept here so lib stays free of
- * features. Only the fake exists: it keeps each email
+ * PICK-107: the email side of notifications, behind the existing
+ * `NotificationPort` (V2-000, a type-only import). Only the fake exists: it keeps each email
  * in memory and sends nothing. A live provider (Resend or Postmark is still
  * the owner's open choice, ARCHITECTURE_BLUEPRINT) needs his OK and its own
  * delivery states first, so `notificationMailer` returns the fake whatever
  * `ADAPTER_MODE` says.
  */
-export type SentNotice = {
-  tenantId: string
-  recipientId: string
-  /** The notice's kind: plan_ready, drafts_ready or results_in. */
-  template: string
-  /** The notice's id: a provider given it twice sends once. */
-  idempotencyKey: string
-}
-
-export interface NotificationMailer {
-  deliver(input: SentNotice): Promise<{ reference: string; simulated: boolean }>
-}
+/** One email: `template` is the notice's kind, `idempotencyKey` its id. */
+export type SentNotice = Parameters<NotificationPort['deliver']>[0]
+export type NotificationMailer = NotificationPort
 
 export class FakeNotificationMailer implements NotificationMailer {
   readonly sent: SentNotice[] = []
