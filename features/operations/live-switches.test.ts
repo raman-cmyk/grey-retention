@@ -15,6 +15,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
       'AI team in “Plan next 15 days”',
       'Design studio',
       'Copy the chosen design',
+      'Your own emails',
       'Klaviyo reading',
       'Klaviyo drafts',
       'Website reading',
@@ -27,6 +28,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
       'AI team in “Plan next 15 days”',
       'Design studio',
       'Copy the chosen design',
+      'Your own emails',
       'Klaviyo reading',
       'Klaviyo drafts',
       'Website reading',
@@ -36,6 +38,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
     expect(s['Copy the chosen design']!.detail).toContain(
       'DESIGN_LIBRARY_COPY=on'
     )
+    expect(s['Your own emails']!.detail).toContain('DESIGN_UPLOAD_COPY=on')
     expect(s['Real AI']!.detail).toContain('GEMINI_API_KEY')
     expect(s['Klaviyo reading']!.detail).toContain('KLAVIYO_MODE=live')
     expect(s['Background jobs']!.detail).toContain('SCHEDULED_JOBS_ENABLED')
@@ -49,6 +52,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
       STRATEGY_AGENTS: 'on',
       DESIGN_STUDIO: 'on',
       DESIGN_LIBRARY_COPY: 'on',
+      DESIGN_UPLOAD_COPY: 'on',
       KLAVIYO_MODE: 'live',
       KLAVIYO_DRAFT_PUSH: 'live',
       KLAVIYO_WRITE_LOCK: 'unlocked',
@@ -61,6 +65,7 @@ describe('the go-live switches (OPS-LIVE)', () => {
       'AI team in “Plan next 15 days”',
       'Design studio',
       'Copy the chosen design',
+      'Your own emails',
       'Klaviyo reading',
       'Klaviyo drafts',
       'Website reading'

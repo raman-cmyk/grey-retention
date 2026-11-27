@@ -5,6 +5,7 @@ import { draftPushLive } from '@/features/klaviyo-push/live'
 import { klaviyoMode } from '@/features/connections/live-klaviyo'
 import { designStudioOn } from '@/features/studio/waits'
 import { libraryCopyOn } from '@/features/email-build/library-copy'
+import { uploadCopyOn } from '@/features/email-uploads/switch'
 import { inboxConfig } from '@/features/inbox/config'
 import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import { strategyAgentsOn } from '@/features/strategy/agents'
@@ -135,6 +136,20 @@ export function liveSwitches(env: Env = process.env): LiveSwitch[] {
           state: 'off',
           detail:
             'Off: Copy follows the chosen email’s order with coded blocks. Set DESIGN_LIBRARY_COPY=on.'
+        },
+    // DES-ENGINE-003: the owner's own uploaded emails.
+    uploadCopyOn(env)
+      ? {
+          label: 'Your own emails',
+          state: 'on',
+          detail:
+            'On: owners can add their own emails (.html or .eml) on Inspiration; the design copies job measures them (where the scheduled jobs are on, SCHEDULED_JOBS_ENABLED).'
+        }
+      : {
+          label: 'Your own emails',
+          state: 'off',
+          detail:
+            'Off: “Add your own email” is not shown and no upload is measured. Set DESIGN_UPLOAD_COPY=on.'
         },
     klaviyoMode(env) === 'live'
       ? {

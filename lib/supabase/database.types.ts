@@ -4075,6 +4075,110 @@ export type Database = {
           }
         ]
       }
+      email_upload_adds: {
+        Row: {
+          added_at: string
+          tenant_id: string
+        }
+        Insert: {
+          added_at?: string
+          tenant_id: string
+        }
+        Update: {
+          added_at?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_upload_adds_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      email_uploads: {
+        Row: {
+          blueprint: Json | null
+          byte_size: number
+          created_at: string
+          created_by: string
+          design: string
+          failure: string | null
+          file_kind: string
+          html_etag: string | null
+          html_size: number | null
+          id: string
+          missing: Json
+          name: string
+          original_etag: string | null
+          pictures: Json
+          request_key: string
+          sha256: string
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          blueprint?: Json | null
+          byte_size: number
+          created_at?: string
+          created_by: string
+          design: string
+          failure?: string | null
+          file_kind: string
+          html_etag?: string | null
+          html_size?: number | null
+          id?: string
+          missing?: Json
+          name: string
+          original_etag?: string | null
+          pictures?: Json
+          request_key: string
+          sha256: string
+          state?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          blueprint?: Json | null
+          byte_size?: number
+          created_at?: string
+          created_by?: string
+          design?: string
+          failure?: string | null
+          file_kind?: string
+          html_etag?: string | null
+          html_size?: number | null
+          id?: string
+          missing?: Json
+          name?: string
+          original_etag?: string | null
+          pictures?: Json
+          request_key?: string
+          sha256?: string
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_uploads_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_uploads_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       fixture_deliveries: {
         Row: {
           created_at: string
@@ -7337,6 +7441,23 @@ export type Database = {
         Args: { code: string; expires_at: string; percent: number; t: string }
         Returns: string
       }
+      add_email_upload: {
+        Args: {
+          byte_size: number
+          design: string
+          file_kind: string
+          missing?: Json
+          name: string
+          pictures?: Json
+          request: string
+          sha256: string
+          t: string
+        }
+        Returns: {
+          id: string
+          state: string
+        }[]
+      }
       add_holiday: {
         Args: { event_date: string; name: string; notes: string; t: string }
         Returns: string
@@ -7608,6 +7729,19 @@ export type Database = {
           options: Json
           result_id: string
           source_id: string
+        }[]
+      }
+      claim_email_upload: {
+        Args: never
+        Returns: {
+          attempt: number
+          design: string
+          html_etag: string
+          id: string
+          lease_token: string
+          pictures: number
+          subject_key: string
+          tenant_id: string
         }[]
       }
       claim_job: {
@@ -7982,6 +8116,10 @@ export type Database = {
         Args: { allocation: number; daily: number; name: string }
         Returns: string
       }
+      delete_email_upload: {
+        Args: { t: string; upload: string }
+        Returns: string
+      }
       delete_holiday: {
         Args: { expected_revision: number; holiday_id: string; t: string }
         Returns: undefined
@@ -8018,6 +8156,15 @@ export type Database = {
       draft_from_structure: {
         Args: { input: Json; source: string; source_id: string; t: string }
         Returns: string
+      }
+      email_upload_jobs_waiting: { Args: never; Returns: number }
+      email_upload_room: { Args: { t: string }; Returns: string }
+      email_uploads_to_clean: {
+        Args: { n?: number }
+        Returns: {
+          folder: string
+          id: string
+        }[]
       }
       enqueue_cancel: {
         Args: { campaign: string; expected_revision: number; t: string }
@@ -8177,6 +8324,10 @@ export type Database = {
       }
       finish_email_step: {
         Args: { build: string; done: string; lease: string; output: Json }
+        Returns: string
+      }
+      finish_email_upload: {
+        Args: { html_size: number; t: string; upload: string }
         Returns: string
       }
       finish_health_check: {
@@ -8345,6 +8496,7 @@ export type Database = {
         Args: { observed_at: string; t: string }
         Returns: string
       }
+      purge_email_upload: { Args: { upload: string }; Returns: boolean }
       queue_brand_book_write_as_worker: {
         Args: { cause: string; ref: string; t: string }
         Returns: string
@@ -8431,6 +8583,10 @@ export type Database = {
           wide: boolean
         }
         Returns: undefined
+      }
+      record_email_upload: {
+        Args: { blueprint?: Json; failure?: string; job: string; lease: string }
+        Returns: string
       }
       record_fallback: {
         Args: {
@@ -8617,6 +8773,10 @@ export type Database = {
         Returns: undefined
       }
       release_email_copy: {
+        Args: { job: string; lease: string }
+        Returns: undefined
+      }
+      release_email_upload: {
         Args: { job: string; lease: string }
         Returns: undefined
       }
