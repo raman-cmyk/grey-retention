@@ -240,7 +240,7 @@ function storeWords(store: Store, code?: string | null) {
 }
 
 /** DST-005: the hard checks on an email as drawn, before it is stored. */
-const checksFor =
+export const checksFor =
   (store: Store, rules: SectionsOutput['rules']) =>
   (
     html: string,

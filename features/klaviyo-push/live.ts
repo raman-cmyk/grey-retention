@@ -1,4 +1,5 @@
 import 'server-only'
+import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { klaviyoMode, revisionOk } from '@/features/connections/live-klaviyo'
@@ -136,6 +137,20 @@ export const draftPushLive = (env: Env) =>
   klaviyoMode(env) === 'live' && env.KLAVIYO_DRAFT_PUSH === 'live'
 
 /**
+ * PICK-106: where `draftPusherFor` sends an email, exactly: the fake pusher
+ * for a sample store's email or while the push switch is off (`fake`);
+ * otherwise the live pusher, which pushes only while the write lock is
+ * unlocked (`live`) and refuses every push while it is locked (`locked`).
+ */
+export function pushRoute(
+  env: Env,
+  sampleStore: boolean
+): 'fake' | 'live' | 'locked' {
+  if (sampleStore || !draftPushLive(env)) return 'fake'
+  return klaviyoWritesUnlocked(env) ? 'live' : 'locked'
+}
+
+/**
  * The pusher "Create email" uses: the sample store's emails always get a
  * sample draft (no Klaviyo call); a real email goes to the workspace's own
  * Klaviyo only when the owner's write switch is on, else the fake as
@@ -157,6 +172,7 @@ export function draftPusherFor(
   })
   return {
     createDraft: (input) =>
-      input.sample ? fake.createDraft(input) : live.createDraft(input)
+      input.sample ? fake.createDraft(input) : live.createDraft(input),
+    fake: (input) => input.sample
   }
 }

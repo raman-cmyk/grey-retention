@@ -2,7 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
-import { fingerprints } from '@/features/klaviyo-push/fingerprints'
+import { fingerprints, seen } from '@/features/klaviyo-push/fingerprints'
 import {
   designEdited,
   type DesignMismatch
@@ -91,6 +91,11 @@ type Context = {
   builtAt: number
   templates: { approach?: unknown; variation?: unknown; deleted?: unknown }[]
   written: string | null
+  /**
+   * PICK-106: where a push under way is taking the variations (null when
+   * none is): while it is set, a difference from `written` may be ours.
+   */
+  target: string | null
   /** What the push left on each variation (PSH-001), for the edit check. */
   shown: string | null
   /** The push's key, to read `shown` again after a check (PICK-99). */
@@ -114,7 +119,7 @@ async function contexts(
   const pushes = keys.length
     ? await db
         .from('klaviyo_draft_pushes')
-        .select('tenant_id,push_key,templates,written,shown')
+        .select('tenant_id,push_key,templates,written,target,shown')
         .in('push_key', keys)
     : { data: [], error: null }
   if (pushes.error) throw pushes.error
@@ -133,6 +138,7 @@ async function contexts(
         ? (push.templates as Context['templates'])
         : [],
       written: push?.written ?? null,
+      target: push?.target ?? null,
       shown: push?.shown ?? null,
       pushKey: push ? push.push_key : null
     })
@@ -226,12 +232,54 @@ async function checkDesign(
   }
 }
 
+/** A push row's fingerprint list as a set (PSH-001). */
+const setOf = (s: string | null) => new Set(s ? s.split(',') : [])
+
+/**
+ * PICK-99, PICK-106: the draft's subject or preview was changed outside the
+ * app, by the pusher's own rule (PSH-001): a variation showing a fingerprint
+ * that is neither what our last push wrote nor where a push under way (or
+ * one that stopped part way) was taking it is a certain edit; with no push
+ * under way, anything but exactly what we wrote is too. A draft that shows
+ * only what we wrote or were writing is not (a restore's own write is never
+ * taken for the owner's edit, which would stay seen for good), nor one whose
+ * push record changed while we looked (a push ran meanwhile).
+ */
+async function wordsEdited(
+  db: Db,
+  row: ResultRow,
+  draft: DraftRead | null,
+  ctx: Context
+): Promise<boolean> {
+  if (!draft || (ctx.written === null && ctx.target === null)) return false
+  const allowed = new Set([...setOf(ctx.written), ...setOf(ctx.target)])
+  const changed =
+    draft.variations.some((v) => !allowed.has(seen(v))) ||
+    (ctx.target === null &&
+      ctx.written !== null &&
+      fingerprints(draft.variations) !== ctx.written)
+  if (!changed) return false
+  if (!ctx.pushKey) return true
+  const again = await db
+    .from('klaviyo_draft_pushes')
+    .select('written,target')
+    .eq('tenant_id', row.tenant_id)
+    .eq('push_key', ctx.pushKey)
+    .maybeSingle()
+  return (
+    !again.error &&
+    !!again.data &&
+    again.data.written === ctx.written &&
+    again.data.target === ctx.target
+  )
+}
+
 /** A draft's status read, as the checks compare it with what we left. */
 function statusRead(
   row: ResultRow,
   draft: DraftRead | null,
-  ctx: Context,
-  design: DesignMismatch | false | null
+  design: DesignMismatch | false | null,
+  edited: boolean
 ): StatusRead {
   return draft
     ? {
@@ -240,10 +288,7 @@ function statusRead(
         sendTime: draft.sendTime,
         firstSendTime: draft.firstSendTime,
         sendStrategy: draft.sendStrategy,
-        changed:
-          draft.campaignId !== row.campaign_id ||
-          (ctx.written !== null &&
-            fingerprints(draft.variations) !== ctx.written),
+        changed: draft.campaignId !== row.campaign_id || edited,
         design
       }
     : { found: false }
@@ -511,7 +556,12 @@ export async function runEmailResults(
         const design = draft
           ? await designCheck(row, draft, ctx, due.length)
           : null
-        const read = statusRead(row, draft, ctx, design)
+        const read = statusRead(
+          row,
+          draft,
+          design,
+          await wordsEdited(db, row, draft, ctx)
+        )
         const checked = afterStatus(row, read, now(), ctx.builtAt)
         const sentAt = checked.patch.sent_at ?? row.sent_at
         if (checked.pullDue && sentAt && read.found)
@@ -880,7 +930,7 @@ async function checkEmailWork(
         : null
       const checked = afterStatus(
         row,
-        statusRead(row, draft, ctx, design),
+        statusRead(row, draft, design, await wordsEdited(db, row, draft, ctx)),
         now(),
         ctx.builtAt
       )

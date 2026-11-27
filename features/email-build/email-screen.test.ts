@@ -379,7 +379,11 @@ describe('loading an email’s page (UI-EMAIL-a)', () => {
       ['agent_fallbacks', 'eq', ['tenant_id', tenant]],
       // PICK-99: what the results sync read of its draft, this workspace's.
       ['klaviyo_email_results', 'eq', ['tenant_id', tenant]],
-      ['klaviyo_email_results', 'eq', ['build_id', buildId]]
+      ['klaviyo_email_results', 'eq', ['build_id', buildId]],
+      // PICK-106: the planned email's versions, this workspace's.
+      ['email_versions', 'eq', ['tenant_id', tenant]],
+      ['email_versions', 'eq', ['run_id', runId]],
+      ['email_versions', 'eq', ['slot', 1]]
     ])
     expect(calls.filter(([, n]) => n === 'like')).toEqual([
       ['agent_fallbacks', 'like', ['dedupe_key', `%email-build-${buildId}%`]],

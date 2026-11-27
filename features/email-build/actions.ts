@@ -11,7 +11,7 @@ import type { Database } from '@/lib/supabase/database.types'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logger } from '@/lib/logger'
-import { draftPusherFor } from '@/features/klaviyo-push/live'
+import { draftPusherFor, pushRoute } from '@/features/klaviyo-push/live'
 import { pushBudgetMs } from '@/features/klaviyo-push/pusher'
 import { latestPlanRun } from '@/features/strategy/load'
 import { planScreen } from '@/features/strategy/plan-screen'
@@ -23,6 +23,13 @@ import {
   queueAll,
   type QueueAnswer
 } from './create-all'
+import { restoreRefusal } from './restore-checks'
+import {
+  restoreRoute,
+  restoreRouteWords,
+  restoreWords,
+  usableVersion
+} from './versions'
 import { runEmailBuilds } from './worker'
 
 export type CreateEmailState = { error?: string; message?: string }
@@ -430,3 +437,134 @@ async function allowanceUsed(
   if (error || !data) return false
   return data.used_micro + data.reserved_micro >= data.allocation_micro
 }
+
+const restoreForm = z.object({
+  build: z.uuid(),
+  version: z
+    .string()
+    .regex(/^\d{1,6}$/)
+    .transform(Number)
+    .pipe(z.int().min(1)),
+  // The newest version the page showed: a page older than that is stale.
+  shown: z
+    .string()
+    .regex(/^\d{1,6}$/)
+    .transform(Number)
+    .pipe(z.int().min(1))
+})
+
+/**
+ * PICK-106 (owner pick #106): "Use this version" on an email's page. Only
+ * the workspace's owner (checked here and again by the command, under the
+ * workspace lock). An undo that cannot break the email:
+ *
+ * - Where the push would send it is worked out exactly as `draftPusherFor`
+ *   and the live pusher do (`pushRoute`, `restoreRoute`): a draft Klaviyo
+ *   holds is never handed to the fake pusher, nor queued while the write
+ *   lock is on.
+ * - What can be known now is checked first (`restoreRefusal`): PICK-99's
+ *   never-overwrite, the code still working, the hard checks under today's
+ *   rules, the owner's "don'ts", the version's shape and size.
+ * - The command keeps the draft's own email and campaign id beside the
+ *   push: a push that is refused or fails puts the draft back as it was
+ *   and marks this restore as not used (never a failed email).
+ *
+ * The older version becomes the current one as a new version (history is
+ * never rewritten), and the email goes through the same push as "Create
+ * email": the same worker, the planned email's push key (the pusher
+ * updates the same GROS draft), every check and switch of the push.
+ * Nothing is scheduled or sent.
+ */
+export async function restoreEmailVersion(
+  _state: CreateEmailState,
+  form: FormData
+): Promise<CreateEmailState> {
+  const started = Date.now()
+  const context = await requireRequestContext('client')
+  if (context.tenantRole !== 'owner')
+    return { error: 'Only this workspace’s owner changes emails.' }
+  const parsed = restoreForm.safeParse({
+    build: form.get('build'),
+    version: form.get('version'),
+    shown: form.get('shown')
+  })
+  if (!parsed.success) return { error: 'Reload the page to see the versions.' }
+  const db = await createClient()
+  const service = createServiceClient()
+  if (!db || !service)
+    return { error: 'Changing emails is unavailable right now.' }
+  const build = await db
+    .from('email_builds')
+    .select('run_id,slot,sample_draft,push_key')
+    .eq('tenant_id', context.tenantId)
+    .eq('id', parsed.data.build)
+    .maybeSingle()
+  if (build.error) return { error: couldNotRestore }
+  if (!build.data) return { error: restoreWords.version_no_email! }
+  const [version, run, pushes] = await Promise.all([
+    db
+      .from('email_versions')
+      .select('email')
+      .eq('tenant_id', context.tenantId)
+      .eq('run_id', build.data.run_id)
+      .eq('slot', build.data.slot)
+      .eq('number', parsed.data.version)
+      .maybeSingle(),
+    db
+      .from('strategy_runs')
+      .select('start_on')
+      .eq('tenant_id', context.tenantId)
+      .eq('id', build.data.run_id)
+      .maybeSingle(),
+    db
+      .from('klaviyo_draft_pushes')
+      .select('campaign_id')
+      .eq('tenant_id', context.tenantId)
+      .eq('push_key', build.data.push_key)
+  ])
+  if (version.error || run.error || pushes.error)
+    return { error: couldNotRestore }
+  if (!version.data) return { error: restoreWords.version_unknown! }
+  if (!run.data) return { error: restoreWords.version_plan_replaced! }
+  // The push would refuse it: an email stored the way an older app did,
+  // or larger than an email is kept.
+  const email = usableVersion(version.data.email)
+  if (!email)
+    return {
+      error:
+        'This version was kept by an older version of the app, so it cannot be used again.'
+    }
+  const route = restoreRoute({
+    route: pushRoute(process.env, email.sample),
+    sampleDraft: build.data.sample_draft,
+    pushRow: (pushes.data ?? []).some((p) => p.campaign_id !== null)
+  })
+  if (route === 'off') return { error: restoreRouteWords.off }
+  const refused = await restoreRefusal(service, {
+    tenantId: context.tenantId,
+    runId: build.data.run_id,
+    startOn: run.data.start_on,
+    pushKey: build.data.push_key,
+    email
+  })
+  if (refused) return { error: refused }
+  const { error } = await db.rpc('restore_email_version', {
+    t: context.tenantId,
+    build: parsed.data.build,
+    version: parsed.data.version,
+    shown: parsed.data.shown
+  })
+  if (error) {
+    const words = error.hint ? restoreWords[error.hint] : undefined
+    if (words) return { error: words }
+    if (error.code === '42501')
+      return { error: 'Only this workspace’s owner changes emails.' }
+    return { error: couldNotRestore }
+  }
+  // The push runs after the reply, as a click on Create email does.
+  buildSoon(started, parsed.data.build)
+  revalidatePath('/plan')
+  redirect(`/plan/email/${parsed.data.build}` as Route)
+}
+
+const couldNotRestore = 'We could not use this version. Try again.'
