@@ -421,6 +421,75 @@ describe('the Klaviyo segment for the rule', () => {
       expect(isHygieneSegmentCreate(hostile)).toBe(false)
   })
 
+  it('the fence refuses shape-valid definitions that are not hygiene', () => {
+    const spec = specOf()
+    const name = hygieneSegmentName(spec)
+    const def = hygieneSegmentDefinition(spec)!
+    const ok = (d: unknown) =>
+      isHygieneSegmentCreate({
+        data: {
+          type: 'segment',
+          attributes: { name, definition: d, is_starred: false }
+        }
+      })
+    expect(ok(def)).toBe(true)
+    const groups = def.condition_groups
+    const clone = () => structuredClone(def) as unknown as Def
+    // Five copies of "Received at least once before 30 days".
+    const copy = structuredClone(
+      groups[0]!
+    ) as unknown as Def['condition_groups'][number]
+    copy.conditions[0]!.timeframe_filter.quantity = 30
+    expect(ok({ condition_groups: [copy, copy, copy, copy, copy] })).toBe(false)
+    // Orders over fewer than 180 days.
+    const short = clone()
+    for (const g of short.condition_groups.slice(-2))
+      g.conditions[0]!.timeframe_filter.quantity = 60
+    expect(ok(short)).toBe(false)
+    // One metric used twice (clicks counted as opens).
+    const twice = clone()
+    twice.condition_groups[3]!.conditions[0]!.metric_id = 'MClick'
+    expect(ok(twice)).toBe(false)
+    // The received metric as an order metric.
+    const reused = clone()
+    reused.condition_groups.at(-1)!.conditions[0]!.metric_id = 'MRecv'
+    expect(ok(reused)).toBe(false)
+    // Clicks at least once instead of none.
+    const clicks = clone()
+    clicks.condition_groups[2]!.conditions[0]!.measurement_filter.operator =
+      'greater-than-or-equal'
+    clicks.condition_groups[2]!.conditions[0]!.measurement_filter.value = 1
+    expect(ok(clicks)).toBe(false)
+    // An order group (180 days) moved in front of the clicks (90 days).
+    // At 180 days both look alike and the groups all hold together anyway.
+    const spec90 = specOf(hygieneRule({ enabled: true, days: 90 }))
+    const days90 = hygieneSegmentDefinition(spec90)!
+    const ok90 = (d: unknown) =>
+      isHygieneSegmentCreate({
+        data: {
+          type: 'segment',
+          attributes: {
+            name: hygieneSegmentName(spec90),
+            definition: d,
+            is_starred: false
+          }
+        }
+      })
+    expect(ok90(days90)).toBe(true)
+    const moved = structuredClone(days90) as unknown as Def
+    const order = moved.condition_groups.pop()!
+    moved.condition_groups.splice(2, 0, order)
+    expect(ok90(moved)).toBe(false)
+    // No order group at all (sites only, in the window).
+    expect(ok({ condition_groups: days90.condition_groups.slice(0, 6) })).toBe(
+      false
+    )
+    // A key inherited, not its own.
+    const inherited = Object.create({ type: 'segment' })
+    inherited.attributes = { name, definition: def, is_starred: false }
+    expect(isHygieneSegmentCreate({ data: inherited })).toBe(false)
+  })
+
   it('a segment Klaviyo shows is ours only when its definition is the same', () => {
     const def = hygieneSegmentDefinition(specOf())!
     const shown = structuredClone(def) as unknown as Def

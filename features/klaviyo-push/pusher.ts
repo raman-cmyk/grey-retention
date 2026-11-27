@@ -887,9 +887,10 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
           build: ref.build,
           status: error.details.status ?? 0
         })
-        await exclusionRefused(hygieneRef, deps.hygiene)
         fits(1)
         campaignId = await make([])
+        // Only now is the exclusion to blame (a second refusal is not it).
+        await exclusionRefused(hygieneRef, deps.hygiene)
       }
       await save({ campaignId, audienceId: input.audienceId })
     }

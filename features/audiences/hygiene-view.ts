@@ -72,6 +72,7 @@ const reasonWords: Record<string, string> = {
   metrics_unread: `Not in Klaviyo yet: GROS could not read your whole Klaviyo history. It tries again in an hour. ${later}`,
   rate_limited: `Not in Klaviyo yet: Klaviyo was busy. GROS tries again in an hour. ${later}`,
   klaviyo_unavailable: `Not in Klaviyo yet: Klaviyo did not answer. GROS tries again in an hour. ${later}`,
+  segment_changed: `Not in Klaviyo drafts now: its segment was changed in Klaviyo, so GROS no longer uses it. GROS tries again tomorrow. ${later}`,
   segment_deleted: `Its segment was deleted in Klaviyo, so GROS leaves nobody out for being quiet. GROS does not make it again unless you ask.`
 }
 

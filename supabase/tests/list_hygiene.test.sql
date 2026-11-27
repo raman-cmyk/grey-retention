@@ -1,5 +1,5 @@
 begin;
-select plan(62);
+select plan(66);
 
 -- PICK-101: list hygiene. Workspace 101: owner ...01, staff ...05, admin
 -- ...06. Workspace 102: owner ...04.
@@ -27,6 +27,10 @@ select ok((select relrowsecurity from pg_class where oid=tbl::regclass),'row lev
 select ok(has_function_privilege('authenticated','public.set_list_hygiene(uuid,boolean,integer,integer)','execute')
   and not has_function_privilege('anon','public.set_list_hygiene(uuid,boolean,integer,integer)','execute'),
   'signed-in members may call set_list_hygiene (it checks the owner itself)');
+select ok(has_function_privilege('authenticated','public.retry_list_hygiene(uuid)','execute')
+  and not has_function_privilege('anon','public.retry_list_hygiene(uuid)','execute')
+  and not has_function_privilege('service_role','public.retry_list_hygiene(uuid)','execute'),
+  'only signed-in members may call retry_list_hygiene (it checks the owner itself); never anon or the worker');
 select ok(has_function_privilege('service_role','public.save_hygiene_segment(uuid,uuid,text,jsonb)','execute')
   and not has_function_privilege('authenticated','public.save_hygiene_segment(uuid,uuid,text,jsonb)','execute')
   and not has_function_privilege('anon','public.save_hygiene_segment(uuid,uuid,text,jsonb)','execute'),
@@ -133,7 +137,7 @@ select lives_ok($$select pg_temp.save(pg_temp.claim())$$,'build b101 starts maki
 select ok((select create_started_at = now() and claim_build = '00000000-0000-4000-8000-00000000b101'
   from public.klaviyo_hygiene_segments where rule_key='v1-180'),'the database stamps the claim, never the caller');
 select throws_ok($$select pg_temp.save(pg_temp.claim(),'b102')$$,'PT409',null,
-  'a second first-time maker is refused with PT409 (never a duplicate key)');
+  'a second maker is refused while the claim is live');
 select throws_ok($$select pg_temp.save('{"state":"failed","reason":"refused"}','b102')$$,'PT409',null,
   'only the claimant writes a row while its claim is live');
 select lives_ok($$select pg_temp.save(pg_temp.claim())$$,'the same build may claim again');
@@ -154,7 +158,11 @@ select lives_ok($$select pg_temp.save('{"profile_count":930,"counted_at":"2026-1
 select lives_ok($$select pg_temp.save(pg_temp.claim() || '{"klaviyo_account_id":"AcctB"}')$$,
   'a reconnect to another account starts a new one');
 select is(pg_temp.row_(),'creating|||AcctB|0123abcd|930|00000000-0000-4000-8000-00000000b101',
-  'its row now belongs to the new account');
+  'its row now belongs to the new account, with the old segment id cleared');
+select lives_ok($$select pg_temp.save(pg_temp.claim() || '{"segment_id":"SegSneaky"}')$$,
+  'the same build claims again, sending a segment id');
+select is((select segment_id from public.klaviyo_hygiene_segments where rule_key='v1-180'),null,
+  'entering creating always clears the segment id');
 reset role;
 
 set local role authenticated;
@@ -172,6 +180,8 @@ select is(public.retry_list_hygiene('00000000-0000-4000-8000-000000000101'),1,
 reset role;
 select results_eq($$select rule_key from public.klaviyo_hygiene_segments order by rule_key$$,
   $$values ('v1-180'), ('v1-365')$$,'a row being made and a ready one are kept');
+select is((select detail from public.workspace_events where kind='list_hygiene_retried'),'{"rows": 1}'::jsonb,
+  'the owner''s ask is in the change history');
 
 select * from finish();
 rollback;

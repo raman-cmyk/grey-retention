@@ -227,6 +227,43 @@ describe('list hygiene segment (fake Klaviyo)', () => {
     expect(names[0]).not.toBe(names[1])
   })
 
+  it('a failed create after an account change is noted, never left "being made"', async () => {
+    const { account, run, row } = setup()
+    await run()
+    account.faults.accountId = 'AcctOther'
+    account.segments.clear()
+    account.faults.refuseCreate = true
+    expect(await run()).toEqual({ excluded: [] })
+    expect(row()).toMatchObject({ state: 'failed', reason: 'refused' })
+  })
+
+  it('a stored segment edited in Klaviyo is no longer used', async () => {
+    const { account, run, row } = setup()
+    await run()
+    const seg = account.segments.get('SegHyg001')!
+    const edited = structuredClone(seg.definition) as {
+      condition_groups: {
+        conditions: { timeframe_filter: { quantity: number } }[]
+      }[]
+    }
+    edited.condition_groups.at(-1)!.conditions[0]!.timeframe_filter.quantity =
+      30
+    seg.definition = edited
+    expect(await run()).toEqual({ excluded: [] })
+    expect(row()).toMatchObject({ state: 'failed', reason: 'segment_changed' })
+  })
+
+  it('an incomplete metrics read leaves this draft out of it, keeping the segment', async () => {
+    const { account, run, row } = setup()
+    await run()
+    account.faults.brokenMetric = true
+    expect(await run()).toEqual({ excluded: [] })
+    expect(row()).toMatchObject({ state: 'ready', segmentId: 'SegHyg001' })
+    account.faults.brokenMetric = false
+    expect(await run()).toEqual({ excluded: ['SegHyg001'] })
+    expect(posts(account.calls)).toBe(1)
+  })
+
   it('waits while another push is making it', async () => {
     const { account, memory, run } = setup()
     memory.state.busy = true
@@ -451,6 +488,22 @@ describe('the live pusher leaves the hygiene segment out of the draft', () => {
     expect(memory.rows.get('v1-180')).toMatchObject({
       state: 'failed',
       reason: 'draft_refused'
+    })
+  })
+
+  it('a draft refused with and without the exclusion leaves hygiene alone', async () => {
+    const { drafts, memory, pusher } = setup()
+    const original = drafts.transport
+    drafts.transport = async (request) =>
+      request.method === 'POST' &&
+      new URL(request.url).pathname === '/api/campaigns'
+        ? { status: 400, headers: {}, body: '{"errors":[]}' }
+        : original(request)
+    const r = await pusher.createDraft(draft(keyA))
+    expect(r.ok).toBe(false)
+    expect(memory.rows.get('v1-180')).toMatchObject({
+      state: 'ready',
+      segmentId: 'SegHyg001'
     })
   })
 

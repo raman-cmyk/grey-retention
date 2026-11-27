@@ -17,7 +17,8 @@ export const changeKinds = [
   'klaviyo_key_refused',
   'brand_book_corrected',
   'brand_book_correction_withdrawn',
-  'list_hygiene_changed'
+  'list_hygiene_changed',
+  'list_hygiene_retried'
 ] as const
 
 /** What a Brand book line was about, in plain words (ONB-058). */
@@ -174,6 +175,8 @@ export function changeText(
             : null
     return did ? `Brand book: line about ${about} ${did}` : null
   }
+  if (kind === 'list_hygiene_retried')
+    return 'Asked for the list hygiene segment to be made again'
   if (kind === 'list_hygiene_changed') {
     const on = detail.to_enabled
     const days = detail.to_days

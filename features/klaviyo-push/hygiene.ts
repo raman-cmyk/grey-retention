@@ -151,12 +151,14 @@ export async function hygieneExclusion(
   const now = options.now ?? (() => new Date())
   let key: string | null = null
   let stored: StoredHygieneSegment | null = null
+  /** Set once this push claimed `creating`: its failure is always noted. */
+  const push = { claimed: false }
   try {
     const rule = hygieneRule(await store.settings(ref.tenantId))
     if (!rule.enabled) return none
     key = hygieneRuleKey(rule)
     stored = await store.load(ref.tenantId, key)
-    return await ensure(client, ref, store, key, stored, rule, now)
+    return await ensure(client, ref, store, key, stored, rule, now, push)
   } catch (error) {
     if (options.rethrow?.(error)) throw error
     if (error instanceof HygieneBusy) return 'wait'
@@ -166,8 +168,10 @@ export async function hygieneExclusion(
       reason,
       status: error instanceof KlaviyoError ? (error.details.status ?? 0) : 0
     })
-    // A ready segment stays as it is (the next push checks it again).
-    if (key && stored?.state !== 'ready')
+    // A ready segment stays as it is (the next push checks it again),
+    // unless this push had claimed `creating` over it: then the row says
+    // why, never stays "being made".
+    if (key && (push.claimed || stored?.state !== 'ready'))
       try {
         await store.save(ref, key, { state: 'failed', reason })
       } catch {
@@ -184,7 +188,8 @@ async function ensure(
   key: string,
   stored: StoredHygieneSegment | null,
   rule: ReturnType<typeof hygieneRule>,
-  now: () => Date
+  now: () => Date,
+  push: { claimed: boolean }
 ): Promise<Exclusion> {
   const ago = (iso: string | null) =>
     iso ? now().getTime() - Date.parse(iso) : Number.POSITIVE_INFINITY
@@ -200,6 +205,10 @@ async function ensure(
   const metrics = await readHygieneMetrics(client)
   const planned = hygieneSpec(rule, metrics)
   if ('none' in planned) {
+    // An unsure read is doubt, not news: this draft leaves nobody out, and
+    // a ready segment is kept for when the read is whole again.
+    if (planned.none === 'metrics_unread' && stored?.state === 'ready')
+      return none
     await store.save(ref, key, {
       state: 'no_data',
       reason: planned.none,
@@ -230,6 +239,15 @@ async function ensure(
       await store.save(ref, key, {
         state: 'deleted',
         reason: 'segment_deleted',
+        segmentId: null
+      })
+      return none
+    }
+    // Edited in Klaviyo (it could drop recent buyers): not ours any more.
+    if (!sameDefinition(seg.definition, built)) {
+      await store.save(ref, key, {
+        state: 'failed',
+        reason: 'segment_changed',
         segmentId: null
       })
       return none
@@ -279,14 +297,15 @@ async function ensure(
     fingerprint,
     segmentId: null
   })
+  push.claimed = true
   const id = await createHygieneSegment(client, spec)
   await store.save(ref, key, { state: 'ready', segmentId: id, reason: null })
   return { excluded: [id] }
 }
 
 /**
- * The draft could not be made with the exclusion (Klaviyo refused the
- * excluded segment): noted, and tried again a day later.
+ * The draft was refused with the exclusion and then made without it, so
+ * the exclusion is to blame: noted, and tried again a day later.
  */
 export async function exclusionRefused(ref: HygieneRef, store: HygieneStore) {
   try {

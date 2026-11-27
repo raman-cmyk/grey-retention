@@ -135,7 +135,7 @@ end $$;
 -- it would be must pass the table's checks.
 --
 -- The claim: entering `creating` stamps `create_started_at = now()` and
--- this build as the claimant, and clears the old reason. It is refused
+-- this build as the claimant, and clears the old reason and segment id. It is refused
 -- (PT409) while another build's claim is under two minutes old, or when
 -- the row is already ready for the same account and fingerprint. While
 -- that claim is live, only its claimant writes the row; after two minutes
@@ -182,7 +182,8 @@ begin
   if not found and step ? 'state' then
     insert into public.klaviyo_hygiene_segments as s (tenant_id, rule_key, state, klaviyo_account_id, fingerprint,
         segment_id, reason, create_started_at, claim_build, profile_count, counted_at)
-      values (t, rule, step->>'state', step->>'klaviyo_account_id', step->>'fingerprint', step->>'segment_id',
+      values (t, rule, step->>'state', step->>'klaviyo_account_id', step->>'fingerprint',
+        case when creating then null else step->>'segment_id' end,
         case when creating then null else step->>'reason' end,
         case when creating then now() end, case when creating then build end,
         (step->>'profile_count')::bigint, (step->>'counted_at')::timestamptz)
@@ -210,7 +211,7 @@ begin
       klaviyo_account_id = case when step ? 'klaviyo_account_id' then step->>'klaviyo_account_id'
         else s.klaviyo_account_id end,
       fingerprint = case when step ? 'fingerprint' then step->>'fingerprint' else s.fingerprint end,
-      segment_id = case when step ? 'segment_id' then step->>'segment_id' else s.segment_id end,
+      segment_id = case when creating then null when step ? 'segment_id' then step->>'segment_id' else s.segment_id end,
       reason = case when creating then null when step ? 'reason' then step->>'reason' else s.reason end,
       create_started_at = case when creating then now() else s.create_started_at end,
       claim_build = case when creating then build else s.claim_build end,
@@ -234,6 +235,9 @@ begin
   delete from public.klaviyo_hygiene_segments s
     where s.tenant_id = t and s.state in ('deleted', 'failed', 'no_data');
   get diagnostics n = row_count;
+  -- In the change history (BAS-006), even when nothing was waiting.
+  insert into public.workspace_events (tenant_id, actor_id, kind, detail)
+    values (t, auth.uid(), 'list_hygiene_retried', jsonb_build_object('rows', n));
   return n;
 end $$;
 

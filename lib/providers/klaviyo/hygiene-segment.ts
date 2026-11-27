@@ -51,11 +51,18 @@ function fnv(text: string) {
   return h.toString(16).padStart(8, '0')
 }
 
+/**
+ * The builder's own version: a change to how definitions are built makes
+ * new segments (it is in the fingerprint, so in the name).
+ */
+export const definitionVersion = 2
+
 /** A short fingerprint of everything the definition is built from. */
 export function hygieneFingerprint(spec: HygieneSegmentSpec) {
   const m = spec.metrics
   return fnv(
     JSON.stringify([
+      definitionVersion,
       spec.version,
       spec.days,
       spec.recentOrderDays,
@@ -169,7 +176,8 @@ type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj =>
   !!v && typeof v === 'object' && !Array.isArray(v)
 const exactKeys = (o: Obj, keys: string[]) =>
-  Object.keys(o).length === keys.length && keys.every((k) => k in o)
+  Object.keys(o).length === keys.length &&
+  keys.every((k) => Object.hasOwn(o, k))
 const int = (v: unknown, min: number, max: number) =>
   typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max
 
@@ -213,16 +221,30 @@ function conditionOk(c: unknown) {
   )
 }
 
-/** A definition shaped exactly as the app builds them. */
+type Condition = {
+  metric_id: string
+  measurement_filter: { operator: string; value: number }
+  timeframe_filter: { operator: string; quantity: number }
+  metric_filters: unknown
+}
+
+/**
+ * A definition shaped exactly as the app builds it, in its order: Received
+ * Email at least once before the window and at least N times inside it
+ * (one metric, one window), Clicked Email 0 and Opened Email 0 inside the
+ * window, any Active on Site groups at 0 inside the window, then at least
+ * one Placed Order group at 0 over at least 180 days and never shorter than
+ * the window. Every metric but Received Email is used once. Nothing else.
+ */
 export function hygieneDefinitionOk(definition: unknown) {
   if (!isObj(definition) || !exactKeys(definition, ['condition_groups']))
     return false
   const groups = definition.condition_groups
-  return (
-    Array.isArray(groups) &&
-    groups.length >= 5 &&
-    groups.length <= 24 &&
-    groups.every(
+  if (
+    !Array.isArray(groups) ||
+    groups.length < 5 ||
+    groups.length > 24 ||
+    !groups.every(
       (g) =>
         isObj(g) &&
         exactKeys(g, ['conditions']) &&
@@ -231,6 +253,52 @@ export function hygieneDefinitionOk(definition: unknown) {
         conditionOk(g.conditions[0])
     )
   )
+    return false
+  const c = groups.map((g) => (g as { conditions: Condition[] }).conditions[0]!)
+  const [before, received, clicked, opened, ...tail] = c as [
+    Condition,
+    Condition,
+    Condition,
+    Condition,
+    ...Condition[]
+  ]
+  const days = received.timeframe_filter.quantity
+  const zero = (x: Condition, quantity: number) =>
+    x.measurement_filter.operator === 'equals' &&
+    x.timeframe_filter.operator === 'in-the-last' &&
+    x.timeframe_filter.quantity === quantity
+  if (
+    before.metric_id !== received.metric_id ||
+    before.measurement_filter.operator !== 'greater-than-or-equal' ||
+    before.measurement_filter.value !== 1 ||
+    before.timeframe_filter.operator !== 'before' ||
+    before.timeframe_filter.quantity !== days ||
+    before.metric_filters !== null ||
+    received.measurement_filter.operator !== 'greater-than-or-equal' ||
+    received.timeframe_filter.operator !== 'in-the-last' ||
+    received.metric_filters !== null ||
+    !zero(clicked, days) ||
+    clicked.metric_filters !== null ||
+    !zero(opened, days)
+  )
+    return false
+  // The orders' window: the last group's, at least 180 days and the window.
+  const orderDays = tail.at(-1)!.timeframe_filter.quantity
+  if (orderDays < Math.max(days, 180)) return false
+  // Site groups (the window) first, then one or more order groups.
+  let i = 0
+  if (orderDays !== days)
+    while (i < tail.length && tail[i]!.timeframe_filter.quantity === days) i++
+  const sites = tail.slice(0, i)
+  const orders = tail.slice(i)
+  if (
+    orders.length < 1 ||
+    !sites.every((x) => zero(x, days) && x.metric_filters === null) ||
+    !orders.every((x) => zero(x, orderDays) && x.metric_filters === null)
+  )
+    return false
+  const ids = [clicked, opened, ...tail].map((x) => x.metric_id)
+  return new Set([...ids, received.metric_id]).size === ids.length + 1
 }
 
 /**

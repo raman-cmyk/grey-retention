@@ -25,6 +25,9 @@ describe('a recorded change in plain words', () => {
       })
     ).toBe('List hygiene turned on: 120 days')
     expect(say({ to_enabled: true, to_days: 'x' })).toBeNull()
+    expect(changeText('list_hygiene_retried', { rows: 1 })).toBe(
+      'Asked for the list hygiene segment to be made again'
+    )
   })
 
   it.each([
