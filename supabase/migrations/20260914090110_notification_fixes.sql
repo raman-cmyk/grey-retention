@@ -12,9 +12,10 @@
 --    new one.
 -- 3. Email goes to the owner only (until he decides otherwise), and only
 --    for a ready plan and drafts in Klaviyo; results stay in the app.
--- 4. Fail-soft: a notice waits at most two seconds for a lock, never on the
---    per-plan lock (it starts its own item instead), and a cancelled or
---    timed-out notice is a warning too, never a lost plan or draft.
+-- 4. Fail-soft: a notice waits at most two seconds for any lock (the
+--    per-plan advisory lock included: lock_timeout bounds it), and a
+--    cancelled or timed-out notice is a warning too, never a lost plan or
+--    draft.
 
 create or replace function public.finish_strategy_plan(run uuid, lease uuid, result jsonb)
 returns void language plpgsql security definer set search_path='' as $$
@@ -98,18 +99,19 @@ begin
   begin
     if not exists (select 1 from public.notification_events
                    where tenant_id = new.tenant_id and event_key = 'drafted:' || new.id) then
-      -- Two drafts of one plan finishing at once join the same item; if the
-      -- plan's lock is busy, this draft starts its own item rather than wait.
-      if pg_try_advisory_xact_lock(hashtextextended('notice:drafts:' || new.run_id::text, 0)) then
-        select n.event_key into item from public.notifications n
-          where n.tenant_id = new.tenant_id and n.kind = 'drafts_ready' and n.entity_id = new.run_id
-            and n.updated_at > now() - interval '1 hour'
-            -- An item already emailed is closed: a late draft starts a new one.
-            and not exists (select 1 from public.notifications x
-                              join public.notification_deliveries d on d.notification_id = x.id
-                            where x.tenant_id = n.tenant_id and x.event_key = n.event_key)
-          order by n.updated_at desc limit 1;
-      end if;
+      -- Two drafts of one plan finishing at once join the same item: the
+      -- second waits for the first. The wait is bounded by the 2 s
+      -- lock_timeout set above (it applies to advisory locks too); past it
+      -- the notice is a warning and the draft is kept.
+      perform pg_advisory_xact_lock(hashtextextended('notice:drafts:' || new.run_id::text, 0));
+      select n.event_key into item from public.notifications n
+        where n.tenant_id = new.tenant_id and n.kind = 'drafts_ready' and n.entity_id = new.run_id
+          and n.updated_at > now() - interval '1 hour'
+          -- An item already emailed is closed: a late draft starts a new one.
+          and not exists (select 1 from public.notifications x
+                            join public.notification_deliveries d on d.notification_id = x.id
+                          where x.tenant_id = n.tenant_id and x.event_key = n.event_key)
+        order by n.updated_at desc limit 1;
       item := coalesce(item, 'drafts_ready:' || new.id);
       select count(distinct b.slot) into done from public.email_builds b
         where b.run_id = new.run_id and b.state = 'drafted' and b.sample_draft = new.sample_draft;
