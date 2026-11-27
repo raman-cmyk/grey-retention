@@ -18,7 +18,14 @@ describe('the block library count (DES-ENGINE-004, BLK-SCALE-001)', () => {
       row({ kind: 'hero', blocks: 37, uses: 49, reused: 6, two_brands: 2 }),
       row({ kind: 'footer', blocks: 8, uses: 39, reused: 3, two_brands: 1 }),
       row({ kind: 'footer', quality: 'failed', blocks: 1, uses: 1 }),
-      row({ source: 'upload', kind: 'hero', blocks: 4, uses: 5, reused: 1 })
+      row({ source: 'upload', kind: 'hero', blocks: 4, uses: 5, reused: 1 }),
+      row({
+        source: 'upload',
+        kind: 'hero',
+        quality: 'failed',
+        blocks: 2,
+        uses: 2
+      })
     ])
     expect(count).toMatchObject({
       target: 2000,
@@ -27,14 +34,15 @@ describe('the block library count (DES-ENGINE-004, BLK-SCALE-001)', () => {
       private: 4,
       counted: 65,
       progress: 0.033,
-      sections: 93,
-      merged: 44,
+      // Shared blocks only: private uses, folds and failures never count.
+      sections: 88,
+      merged: 43,
       twoBrands: 3,
-      reused: 10,
+      reused: 9,
       failed: 1
     })
     expect(count.byKind).toEqual([
-      { kind: 'hero', inbox: 37, private: 4, uses: 54 },
+      { kind: 'hero', inbox: 37, private: 4, uses: 49 },
       { kind: 'footer', inbox: 8, private: 0, uses: 39 }
     ])
   })

@@ -9062,6 +9062,14 @@ export type Database = {
         Args: { job: string; lease: string }
         Returns: undefined
       }
+      release_library_blocks: {
+        Args: { code?: string; job: string; lease: string }
+        Returns: undefined
+      }
+      renew_library_blocks: {
+        Args: { job: string; lease: string }
+        Returns: string
+      }
       reply_support: {
         Args: {
           body: string

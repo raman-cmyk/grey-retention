@@ -1,5 +1,5 @@
 begin;
-select plan(49);
+select plan(63);
 
 -- DES-ENGINE-004: every section of a stored Inspiration blueprint, and of
 -- a workspace's own upload, becomes a library block (structure only), one
@@ -125,11 +125,12 @@ select throws_ok(format($$select public.record_library_blocks(%L, %L, %L)$$, cur
 select throws_ok(format($$select public.record_library_blocks(%L, gen_random_uuid(), '[]')$$,
   current_setting('test.c1')::jsonb->>'job'), 'PT409', null, 'a wrong lease records nothing');
 
--- Two sections of the same structure: one block, used twice.
+-- Two sections of the same structure in one email: one block, used once
+-- (an email that repeats a layout counts once).
 select is(public.record_library_blocks((current_setting('test.c1')::jsonb->>'job')::uuid, (current_setting('test.c1')::jsonb->>'lease')::uuid,
   jsonb_build_array(pg_temp.block(1, pg_temp.fp(1)), pg_temp.block(2, pg_temp.fp(1)), pg_temp.block(3, pg_temp.fp(2), 'failed')))->>'new',
   '2', 'two new blocks');
-select is((select uses from public.library_blocks where fingerprint = pg_temp.fp(1)), 2, 'near-identical sections are one block, used twice');
+select is((select uses from public.library_blocks where fingerprint = pg_temp.fp(1)), 1, 'near-identical sections are one block, used by one email');
 select is((select brands from public.library_blocks where fingerprint = pg_temp.fp(1)), 1, 'by one brand');
 select is((select quality || '/' || failure from public.library_blocks where fingerprint = pg_temp.fp(2)), 'failed/not_alike',
   'a block that fails the gate is kept with its reason');
@@ -145,10 +146,12 @@ select is((select count(*)::int from public.library_block_sources where inbox_me
 -- a failed structure that now passes is kept.
 update public.platform_jobs set available_at = now() where kind = 'design.blocks' and subject_key = 'inbox:' || current_setting('test.m2');
 select set_config('test.c2', pg_temp.claim()::text, true);
-select is(public.known_library_blocks(null, array[pg_temp.fp(1), pg_temp.fp(2)])::text, pg_temp.fp(1), 'the job draws only structures it does not have');
+select is((select count(*)::int from public.known_library_blocks(null, array[pg_temp.fp(1), pg_temp.fp(2)]) k
+  where k = pg_temp.fp(1)) || '/' || (select count(*)::int from public.known_library_blocks(null, array[pg_temp.fp(1), pg_temp.fp(2)])),
+  '1/1', 'the job draws only structures it does not have');
 select public.record_library_blocks((current_setting('test.c2')::jsonb->>'job')::uuid, (current_setting('test.c2')::jsonb->>'lease')::uuid,
   jsonb_build_array(pg_temp.block(1, pg_temp.fp(1)), pg_temp.block(2, pg_temp.fp(2))));
-select is((select uses || '/' || brands from public.library_blocks where fingerprint = pg_temp.fp(1)), '3/2', 'three uses by two brands');
+select is((select uses || '/' || brands from public.library_blocks where fingerprint = pg_temp.fp(1)), '2/2', 'two emails by two brands');
 select is((select quality from public.library_blocks where fingerprint = pg_temp.fp(2)), 'passed', 'a structure that now passes is kept');
 select is((select count(*)::int from public.library_blocks where tenant_id is null), 2, 'still two shared blocks');
 
@@ -157,7 +160,7 @@ update public.platform_jobs set status = 'leased', lease_token = (current_settin
   lease_expires_at = now() + interval '1 minute' where id = (current_setting('test.c2')::jsonb->>'job')::uuid;
 select public.record_library_blocks((current_setting('test.c2')::jsonb->>'job')::uuid, (current_setting('test.c2')::jsonb->>'lease')::uuid,
   jsonb_build_array(pg_temp.block(1, pg_temp.fp(1))));
-select is((select uses from public.library_blocks where fingerprint = pg_temp.fp(1)), 3, 'a retry adds no use');
+select is((select uses from public.library_blocks where fingerprint = pg_temp.fp(1)), 2, 'a retry adds no use');
 
 -- A workspace's own upload: private blocks, its own scope.
 reset role;
@@ -172,8 +175,8 @@ select public.record_library_blocks((current_setting('test.c3')::jsonb->>'job'):
   jsonb_build_array(pg_temp.block(1, pg_temp.fp(1))));
 select is((select count(*)::int from public.library_blocks where tenant_id = '00000000-0000-4000-8000-000000000101'), 1,
   'the same structure is a private block of its own, never a use of the shared one');
-select is((select uses from public.library_blocks where fingerprint = pg_temp.fp(1) and tenant_id is null), 3, 'the shared block is unchanged');
-select is(public.known_library_blocks('00000000-0000-4000-8000-000000000102', array[pg_temp.fp(1)])::text, null,
+select is((select uses from public.library_blocks where fingerprint = pg_temp.fp(1) and tenant_id is null), 2, 'the shared block is unchanged');
+select is((select count(*)::int from public.known_library_blocks('00000000-0000-4000-8000-000000000102', array[pg_temp.fp(1)])), 0,
   'another workspace knows nothing of it');
 
 -- Who reads what.
@@ -186,13 +189,15 @@ select pg_temp.as_user('00000000-0000-4000-8000-000000000004');
 select is((select count(*)::int from public.library_blocks), 0, 'another workspace reads none of it');
 select pg_temp.as_user('00000000-0000-4000-8000-000000000002');
 select is((select count(*)::int from public.library_blocks), 3, 'a platform admin reads every block');
-select is((select sum(blocks)::int || '/' || sum(uses)::int from public.library_block_counts()), '3/6', 'and the count: 3 blocks, 6 sections');
+select is((select sum(blocks)::int || '/' || sum(uses)::int from public.library_block_counts()), '3/5', 'and the count: 3 blocks, 5 emails'' uses');
 select is((select sum(two_brands)::int from public.library_block_counts() where source = 'inbox'), 2, 'both used by two brands');
 reset role;
 
--- Deleting the upload takes its private block with it.
+-- An upload being deleted loses its private block at once, before it is purged.
+update public.email_uploads set state = 'deleting' where id = current_setting('test.u1')::uuid;
+select is((select count(*)::int from public.library_blocks where tenant_id is not null), 0, 'an upload being deleted leaves no private block');
 delete from public.email_uploads where id = current_setting('test.u1')::uuid;
-select is((select count(*)::int from public.library_blocks where tenant_id is not null), 0, 'a deleted upload leaves no private block');
+select is((select count(*)::int from public.library_blocks where tenant_id is null), 2, 'and its purge leaves the shared ones');
 
 -- An upload deleted while its blocks were checked: gone, the job cancelled.
 select set_config('test.u2', pg_temp.upload('00000000-0000-4000-8000-000000000101', 'measuring')::text, true);
@@ -208,6 +213,51 @@ select is(public.record_library_blocks((current_setting('test.c4')::jsonb->>'job
   jsonb_build_array(pg_temp.block(1, pg_temp.fp(1))))->>'state', 'gone', 'an upload deleted meanwhile is gone');
 reset role;
 select is((select status from public.platform_jobs where id = (current_setting('test.c4')::jsonb->>'job')::uuid), 'cancelled', 'its job cancelled');
+
+-- No JWT at all: the job's commands refuse; anon never reads the count.
+select set_config('request.jwt.claims', '{}', true);
+select throws_ok($$select public.claim_library_blocks()$$, '42501', null, 'no claim without the job''s role');
+select throws_ok($$select public.record_library_blocks(gen_random_uuid(), gen_random_uuid(), '[]')$$, '42501', null,
+  'no record without it');
+select throws_ok($$select public.library_block_counts()$$, '42501', null, 'no count without a role');
+select ok(not has_function_privilege('anon', 'public.library_block_counts()', 'execute'), 'anon cannot run the count');
+
+-- A paused workspace's upload waits without calling the browser in, its try given back.
+select set_config('test.u3', pg_temp.upload('00000000-0000-4000-8000-000000000102', 'measuring')::text, true);
+update public.email_uploads set state = 'ready', blueprint = pg_temp.section_bp() where id = current_setting('test.u3')::uuid;
+update public.tenants set status = 'paused' where id = '00000000-0000-4000-8000-000000000102';
+select pg_temp.as_job();
+select is(public.library_block_jobs_waiting(), 0, 'a paused workspace''s upload is not counted as waiting');
+select is(pg_temp.claim(), null, 'nor handed out');
+select is((select status || '/' || attempt || '/' || last_error_code from public.platform_jobs
+  where subject_key = 'upload:' || current_setting('test.u3')), 'retry_wait/0/workspace_inactive', 'it waits, its try given back');
+reset role;
+update public.tenants set status = 'active' where id = '00000000-0000-4000-8000-000000000102';
+
+-- Another engine version, or a failed read: handed back, the try given back.
+update public.platform_jobs set available_at = now() where subject_key = 'upload:' || current_setting('test.u3');
+select pg_temp.as_job();
+select set_config('test.c5', pg_temp.claim()::text, true);
+select public.release_library_blocks((current_setting('test.c5')::jsonb->>'job')::uuid, (current_setting('test.c5')::jsonb->>'lease')::uuid, 'read_failed');
+select is((select status || '/' || attempt || '/' || last_error_code from public.platform_jobs
+  where id = (current_setting('test.c5')::jsonb->>'job')::uuid), 'retry_wait/0/read_failed', 'a handed-back job keeps its tries');
+select throws_ok(format($$select public.release_library_blocks(%L, %L, 'whatever')$$, current_setting('test.c5')::jsonb->>'job',
+  gen_random_uuid()), '23514', null, 'only known codes');
+-- The browser keeps its lease while it draws; an expired lease is recovered as a try.
+update public.platform_jobs set available_at = now() where id = (current_setting('test.c5')::jsonb->>'job')::uuid;
+select set_config('test.c6', pg_temp.claim()::text, true);
+select ok(public.renew_library_blocks((current_setting('test.c6')::jsonb->>'job')::uuid,
+  (current_setting('test.c6')::jsonb->>'lease')::uuid) > now() + interval '4 minutes', 'a lease is renewed for 5 minutes');
+reset role;
+update public.platform_jobs set lease_expires_at = now() - interval '1 second', available_at = now()
+  where id = (current_setting('test.c6')::jsonb->>'job')::uuid;
+select pg_temp.as_job();
+select throws_ok(format($$select public.renew_library_blocks(%L, %L)$$, current_setting('test.c6')::jsonb->>'job',
+  current_setting('test.c6')::jsonb->>'lease'), 'PT409', null, 'an expired lease is never renewed');
+select pg_temp.claim();
+select is((select status || '/' || last_error_code from public.platform_jobs where id = (current_setting('test.c6')::jsonb->>'job')::uuid),
+  'leased/lease_expired', 'an expired lease is recovered and claimed again');
+reset role;
 
 select * from finish();
 rollback;

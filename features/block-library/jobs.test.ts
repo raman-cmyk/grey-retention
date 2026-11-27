@@ -99,7 +99,7 @@ describe('the block job, the app side (DES-ENGINE-004)', () => {
     expect(blocks.map((b) => b.quality)).toEqual(['passed', 'passed'])
   })
 
-  it('puts a job back when the library cannot be read', async () => {
+  it('hands a job back, its try given back, when the library cannot be read', async () => {
     const { db, calls } = fakeDb({
       claim: [
         {
@@ -113,7 +113,10 @@ describe('the block job, the app side (DES-ENGINE-004)', () => {
       knownError: true
     })
     expect((await blockJobs(db, ENGINE_VERSION)).jobs).toEqual([])
-    expect(calls.at(-1)?.fn).toBe('fail_platform_job')
+    expect(calls.at(-1)).toEqual({
+      fn: 'release_library_blocks',
+      args: { job, lease, code: 'read_failed' }
+    })
   })
 
   it('takes quality from the size, the library or the browser, never a block from the browser', () => {
@@ -180,11 +183,27 @@ describe('the block job, the app side (DES-ENGINE-004)', () => {
     ])
   })
 
-  it('tries a result of another engine version again, recording nothing', async () => {
+  it('hands a result of another engine version back, its try given back, recording nothing', async () => {
     const { db, calls } = fakeDb({ stored: twoAlike })
     expect(
       await finishBlocks(db, { job, lease, engine: 'old', checks: [] })
     ).toEqual({ ok: true, state: 'retry' })
-    expect(calls.map((c) => c.fn)).toEqual(['fail_platform_job'])
+    expect(calls).toEqual([
+      {
+        fn: 'release_library_blocks',
+        args: { job, lease, code: 'version_skew' }
+      }
+    ])
+  })
+
+  it('renews the lease while the browser draws a long email', async () => {
+    const { db, calls } = fakeDb({})
+    expect(await finishBlocks(db, { job, lease, renew: true })).toEqual({
+      ok: true,
+      state: 'renewed'
+    })
+    expect(calls).toEqual([
+      { fn: 'renew_library_blocks', args: { job, lease } }
+    ])
   })
 })
