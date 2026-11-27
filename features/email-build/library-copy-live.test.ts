@@ -796,11 +796,17 @@ describe('a Scratch copy of library blocks (DES-ENGINE-004b)', () => {
   const usable = (ids: string[], geometry: Record<string, string>) =>
     ids.map((id) => ({
       id,
+      tenant_id: null,
       geometry_message: geometry[id] ?? null,
       geometry_upload: null,
-      email_id: `e-${id}`,
-      email_external_id: `x-${id}`,
-      email_synthetic: true
+      emails: [
+        {
+          id: `e-${id}`,
+          message: geometry[id] ?? null,
+          external_id: `x-${id}`,
+          synthetic: true
+        }
+      ]
     }))
   const checked = {
     library_blocks_check: {
@@ -934,7 +940,7 @@ describe('a Scratch copy of library blocks (DES-ENGINE-004b)', () => {
       []
     )
     expect(copy.calls.at(-1)).toEqual({
-      fn: 'release_email_copy',
+      fn: 'park_email_copy',
       args: { job, lease }
     })
     const scratch = fakeDb({
@@ -943,8 +949,31 @@ describe('a Scratch copy of library blocks (DES-ENGINE-004b)', () => {
     })
     expect((await copyJobs(scratch.db, ENGINE_VERSION, on)).jobs).toEqual([])
     expect(scratch.calls.at(-1)).toEqual({
-      fn: 'release_email_copy',
+      fn: 'park_email_copy',
       args: { job, lease }
     })
+  })
+
+  it('counts as waiting only the copies whose switch is on, so a parked one never wakes the runner', async () => {
+    const rows: Rows = {
+      platform_jobs: [
+        {
+          kind: 'design.copy',
+          status: 'retry_wait',
+          subject_key: 'copy-build'
+        },
+        { kind: 'design.copy', status: 'queued', subject_key: 'scratch-build' },
+        { kind: 'design.copy', status: 'queued', subject_key: 'no-row' }
+      ],
+      email_copies: [
+        { build_id: 'copy-build', blocks: null },
+        { build_id: 'scratch-build', blocks: [b1] }
+      ]
+    }
+    expect(await copiesWaiting(fakeDb({ rows }).db, scratchOn)).toBe(2)
+    expect(await copiesWaiting(fakeDb({ rows }).db, on)).toBe(2)
+    expect(
+      await copiesWaiting(fakeDb({ rows }).db, { ...on, ...scratchOn })
+    ).toBe(3)
   })
 })

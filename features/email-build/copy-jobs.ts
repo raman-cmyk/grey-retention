@@ -121,14 +121,34 @@ async function failCopy(db: Db, job: string, lease: string, failure: string) {
 /** How many copies are due now (claims nothing); none with the switch off. */
 export async function copiesWaiting(db: Db, env: Env = process.env) {
   if (!copiesOn(env)) return 0
-  const { count, error } = await db
+  const { data, error } = await db
     .from('platform_jobs')
-    .select('id', { count: 'exact', head: true })
+    .select('subject_key')
     .eq('kind', 'design.copy')
     .in('status', ['queued', 'retry_wait'])
     .lte('available_at', new Date().toISOString())
+    .limit(500)
   if (error) throw error
-  return count ?? 0
+  const builds = (data ?? []).map((j) => j.subject_key)
+  if (!builds.length) return 0
+  // DES-ENGINE-004b: a copy whose kind's switch is off is not waiting (it
+  // never wakes the runner on its own); one with no copy row is (its job
+  // is settled when handed out).
+  const kinds = await db
+    .from('email_copies')
+    .select('build_id,blocks')
+    .in('build_id', builds)
+  if (kinds.error) throw kinds.error
+  const scratch = new Map(
+    (kinds.data ?? []).map((c) => [c.build_id, !!c.blocks?.length])
+  )
+  return builds.filter((b) =>
+    !scratch.has(b)
+      ? true
+      : scratch.get(b)
+        ? libraryScratchOn(env)
+        : libraryCopyOn(env)
+  ).length
 }
 
 /**
@@ -181,12 +201,12 @@ async function handOut(db: Db, job: Lease, env: Env): Promise<CopyJob | null> {
   // DESIGN_LIBRARY_SCRATCH, a Copy or upload copy with DESIGN_LIBRARY_COPY
   // (handed back, its try given back, until its switch is on).
   if (!(c.blocks?.length ? libraryScratchOn(env) : libraryCopyOn(env))) {
-    const back = await db.rpc('release_email_copy', {
+    const back = await db.rpc('park_email_copy', {
       job: job.id,
       lease: job.lease_token
     })
     if (back.error)
-      logger.warn('Copy job not handed back', { code: back.error.code })
+      logger.warn('Copy job not parked', { code: back.error.code })
     return null
   }
   const build = await db

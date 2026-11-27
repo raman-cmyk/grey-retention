@@ -14,11 +14,13 @@
 -- * Which blocks a workspace may use, one rule everywhere (the library
 --   screen, the Scratch planner and the copy request): a block that passed
 --   the quality gate, not hidden by the workspace, and either its own
---   private block (its upload still ready) or a shared block whose geometry
---   came from an Inspiration email the workspace may use, on Copy's terms
+--   private block (its upload still ready) or a shared block used by an
+--   Inspiration email the workspace may use, on Copy's terms
 --   (a brand it follows and has not hidden, or a sample brand's email for a
 --   sample workspace). The app applies the Observer selection on top and
 --   checks it all again when the copy is made (`library_blocks_for`).
+-- * park_email_copy: a copy job whose kind's switch is off waits an hour
+--   (`switch_off`), its try given back.
 -- * library_block_hides: "Don't use this layout" on the library screen, per
 --   workspace. The owner and admins hide and show again
 --   (`set_library_block_hidden`, tenant first); members read their own
@@ -62,14 +64,36 @@ returns boolean language sql stable security definer set search_path = '' as $$
 $$;
 revoke all on function private.email_usable(uuid, uuid) from public, anon, authenticated, service_role;
 
--- Whether a workspace may build with a block (the rule above), hidden or not.
+-- Whether a workspace may build with a block (the rule above), hidden or
+-- not: a shared block when any email that used its layout is one the
+-- workspace may use (so a layout never vanishes because the email its
+-- geometry came from was hidden or withdrawn, while another allowed email
+-- has it), its own private block while its geometry's upload is ready.
 create or replace function private.library_block_visible(t uuid, b public.library_blocks)
 returns boolean language sql stable security definer set search_path = '' as $$
   select b.quality = 'passed' and (
     (b.tenant_id = t and exists (select 1 from public.email_uploads u
                                  where u.id = b.geometry_upload and u.tenant_id = t and u.state = 'ready'))
-    or (b.tenant_id is null and b.geometry_message is not null and private.email_usable(t, b.geometry_message)))
+    or (b.tenant_id is null and exists (select 1 from public.library_block_sources s
+                                        where s.block_id = b.id and s.inbox_message_id is not null
+                                          and private.email_usable(t, s.inbox_message_id))))
 $$;
+
+-- The emails that used a shared block's layout and the workspace may use
+-- (its geometry's first), at most 20: the app's Observer check keeps the
+-- block when one of them is allowed.
+create or replace function private.library_block_emails(t uuid, b public.library_blocks)
+returns jsonb language sql stable security definer set search_path = '' as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', x.id, 'message', x.inbox_message_id, 'external_id', x.external_id,
+      'synthetic', x.synthetic) order by x.first desc, x.id), '[]'::jsonb)
+  from (select distinct on (e.id) e.id, e.inbox_message_id, e.external_id, e.synthetic,
+          e.inbox_message_id is not distinct from b.geometry_message as first
+        from public.library_block_sources s join public.competitor_emails e on e.inbox_message_id = s.inbox_message_id
+        where b.tenant_id is null and s.block_id = b.id and private.email_usable(t, s.inbox_message_id)
+        order by e.id
+        limit 20) x
+$$;
+revoke all on function private.library_block_emails(uuid, public.library_blocks) from public, anon, authenticated, service_role;
 revoke all on function private.library_block_visible(uuid, public.library_blocks) from public, anon, authenticated, service_role;
 
 -- Whether a workspace may build with a block now: visible and not hidden.
@@ -83,11 +107,11 @@ revoke all on function private.library_block_usable(uuid, uuid) from public, ano
 
 -- The blocks one workspace may use (the planner and the library screen,
 -- service role): every visible block, no cap, hidden ones only when asked
--- (the screen shows them with "Use it again"), each with its geometry's
--- inspiration email for the app's Observer check. No blueprint.
+-- (the screen shows them with "Use it again"), each shared one with the
+-- emails it may use that used it, for the app's Observer check. No blueprint.
 create or replace function public.library_blocks_for(t uuid, with_hidden boolean default false)
 returns table (id uuid, tenant_id uuid, kind text, facts jsonb, uses integer, brands integer, email_types text[],
-  width numeric, hidden boolean, geometry_message uuid, email_id uuid, email_external_id text, email_synthetic boolean)
+  width numeric, hidden boolean, emails jsonb)
 language plpgsql stable security definer set search_path = '' as $$
 begin
   perform private.blocks_job_role();
@@ -95,10 +119,8 @@ begin
     select b.id, b.tenant_id, b.kind, b.facts, b.uses, b.brands, b.email_types,
       coalesce((b.blueprint->>'width')::numeric, 0),
       exists (select 1 from public.library_block_hides h where h.tenant_id = t and h.block_id = b.id),
-      b.geometry_message, e.id, e.external_id, e.synthetic
+      private.library_block_emails(t, b)
     from public.library_blocks b
-    left join lateral (select x.id, x.external_id, x.synthetic from public.competitor_emails x
-                       where x.inbox_message_id = b.geometry_message order by x.id limit 1) e on true
     where (b.tenant_id is null or b.tenant_id = t) and private.library_block_visible(t, b)
       and (with_hidden or not exists (select 1 from public.library_block_hides h where h.tenant_id = t and h.block_id = b.id))
     order by b.brands desc, b.uses desc, b.id;
@@ -110,8 +132,7 @@ grant execute on function public.library_blocks_for(uuid, boolean) to service_ro
 -- which of the given blocks the workspace may still use, with where each
 -- one's geometry came from (for the leak check and the Observer check).
 create or replace function public.library_blocks_check(t uuid, blocks uuid[])
-returns table (id uuid, geometry_message uuid, geometry_upload uuid, email_id uuid, email_external_id text,
-  email_synthetic boolean)
+returns table (id uuid, tenant_id uuid, geometry_message uuid, geometry_upload uuid, emails jsonb)
 language plpgsql stable security definer set search_path = '' as $$
 begin
   perform private.blocks_job_role();
@@ -119,10 +140,8 @@ begin
     raise exception 'Invalid blocks' using errcode = '22023';
   end if;
   return query
-    select b.id, b.geometry_message, b.geometry_upload, e.id, e.external_id, e.synthetic
+    select b.id, b.tenant_id, b.geometry_message, b.geometry_upload, private.library_block_emails(t, b)
     from public.library_blocks b
-    left join lateral (select x.id, x.external_id, x.synthetic from public.competitor_emails x
-                       where x.inbox_message_id = b.geometry_message order by x.id limit 1) e on true
     where b.id = any(blocks) and private.library_block_usable(t, b.id);
 end $$;
 revoke all on function public.library_blocks_check(uuid, uuid[]) from public, anon, authenticated;
@@ -218,3 +237,24 @@ begin
 end $$;
 revoke all on function public.request_email_copy(uuid, uuid, uuid, jsonb, integer, uuid, uuid[]) from public, anon, authenticated;
 grant execute on function public.request_email_copy(uuid, uuid, uuid, jsonb, integer, uuid, uuid[]) to service_role;
+
+-- A copy job whose kind's switch is off (a Copy or upload copy with
+-- DESIGN_LIBRARY_COPY off, a Scratch copy with DESIGN_LIBRARY_SCRATCH off)
+-- is parked for an hour, its try given back, with an honest code; the app
+-- never counts it as waiting while its switch is off, so it never wakes the
+-- runner on its own.
+create or replace function public.park_email_copy(job uuid, lease uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+declare j public.platform_jobs;
+begin
+  perform private.copy_job_role();
+  j := private.platform_lease(job, lease);
+  if j.kind <> 'design.copy' then raise exception 'Not a copy job' using errcode = '23514'; end if;
+  update public.platform_jobs
+    set status = 'retry_wait', lease_token = null, lease_expires_at = null,
+        attempt = greatest(0, j.attempt - 1), last_error_code = 'switch_off',
+        available_at = now() + interval '1 hour', updated_at = now()
+    where id = j.id;
+end $$;
+revoke all on function public.park_email_copy(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.park_email_copy(uuid, uuid) to service_role;

@@ -1,5 +1,5 @@
 begin;
-select plan(32);
+select plan(34);
 
 -- DES-ENGINE-004b: a Scratch build asks for its copy from library blocks
 -- it may use; owners and admins hide a layout for their workspace.
@@ -30,12 +30,21 @@ begin
   return m;
 end $$;
 create function pg_temp.block(n int, t uuid default null, quality text default 'passed', message uuid default null,
-  upload uuid default null) returns uuid language sql as $$
+  upload uuid default null) returns uuid language plpgsql as $$
+declare b uuid;
+begin
   insert into public.library_blocks(tenant_id, source, version, fingerprint, kind, roles, facts, blueprint, quality, failure, uses,
       geometry_message, geometry_upload)
     values (t, case when t is null then 'inbox' else 'upload' end, 1, left(encode(extensions.digest('sb-' || n, 'sha256'), 'hex'), 32),
       'hero', '{headline}', '{}', pg_temp.bp(), quality, case when quality = 'failed' then 'not_alike' end, 1, message, upload)
-  returning id
+    returning id into b;
+  insert into public.library_block_sources(block_id, inbox_message_id, upload_id, ordinal)
+    values (b, message, upload, n);
+  return b;
+end $$;
+-- One more email that used a block's layout.
+create function pg_temp.used_by(b uuid, message uuid) returns void language sql as $$
+  insert into public.library_block_sources(block_id, inbox_message_id, ordinal) values (b, message, 39)
 $$;
 create function pg_temp.upload(t uuid) returns uuid language sql as $$
   insert into public.email_uploads (tenant_id, request_key, name, design, file_kind, byte_size, sha256, created_by, state,
@@ -75,12 +84,15 @@ select set_config('test.theirs', pg_temp.block(5, '00000000-0000-4000-8000-00000
   pg_temp.upload('00000000-0000-4000-8000-000000000102'))::text, true);
 select set_config('test.unfollowed', pg_temp.block(6, null, 'passed', current_setting('test.mb')::uuid)::text, true);
 select set_config('test.sample', pg_temp.block(7, null, 'passed', current_setting('test.ms')::uuid)::text, true);
+-- A layout from brand A's email that brand B's sample email also used.
+select set_config('test.revived', pg_temp.block(8, null, 'passed', current_setting('test.ma')::uuid)::text, true);
+select pg_temp.used_by(current_setting('test.revived')::uuid, current_setting('test.ms')::uuid);
 
 -- Which blocks a workspace may use: Copy's rule on each block's geometry.
 select pg_temp.as_job();
 select is((select array_agg(id::text order by id::text) from public.library_blocks_for('00000000-0000-4000-8000-000000000101')),
   (select array_agg(x order by x) from unnest(array[current_setting('test.a'), current_setting('test.b'), current_setting('test.mine'),
-    current_setting('test.sample')]) x),
+    current_setting('test.sample'), current_setting('test.revived')]) x),
   'a followed brand''s layouts, its own and a sample email''s; never a brand it does not follow, another''s private one or a failed one');
 select is((select count(*)::int from public.library_blocks_for('00000000-0000-4000-8000-000000000102') where tenant_id is not null), 1,
   'another workspace sees only its own private block');
@@ -89,8 +101,12 @@ insert into public.competitor_hidden(tenant_id, capture_id, hidden_by)
   select '00000000-0000-4000-8000-000000000101', id, '00000000-0000-4000-8000-000000000001'
   from public.competitor_captures where domain = 'lib-a.example';
 select pg_temp.as_job();
-select is((select count(*)::int from public.library_blocks_for('00000000-0000-4000-8000-000000000101') where tenant_id is null), 1,
-  'a hidden brand''s layouts are never offered');
+select is((select array_agg(id::text order by id::text) from public.library_blocks_for('00000000-0000-4000-8000-000000000101')
+  where tenant_id is null), (select array_agg(x order by x) from unnest(array[current_setting('test.sample'),
+  current_setting('test.revived')]) x),
+  'a hidden brand''s layouts are never offered, unless an email it may use also used the layout');
+select is((select emails->0->>'message' from public.library_blocks_for('00000000-0000-4000-8000-000000000101')
+  where id = current_setting('test.revived')::uuid), current_setting('test.ms'), 'with only the emails it may use, for the Observer check');
 select is((select count(*)::int from public.library_blocks_check('00000000-0000-4000-8000-000000000101',
   array[current_setting('test.a')::uuid])), 0, 'nor pass the check at reference time');
 reset role;
@@ -105,8 +121,10 @@ select ok(not bool_or(has_table_privilege(r, 'public.library_block_hides', p)), 
   from unnest(array['anon','authenticated','service_role']) r, unnest(array['insert','update','delete','truncate']) p;
 select ok(not has_function_privilege('authenticated', 'public.request_email_copy(uuid,uuid,uuid,jsonb,integer,uuid,uuid[])', 'execute'),
   'browser roles cannot ask for copies');
+select ok(not bool_or(has_function_privilege(r, 'public.park_email_copy(uuid,uuid)', 'execute')), 'browser roles cannot park a copy')
+  from unnest(array['anon','authenticated']) r;
 select ok(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'private' and p.proname = 'library_block_usable'
+  where n.nspname = 'private' and p.proname in ('library_block_usable', 'library_block_visible', 'library_block_emails', 'email_usable')
     and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))),
   'the usable check is private');
 select throws_ok($$insert into public.email_copies(build_id, tenant_id, inbox_message_id, upload_id, blocks, input)

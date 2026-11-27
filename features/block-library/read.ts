@@ -22,10 +22,10 @@ type Db = SupabaseClient<Database>
  * screen after `requireRequestContext`). One rule everywhere, Copy's rule
  * (`library_blocks_for`, migration 090107): blocks that passed the quality
  * gate, the workspace's own private ones (their upload still ready) and
- * shared ones whose geometry came from an Inspiration email the workspace
- * may use (a brand it follows and has not hidden, or a sample email for a
- * sample workspace), then the Observer selection on top
- * (`observerAllowed`: withdrawn and transactional emails never). Never
+ * shared ones used by an Inspiration email the workspace may use (a brand
+ * it follows and has not hidden, or a sample email for a sample
+ * workspace), then the Observer selection on top (`observerAllowed`: at
+ * least one such email allowed; withdrawn and transactional ones never). Never
  * another workspace's private block, never where a block came from. Every
  * usable block is read (no cap); a block's blueprint (structure only, its
  * words blanked) is read only by the code that draws it.
@@ -43,6 +43,13 @@ const isKind = (k: string): k is BlockKind =>
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
+type SourceEmail = {
+  id: string
+  message: string | null
+  external_id: string | null
+  synthetic: boolean | null
+}
+
 type ForRow = {
   id: string
   tenant_id: string | null
@@ -53,44 +60,44 @@ type ForRow = {
   email_types: string[] | null
   width: number | string | null
   hidden: boolean
-  geometry_message: string | null
-  email_id: string | null
-  email_external_id: string | null
-  email_synthetic: boolean | null
+  /** A shared block's emails the workspace may use (geometry's first). */
+  emails: unknown
 }
 
-/** Shared rows whose geometry email the Observer selection allows. */
+const emailsOf = (value: unknown): SourceEmail[] =>
+  Array.isArray(value)
+    ? value.filter(
+        (e): e is SourceEmail =>
+          !!e && typeof e === 'object' && typeof e.id === 'string'
+      )
+    : []
+
+/**
+ * Shared rows with at least one email the Observer selection allows (a
+ * withdrawn or transactional email never counts); private rows only the
+ * workspace's own.
+ */
 async function observed<
-  T extends {
-    tenant_id: string | null
-    geometry_message: string | null
-    email_id: string | null
-    email_external_id: string | null
-    email_synthetic: boolean | null
-  }
+  T extends { tenant_id: string | null; emails: unknown }
 >(rows: readonly T[], tenant: string): Promise<T[]> {
   const shared = rows.filter((r) => r.tenant_id === null)
   const allowed = new Set(
     (
       await observerAllowed(
         shared.flatMap((r) =>
-          r.email_id
-            ? [
-                {
-                  id: r.email_id,
-                  inbox_message_id: r.geometry_message,
-                  external_id: r.email_external_id ?? '',
-                  synthetic: r.email_synthetic === true
-                }
-              ]
-            : []
+          emailsOf(r.emails).map((e) => ({
+            id: e.id,
+            inbox_message_id: e.message,
+            external_id: e.external_id ?? '',
+            synthetic: e.synthetic === true
+          }))
         )
       )
-    ).map((e) => e.inbox_message_id)
+    ).map((e) => e.id)
   )
   return rows.filter((r) =>
     r.tenant_id === null
-      ? !!r.geometry_message && allowed.has(r.geometry_message)
+      ? emailsOf(r.emails).some((e) => allowed.has(e.id))
       : // A private block is the workspace's own, never another's.
         r.tenant_id === tenant
   )
@@ -188,20 +195,13 @@ export async function checkedBlocks(
     blocks: [...ids]
   })
   if (error) throw error
-  const rows = (
-    (data ?? []) as {
-      id: string
-      geometry_message: string | null
-      geometry_upload: string | null
-      email_id: string | null
-      email_external_id: string | null
-      email_synthetic: boolean | null
-    }[]
-  ).map((r) => ({
-    ...r,
-    // The check returns usable blocks only: a private one is this workspace's.
-    tenant_id: r.geometry_upload ? tenant : null
-  }))
+  const rows = (data ?? []) as {
+    id: string
+    tenant_id: string | null
+    geometry_message: string | null
+    geometry_upload: string | null
+    emails: unknown
+  }[]
   return (await observed(rows, tenant)).map((r) => ({
     id: r.id,
     geometryMessage: r.geometry_message,

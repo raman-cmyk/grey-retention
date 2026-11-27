@@ -35,10 +35,7 @@ const row = (over: Record<string, unknown>) => ({
   email_types: [],
   width: 600,
   hidden: false,
-  geometry_message: 'm1',
-  email_id: 'e1',
-  email_external_id: 'x1',
-  email_synthetic: false,
+  emails: [{ id: 'e1', message: 'm1', external_id: 'x1', synthetic: false }],
   ...over
 })
 
@@ -114,13 +111,27 @@ describe('the library one workspace may use (DES-ENGINE-004b)', () => {
       rpc: {
         library_blocks_for: [
           row({ id: 'kept' }),
-          row({ id: 'withdrawn', geometry_message: 'm2', email_id: 'e2' }),
-          row({ id: 'no-email', geometry_message: 'm3', email_id: null })
+          row({
+            id: 'withdrawn',
+            emails: [
+              { id: 'e2', message: 'm2', external_id: 'x2', synthetic: false }
+            ]
+          }),
+          row({ id: 'no-email', emails: [] }),
+          // Its geometry's email withdrawn, another allowed email has the layout.
+          row({
+            id: 'revived',
+            emails: [
+              { id: 'e2', message: 'm2', external_id: 'x2', synthetic: false },
+              { id: 'e3', message: 'm3', external_id: 'x3', synthetic: false }
+            ]
+          })
         ]
       }
     })
     expect((await workspaceLibrary(db, mine)).map((b) => b.id)).toEqual([
-      'kept'
+      'kept',
+      'revived'
     ])
   })
 
@@ -188,27 +199,28 @@ describe('the library one workspace may use (DES-ENGINE-004b)', () => {
         library_blocks_check: [
           {
             id: 'a',
+            tenant_id: null,
             geometry_message: 'm1',
             geometry_upload: null,
-            email_id: 'e1',
-            email_external_id: 'x',
-            email_synthetic: false
+            emails: [
+              { id: 'e1', message: 'm1', external_id: 'x', synthetic: false }
+            ]
           },
           {
             id: 'b',
+            tenant_id: null,
             geometry_message: 'm2',
             geometry_upload: null,
-            email_id: 'e2',
-            email_external_id: 'y',
-            email_synthetic: false
+            emails: [
+              { id: 'e2', message: 'm2', external_id: 'y', synthetic: false }
+            ]
           },
           {
             id: 'c',
+            tenant_id: mine,
             geometry_message: null,
             geometry_upload: 'u1',
-            email_id: null,
-            email_external_id: null,
-            email_synthetic: null
+            emails: []
           }
         ]
       }

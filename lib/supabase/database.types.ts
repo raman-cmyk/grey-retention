@@ -8739,24 +8739,20 @@ export type Database = {
       library_blocks_check: {
         Args: { blocks: string[]; t: string }
         Returns: {
-          email_external_id: string
-          email_id: string
-          email_synthetic: boolean
+          emails: Json
           geometry_message: string
           geometry_upload: string
           id: string
+          tenant_id: string
         }[]
       }
       library_blocks_for: {
         Args: { t: string; with_hidden?: boolean }
         Returns: {
           brands: number
-          email_external_id: string
-          email_id: string
-          email_synthetic: boolean
           email_types: string[]
+          emails: Json
           facts: Json
-          geometry_message: string
           hidden: boolean
           id: string
           kind: string
@@ -8778,6 +8774,10 @@ export type Database = {
         Returns: string
       }
       operator_diagnostics: { Args: never; Returns: Json }
+      park_email_copy: {
+        Args: { job: string; lease: string }
+        Returns: undefined
+      }
       pause_source_reading: {
         Args: { job: string; lease: string; reason: string; seconds?: number }
         Returns: undefined
