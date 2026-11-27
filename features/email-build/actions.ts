@@ -12,9 +12,19 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logger } from '@/lib/logger'
 import { draftPusherFor } from '@/features/klaviyo-push/live'
+import { latestPlanRun } from '@/features/strategy/load'
+import { planScreen } from '@/features/strategy/plan-screen'
+import { emailAgentsReady } from './agents'
+import {
+  couldNot,
+  createAllWords,
+  pickSlots,
+  queueAll,
+  type QueueAnswer
+} from './create-all'
 import { runEmailBuilds } from './worker'
 
-export type CreateEmailState = { error?: string }
+export type CreateEmailState = { error?: string; message?: string }
 
 /**
  * Time the click gives this email's steps (the plan page allows 120 s);
@@ -23,23 +33,31 @@ export type CreateEmailState = { error?: string }
  */
 const clickBudgetMs = 110_000
 
-/** Builds this email right after the reply; the cron picks up the rest. */
-function buildSoon(build: string) {
+/**
+ * Builds these emails right after the reply, one after another inside the
+ * click's one budget (PICK-102: "Create all" hands in several, so a click
+ * never runs more than one build at a time); the cron picks up the rest.
+ */
+function buildSoon(...builds: string[]) {
   after(async () => {
     const service = createServiceClient()
     if (!service) return
-    try {
-      // The fake draft pusher unless the owner's write switch is on
-      // (KLAVIYO_DRAFT_PUSH=live with KLAVIYO_MODE=live, PSH-001).
-      await runEmailBuilds(service, {
-        build,
-        deadline: Date.now() + clickBudgetMs,
-        pusher: draftPusherFor(service)
-      })
-    } catch (error) {
-      logger.error('Email build could not start', {
-        code: (error as { code?: string }).code ?? 'email_build_error'
-      })
+    const deadline = Date.now() + clickBudgetMs
+    for (const build of builds) {
+      if (Date.now() >= deadline) break
+      try {
+        // The fake draft pusher unless the owner's write switch is on
+        // (KLAVIYO_DRAFT_PUSH=live with KLAVIYO_MODE=live, PSH-001).
+        await runEmailBuilds(service, {
+          build,
+          deadline,
+          pusher: draftPusherFor(service)
+        })
+      } catch (error) {
+        logger.error('Email build could not start', {
+          code: (error as { code?: string }).code ?? 'email_build_error'
+        })
+      }
     }
   })
 }
@@ -290,4 +308,105 @@ export async function createEmailFromUpload(
   buildSoon(data)
   revalidatePath('/plan')
   redirect(`/plan/email/${data}` as Route)
+}
+
+const createAllForm = z.object({ run: z.uuid() })
+
+/** The command's refusals that hold for the whole plan, not one email. */
+const wholePlan = /plan has been replaced|plan is not ready/
+
+/**
+ * PICK-102 (owner pick #102): "Create all emails" on the plan. Only the
+ * workspace's owner starts it, as one "Create email" (D17). The server
+ * reads the plan itself (never the page's list) and queues, through the
+ * same `create_email_build` command, every planned email the Plan screen
+ * offers "Create email" on: no build yet and its send time not passed. A
+ * second click or tab queues nothing new (the command returns the open
+ * build of each email). The emails are built one after another by the same
+ * job, with every check, switch and limit of one click; each lands in
+ * Klaviyo as a draft, nothing is scheduled or sent. Nothing is charged
+ * here: each AI call reserves and records its own cost (`runAi`).
+ */
+export async function createAllEmails(
+  _state: CreateEmailState,
+  form: FormData
+): Promise<CreateEmailState> {
+  const context = await requireRequestContext('client')
+  if (context.tenantRole !== 'owner')
+    return { error: 'Only this workspace’s owner creates emails.' }
+  const parsed = createAllForm.safeParse({ run: form.get('run') })
+  if (!parsed.success) return { error: 'Reload the page to see your plan.' }
+  const latest = await latestPlanRun(context.tenantId, context.timezone)
+  if (!latest.ok) return { error: 'Creating emails is unavailable right now.' }
+  const run = latest.run
+  if (!run || run.id !== parsed.data.run)
+    return {
+      error: 'This plan has been replaced. Reload the page to see the latest.'
+    }
+  const view = planScreen(run, { owner: true })
+  if (view.kind !== 'plan')
+    return { error: 'This plan is not ready yet. Reload the page.' }
+  const pick = pickSlots(view.emails)
+  const db = await createClient()
+  if (!db) return { error: 'Creating emails is unavailable right now.' }
+  const result = await queueAll(pick.create, async (slot) => {
+    // Scratch, the command's default, as one click without a choice.
+    const { data, error } = await db.rpc('create_email_build', {
+      t: context.tenantId,
+      run: run.id,
+      slot
+    })
+    return queueAnswer(data, error)
+  })
+  if (result.queued.length) buildSoon(...result.queued.map((q) => q.build))
+  revalidatePath('/plan')
+  if (result.stopped && !result.queued.length) return { error: result.stopped }
+  const agents = result.queued.length > 0 && emailAgentsReady(process.env)
+  const words = createAllWords(view.emails, pick, result, {
+    agents,
+    allowanceUsed: agents && (await allowanceUsed(db, context.tenantId))
+  })
+  return result.queued.length || !result.refused.length
+    ? { message: words }
+    : { error: words }
+}
+
+/** One command answer for "Create all", in the owner's words. */
+function queueAnswer(
+  data: unknown,
+  error: { code?: string; message?: string; hint?: string } | null
+): QueueAnswer {
+  if (error?.code === '42501')
+    return { ok: false, stop: 'Only this workspace’s owner creates emails.' }
+  if (error?.code === 'PT409' && wholePlan.test(error.message ?? ''))
+    return {
+      ok: false,
+      stop: 'This plan has been replaced. Reload the page to see the latest.'
+    }
+  const refused = refusal(error)
+  if (refused) return { ok: false, reason: refused.error ?? couldNot }
+  return typeof data === 'string'
+    ? { ok: true, build: data }
+    : { ok: false, reason: couldNot }
+}
+
+/**
+ * The workspace's AI allowance is used up (its active cycle): the agents'
+ * calls are refused before anything is sent and each email falls back to
+ * code (D16). Owners read their own cycle (RLS). Unknown: not said.
+ */
+async function allowanceUsed(
+  db: NonNullable<Awaited<ReturnType<typeof createClient>>>,
+  tenantId: string
+) {
+  const { data, error } = await db
+    .from('package_cycles')
+    .select('allocation_micro,used_micro,reserved_micro')
+    .eq('tenant_id', tenantId)
+    .eq('state', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error || !data) return false
+  return data.used_micro + data.reserved_micro >= data.allocation_micro
 }

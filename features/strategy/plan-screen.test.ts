@@ -201,6 +201,7 @@ describe('the Plan screen (UI-PLAN-a)', () => {
     expect(screen.emails.map((e) => e.slot)).toEqual([1, 0, 2, 3])
     expect(screen.emails[0]).toEqual({
       slot: 1,
+      stage: 'not_started',
       date: '2026-11-17',
       day: 'Tue 17',
       title: 'Bestseller: Cedar candle',
@@ -422,5 +423,45 @@ describe('the Plan screen (UI-PLAN-a)', () => {
     expect(timeLabel('12:30')).toBe('12:30 pm')
     expect(fifteenDays('2026-12-25').at(-1)).toBe('2027-01-08')
     expect(fifteenDays('bad')).toEqual([])
+  })
+
+  it('counts how far the emails got, and what Create all would queue (PICK-102)', () => {
+    const r = run({
+      builds: {
+        0: {
+          id: 'b0',
+          state: 'drafted',
+          step: 'push',
+          sampleDraft: true,
+          reason: null
+        },
+        2: {
+          id: 'b2',
+          state: 'failed',
+          step: 'design',
+          sampleDraft: false,
+          reason: 'Its design could not be drawn.'
+        }
+      },
+      // Slot 3's send time passed before it was made.
+      sendPassed: [false, false, false, true]
+    })
+    const mine = plan(r)
+    expect(
+      Object.fromEntries(mine.emails.map((e) => [e.slot, e.stage]))
+    ).toEqual({ 0: 'ready', 1: 'not_started', 2: 'failed', 3: 'too_late' })
+    expect(mine.progress).toEqual({
+      total: 4,
+      ready: 1,
+      working: 0,
+      failed: 1,
+      notStarted: 1,
+      tooLate: 1
+    })
+    expect(mine.toCreate).toBe(1)
+    // Staff see the same progress, and have nothing to create.
+    const theirs = plan(r, staff)
+    expect(theirs.progress).toEqual(mine.progress)
+    expect(theirs.toCreate).toBe(0)
   })
 })
