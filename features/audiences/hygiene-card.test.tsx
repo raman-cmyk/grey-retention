@@ -57,8 +57,17 @@ describe('hygieneView', () => {
   })
 
   it('never makes a number up', () => {
-    const view = (stored: Parameters<typeof hygieneView>[0]['stored']) =>
-      hygieneView({ settings: on, revision: 0, data: null, stored, now })
+    const view = (stored: Parameters<typeof hygieneView>[0]['stored']) => {
+      const v = hygieneView({
+        settings: on,
+        revision: 0,
+        data: null,
+        stored,
+        now
+      })
+      if (v.state !== 'ready') throw new Error('not ready')
+      return v
+    }
     expect(view(null)).toMatchObject({
       number: null,
       words: 'Counted when GROS puts its next email in Klaviyo.'

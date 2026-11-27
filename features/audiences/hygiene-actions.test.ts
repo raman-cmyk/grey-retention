@@ -105,7 +105,7 @@ describe('saveListHygiene', () => {
       { enabled: 'yes', days: '90', revision: '0' },
       { enabled: 'on', days: '90', revision: '-1' },
       { enabled: 'on', days: '90' }
-    ])
+    ] as Record<string, string>[])
       expect((await saveListHygiene({}, form(values))).error).toBe(
         'Reload the page and try again.'
       )
