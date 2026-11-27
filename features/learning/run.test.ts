@@ -24,6 +24,9 @@ const email = (over: Partial<EmailResult> = {}): EmailResult => ({
   planned: { emailType: 'story' },
   status: 'sent',
   changed: false,
+  designChanged: false,
+  scheduledFor: null,
+  sendStrategy: null,
   sentAt: new Date(now - 5 * 86_400_000).toISOString(),
   pulls: 3,
   results: [
@@ -87,7 +90,8 @@ describe('sentEmail (LRN-002)', () => {
       clicks: 20,
       unsubscribes: 1,
       spamComplaints: null,
-      topBlock: 'hero_product'
+      topBlock: 'hero_product',
+      edited: false
     })
   })
 
@@ -135,6 +139,18 @@ describe('sentEmail (LRN-002)', () => {
       ]
     })
     expect(sentEmail(zero)?.spamComplaints).toBe(0)
+  })
+
+  it('marks an email the owner edited in Klaviyo, and learns nothing from its sections (PICK-99)', () => {
+    for (const over of [{ changed: true }, { designChanged: true }])
+      expect(sentEmail(email(over))).toMatchObject({
+        edited: true,
+        topBlock: null,
+        clicks: 20
+      })
+    // Deleted, cancelled or never sent: no send at all.
+    for (const status of ['deleted', 'cancelled', 'stale', 'draft'] as const)
+      expect(sentEmail(email({ status }))).toBeNull()
   })
 
   it('leaves out samples, unfinished or unsent emails, and an unknown count stays unknown', () => {

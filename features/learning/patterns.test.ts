@@ -57,6 +57,43 @@ describe('the Performance analyst (LRN-002, D22)', () => {
     expect(launch.evidence).toHaveLength(3)
   })
 
+  it('never learns from sends the owner edited in Klaviyo: not evidence, not counted (PICK-99)', () => {
+    const edited = [
+      ...many(3, { emailType: 'launch', clicks: 40, edited: true }),
+      ...many(3, { emailType: 'story', clicks: 22 }),
+      ...many(3, { emailType: 'education', clicks: 10 })
+    ]
+    const found = findPatterns(edited, now)
+    expect(found.some((p) => p.value === 'launch')).toBe(false)
+    // Two unedited and one edited: still too few for a rule.
+    const mixed = [
+      sent({ emailType: 'launch', clicks: 40, edited: true }),
+      ...many(2, { emailType: 'launch', clicks: 40 }),
+      ...many(3, { emailType: 'story', clicks: 22 }),
+      ...many(3, { emailType: 'education', clicks: 10 })
+    ]
+    expect(findPatterns(mixed, now).some((p) => p.value === 'launch')).toBe(
+      false
+    )
+    const unsubscribing = [
+      ...many(3, { emailType: 'offer', unsubscribes: 20, edited: true }),
+      ...many(3, { emailType: 'story', unsubscribes: 1 })
+    ]
+    expect(
+      findPatterns(unsubscribing, now).some(
+        (p) => p.dimension === 'unsubscribes'
+      )
+    ).toBe(false)
+    for (const p of findPatterns(
+      [...edited, ...many(3, { emailType: 'launch', clicks: 40 })],
+      now
+    ))
+      for (const e of p.evidence)
+        expect(edited.some((x) => x.edited && x.buildId === e.buildId)).toBe(
+          false
+        )
+  })
+
   it('needs three sends on each side, enough people, and recent, real sends', () => {
     const two = [
       ...many(minSends - 1, { emailType: 'launch', clicks: 80 }),

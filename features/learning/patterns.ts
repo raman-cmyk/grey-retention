@@ -49,6 +49,12 @@ export type SentEmail = {
   spamComplaints: number | null
   /** The section block with the most clicks, when known. */
   topBlock: string | null
+  /**
+   * PICK-99: the owner changed it in Klaviyo before it went out (its words
+   * or its design): its results are not GROS's own words alone, and every
+   * rule that counts it says so.
+   */
+  edited?: boolean
 }
 
 export type Dimension =
@@ -78,11 +84,17 @@ const words = (s: string) => s.replace(/[_-]+/g, ' ').trim()
 export const confidenceFor = (sends: number) =>
   Math.min(0.9, Math.round((0.55 + 0.05 * (sends - minSends)) * 100) / 100)
 
-/** The emails the analyst may learn from, in the window. */
+/**
+ * The emails the analyst may learn from, in the window. PICK-99: never one
+ * the owner edited in Klaviyo before it went out: its results are his
+ * rewrite's, so it is neither evidence nor counted toward the three sends
+ * of any rule (nor toward retiring one).
+ */
 export function usable(emails: readonly SentEmail[], now: number) {
   const since = now - windowDays * 86_400_000
   return emails.filter(
     (e) =>
+      !e.edited &&
       e.recipients >= minPeople &&
       e.clicks >= 0 &&
       Date.parse(e.sentAt) >= since &&

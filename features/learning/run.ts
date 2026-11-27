@@ -29,12 +29,18 @@ const recentMs = 2 * 86_400_000
 /** Sent emails read per workspace (the newest; the window keeps 120 days). */
 const emailsRead = 200
 
-/** One stored email as the analyst reads it, or null when it says too little. */
+/**
+ * One stored email as the analyst reads it, or null when it says too little
+ * (a deleted, cancelled or never-sent draft is no send). PICK-99: one the
+ * owner edited in Klaviyo is marked so, and its sections teach nothing
+ * about GROS's design (they may be his).
+ */
 export function sentEmail(email: EmailResult): SentEmail | null {
   if (email.sample || !email.final || email.status !== 'sent' || !email.sentAt)
     return null
   const totals = numbers(email.results)
   if (!totals || totals.clickRate === null) return null
+  const edited = email.changed || email.designChanged
   const known = email.results.some(
     (r) => typeof r.statistics.unsubscribe_uniques === 'number'
   )
@@ -60,7 +66,8 @@ export function sentEmail(email: EmailResult): SentEmail | null {
           0
         )
       : null,
-    topBlock: resultLine(email).topSection?.block ?? null
+    topBlock: edited ? null : (resultLine(email).topSection?.block ?? null),
+    edited
   }
 }
 
