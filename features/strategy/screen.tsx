@@ -1,5 +1,5 @@
 import type { Route } from 'next'
-import { ActionButton } from '@/components/gros/action'
+import { ActionAnswers, ActionButton } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { Card } from '@/components/gros/card'
 import { DayStrip, type Day } from '@/components/gros/day-strip'
@@ -8,7 +8,8 @@ import { AppPage, CardRow, defaultAssistant } from '@/components/gros/nav'
 import { Progress } from '@/components/gros/progress'
 import { Status } from '@/components/gros/status'
 import { EmptyState, ErrorState } from '@/components/gros/states'
-import { createEmail } from '@/features/email-build/actions'
+import { createAllEmails, createEmail } from '@/features/email-build/actions'
+import { progressWords } from '@/features/email-build/create-all'
 import { startPlan } from './actions'
 import { ModePick } from './mode-pick'
 import { OfferPick } from './offer-pick'
@@ -221,7 +222,35 @@ function Plan({
         </ul>
       </Card>
       <Card label="The emails">
-        <h2 className="type-heading">The emails</h2>
+        {view.canPlan && !view.none ? (
+          // PICK-102: the click's answer stays when its button goes.
+          <div className="flex flex-col gap-[var(--space-2)]">
+            <ActionAnswers>
+              <div className="flex flex-wrap items-start justify-between gap-[var(--space-4)]">
+                <h2 className="type-heading">The emails</h2>
+                {view.toCreate > 1 && (
+                  <ActionButton
+                    action={createAllEmails}
+                    label={`Create all ${view.toCreate} emails`}
+                    kind="lime"
+                    fields={{ run: view.runId }}
+                  />
+                )}
+              </div>
+              {view.toCreate > 1 && (
+                <p className="type-caption text-[var(--stone)]">
+                  Makes every email not started yet, designed ones from scratch.
+                  Each lands in Klaviyo as a draft.
+                </p>
+              )}
+            </ActionAnswers>
+          </div>
+        ) : (
+          <h2 className="type-heading">The emails</h2>
+        )}
+        {(view.progress.working > 0 || view.progress.failed > 0) && (
+          <BuildProgressBar progress={view.progress} />
+        )}
         {view.none ? (
           <p className="type-body mt-[var(--space-3)]">{view.none}</p>
         ) : (
@@ -258,6 +287,40 @@ function Plan({
         {working.length > 0 && <KeepFresh key={working.join(',')} />}
       </Card>
     </>
+  )
+}
+
+/**
+ * PICK-102: how far the plan's emails got, while any is being made or has
+ * failed: one bar that moves per email made (never faked) and the counts
+ * in words. Why an email failed is on its row and under the list.
+ */
+function BuildProgressBar({
+  progress: p
+}: {
+  progress: Extract<View, { kind: 'plan' }>['progress']
+}) {
+  const words = progressWords(p)
+  return (
+    <div className="mt-[var(--space-5)] flex flex-col gap-[var(--space-3)]">
+      <div
+        role="progressbar"
+        aria-label="Emails made"
+        aria-valuemin={0}
+        aria-valuemax={p.total}
+        aria-valuenow={p.ready}
+        aria-valuetext={words}
+        className="gros-bar overflow-hidden rounded-[var(--radius-pill)] bg-[var(--mist)]"
+      >
+        <div
+          className="gros-mark h-full rounded-[var(--radius-pill)] bg-[var(--forest)]"
+          style={{ width: `${p.total ? (p.ready / p.total) * 100 : 0}%` }}
+        />
+      </div>
+      <p aria-live="polite" className="type-body-strong">
+        {words}
+      </p>
+    </div>
   )
 }
 
