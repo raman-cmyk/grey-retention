@@ -68,10 +68,19 @@ export function uploadName(typed: string, title: string, fileName: string) {
     clean(title) ||
     clean(fileName.replace(/\.[a-z0-9]{1,8}$/i, '')) ||
     'My email'
-  return [...name].slice(0, uploadLimits.name).join('').trim()
+  // Cut on whole letters as a reader sees them (an emoji, an accent).
+  const graphemes = [
+    ...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(name)
+  ].map((g) => g.segment)
+  let out = ''
+  for (const g of graphemes) {
+    if ([...out].length + [...g].length > uploadLimits.name) break
+    out += g
+  }
+  return out.trim()
 }
 
-/** The pictures a row was saved with are these, one for one. */
+/** The pictures a row was saved with are these, one for one (by their bytes' hash). */
 function samePictures(saved: unknown, pictures: readonly PreparedPicture[]) {
   if (!Array.isArray(saved) || saved.length !== pictures.length) return false
   return pictures.every((p, i) => {
@@ -80,8 +89,7 @@ function samePictures(saved: unknown, pictures: readonly PreparedPicture[]) {
       !!s &&
       s.index === p.index &&
       s.type === p.type &&
-      s.width === p.width &&
-      s.height === p.height &&
+      s.sha256 === p.sha256 &&
       s.bytes === p.bytes.byteLength
     )
   })
@@ -109,6 +117,12 @@ export async function addUploadFile(input: {
   if (!kind) return refused('unsupported_type')
   if (file.bytes.length === 0) return refused('no_content')
   if (file.bytes.length > uploadLimits.fileBytes) return refused('too_large')
+  // The limits first: nothing is read or fetched for an add that would be
+  // refused (the add checks them again under the workspace lock).
+  const room = await db.rpc('email_upload_room', { t: tenantId })
+  if (room.error)
+    return refused(room.error.code === '42501' ? 'not_allowed' : 'storage')
+  if (room.data !== 'ok') return refused(String(room.data))
   const read = await readDesignFile(file.bytes, kind)
   if (!read.ok) return refused(read.code)
   const design: UploadDesign = form.design
@@ -131,6 +145,7 @@ export async function addUploadFile(input: {
       width: p.width,
       height: p.height,
       bytes: p.bytes.byteLength,
+      sha256: p.sha256,
       from: p.from
     })) as unknown as Json,
     missing: prepared.missing as unknown as Json
@@ -170,18 +185,31 @@ export async function addUploadFile(input: {
         type: p.type
       }))
     ]
+    const bucket = service.storage.from(uploadBucket)
+    const put = (f: (typeof files)[number]) =>
+      bucket.upload(f.path, f.body, { contentType: f.type, upsert: false })
     for (const f of files) {
-      const stored = await service.storage
-        .from(uploadBucket)
-        .upload(f.path, f.body, { contentType: f.type, upsert: false })
+      let stored = await put(f)
       // Never over a stored file: one already there is this upload's own
-      // (a retry with the same request key and the same bytes).
-      if (stored.error && !/exists|duplicate/i.test(stored.error.message))
-        return refused('storage')
+      // (an earlier try of it). The original and the pictures are the
+      // same bytes (the same hash); the prepared HTML of an earlier try
+      // that differs (its size) is replaced, since nothing uses an
+      // unfinished upload yet. The finish pins each one's size and tag.
+      if (stored.error && /exists|duplicate/i.test(stored.error.message)) {
+        if (!f.path.endsWith('/email.html')) continue
+        const listed = await bucket.list(base, { search: 'email.html' })
+        const now = listed.data?.find((o) => o.name === 'email.html')
+        if (Number(now?.metadata?.size) === f.body.byteLength) continue
+        const removed = await bucket.remove([f.path])
+        if (removed.error) return refused('storage')
+        stored = await put(f)
+      }
+      if (stored.error) return refused('storage')
     }
     const finished = await db.rpc('finish_email_upload', {
       t: tenantId,
-      upload: row.id
+      upload: row.id,
+      html_size: Buffer.byteLength(prepared.html, 'utf8')
     })
     if (finished.error) {
       // Deleted while its files were written: nothing may stay behind.
@@ -227,13 +255,26 @@ export async function deleteUploadFiles(input: {
             ? 'This email was already deleted.'
             : 'The email was not deleted. Try again in a minute.'
     }
-  const folder = String(gone.data).replace(/\/$/, '')
-  const listed = await input.service.storage
-    .from(uploadBucket)
-    .list(folder, { limit: 100 })
-  if (!listed.error && listed.data.length)
-    await input.service.storage
-      .from(uploadBucket)
-      .remove(listed.data.map((o) => `${folder}/${o.name}`))
+  // Its files, then its row; anything left is the sweep's (`sweepUploads`).
+  await removeUpload(input.service, input.uploadId, String(gone.data))
   return { ok: true }
+}
+
+/**
+ * A `deleting` upload's folder removed, then its row (service role). False
+ * when it could not be done now (the sweep tries again).
+ */
+export async function removeUpload(service: Db, id: string, folder: string) {
+  const dir = folder.replace(/\/$/, '')
+  const bucket = service.storage.from(uploadBucket)
+  const listed = await bucket.list(dir, { limit: 100 })
+  if (listed.error) return false
+  if (listed.data.length) {
+    const removed = await bucket.remove(
+      listed.data.map((o) => `${dir}/${o.name}`)
+    )
+    if (removed.error) return false
+  }
+  const purged = await service.rpc('purge_email_upload', { upload: id })
+  return !purged.error
 }

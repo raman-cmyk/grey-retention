@@ -119,9 +119,11 @@ export function holdPictures(
 }
 
 /** Our own marks, which nobody else's HTML may bring in. */
+// DES-ENGINE-003a: after a space or a slash (`<img/data-de-src=…>`: a
+// browser reads the slash as a separator too).
 const ownMarks =
-  /\sdata-(?:gr-section|de-[a-z-]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi
-const ownFlags = /\sdata-de-[a-z-]+(?=[\s/>])/gi
+  /[\s/]data-(?:gr-section|de-[a-z-]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi
+const ownFlags = /[\s/]data-de-[a-z-]+(?=[\s/>])/gi
 
 /**
  * Sections marked as the inbox marks them. HTML we did not mark ourselves
@@ -130,7 +132,8 @@ const ownFlags = /\sdata-de-[a-z-]+(?=[\s/>])/gi
  */
 export function markedHtml(html: string, trustMarks = false): string {
   if (trustMarks && /\bdata-gr-section\s*=/i.test(html)) return html
-  const clean = html.replace(ownMarks, '').replace(ownFlags, '')
+  // A space in its place: a slash before it was the tag's separator.
+  const clean = html.replace(ownMarks, ' ').replace(ownFlags, ' ')
   return sectionEmail(clean).markedHtml
 }
 

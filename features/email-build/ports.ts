@@ -1,6 +1,7 @@
 import type { FounderVoice } from '@/features/letter/voice/profile'
 import type { PastSubject } from './subject-traits'
 import type { BlockBrand } from '@/features/blocks/brand'
+import type { WebFont } from '@/features/studio/design-step'
 import { sampleBrand } from '@/features/blocks/samples'
 import {
   unknownFacts,
@@ -98,6 +99,14 @@ export type Store = {
    * sample store, before a history read and when the letters say too little.
    */
   founderVoice?: FounderVoice
+  /**
+   * Pick #3: the brand's own web fonts, heading fonts first, as the Site
+   * reader kept them from the workspace's current website (`brandFonts`),
+   * for the design studio and the library copy. Absent for the sample
+   * store and before a live site read kept any: the brand kit's font is
+   * used, as before.
+   */
+  fonts?: WebFont[]
 }
 
 /**

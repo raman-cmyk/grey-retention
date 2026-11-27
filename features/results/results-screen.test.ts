@@ -26,6 +26,9 @@ const line = (over: Partial<ResultLine> = {}): ResultLine => ({
   emailType: 'offer',
   status: 'sent',
   statusText: 'Sent',
+  edited: false,
+  scheduledFor: null,
+  sendStrategy: null,
   sentAt: '2026-11-17T18:00:00Z',
   final: true,
   complete: true,
@@ -215,6 +218,32 @@ describe('the Results page (UI-RES-a)', () => {
     expect(resultEmail(line({ final: false, complete: false }), usd).note).toBe(
       'Numbers can still change: they are read for three days after the send. Some numbers could not be read from Klaviyo.'
     )
+  })
+
+  it('says when Klaviyo will send a scheduled email, in store time, and an edited draft (PICK-99)', () => {
+    expect(
+      resultEmail(
+        line({
+          status: 'scheduled',
+          statusText: 'Scheduled in Klaviyo',
+          scheduledFor: '2026-11-21T02:00:00Z',
+          sendStrategy: 'static',
+          totals: null
+        }),
+        { currency: 'USD', timezone: 'America/Los_Angeles' }
+      ).statusText
+    ).toBe('Scheduled in Klaviyo for 20 Nov, 18:00 (store time)')
+    expect(
+      resultEmail(
+        line({
+          status: 'draft',
+          statusText: 'Draft in Klaviyo (edited in Klaviyo)',
+          edited: true,
+          totals: null
+        }),
+        usd
+      ).statusText
+    ).toBe('Draft in Klaviyo (edited in Klaviyo)')
   })
 
   it('names the send day in the store’s time zone', () => {

@@ -71,7 +71,7 @@ export type SectionBrief = {
     BlockBrand,
     'name' | 'font' | 'ink' | 'background' | 'accent' | 'dark' | 'radius'
   >
-  /** Web fonts it may load (the brand's real fonts, pick #3); none yet. */
+  /** Web fonts it may load: the brand's real fonts (pick #3, `studioFonts`). */
   fonts: { family: string; url: string; weight?: number; italic?: boolean }[]
   /**
    * Copy mode: the reference section's tone and height, and (DST-004b)

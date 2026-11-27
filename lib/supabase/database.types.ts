@@ -4075,6 +4075,29 @@ export type Database = {
           }
         ]
       }
+      email_upload_adds: {
+        Row: {
+          added_at: string
+          tenant_id: string
+        }
+        Insert: {
+          added_at?: string
+          tenant_id: string
+        }
+        Update: {
+          added_at?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_upload_adds_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       email_uploads: {
         Row: {
           blueprint: Json | null
@@ -4084,9 +4107,12 @@ export type Database = {
           design: string
           failure: string | null
           file_kind: string
+          html_etag: string | null
+          html_size: number | null
           id: string
           missing: Json
           name: string
+          original_etag: string | null
           pictures: Json
           request_key: string
           sha256: string
@@ -4102,9 +4128,12 @@ export type Database = {
           design: string
           failure?: string | null
           file_kind: string
+          html_etag?: string | null
+          html_size?: number | null
           id?: string
           missing?: Json
           name: string
+          original_etag?: string | null
           pictures?: Json
           request_key: string
           sha256: string
@@ -4120,9 +4149,12 @@ export type Database = {
           design?: string
           failure?: string | null
           file_kind?: string
+          html_etag?: string | null
+          html_size?: number | null
           id?: string
           missing?: Json
           name?: string
+          original_etag?: string | null
           pictures?: Json
           request_key?: string
           sha256?: string
@@ -5005,6 +5037,8 @@ export type Database = {
           complete: boolean
           context: Json
           created_at: string
+          design_changed: boolean
+          design_evidence: Json | null
           final: boolean
           lease_token: string | null
           lease_until: string | null
@@ -5017,6 +5051,8 @@ export type Database = {
           results_at: string | null
           run_id: string
           sample: boolean
+          scheduled_for: string | null
+          send_strategy: string | null
           sent_at: string | null
           slot: number
           status: string
@@ -5032,6 +5068,8 @@ export type Database = {
           complete?: boolean
           context?: Json
           created_at?: string
+          design_changed?: boolean
+          design_evidence?: Json | null
           final?: boolean
           lease_token?: string | null
           lease_until?: string | null
@@ -5044,6 +5082,8 @@ export type Database = {
           results_at?: string | null
           run_id: string
           sample: boolean
+          scheduled_for?: string | null
+          send_strategy?: string | null
           sent_at?: string | null
           slot: number
           status?: string
@@ -5059,6 +5099,8 @@ export type Database = {
           complete?: boolean
           context?: Json
           created_at?: string
+          design_changed?: boolean
+          design_evidence?: Json | null
           final?: boolean
           lease_token?: string | null
           lease_until?: string | null
@@ -5071,6 +5113,8 @@ export type Database = {
           results_at?: string | null
           run_id?: string
           sample?: boolean
+          scheduled_for?: string | null
+          send_strategy?: string | null
           sent_at?: string | null
           slot?: number
           status?: string
@@ -7692,6 +7736,7 @@ export type Database = {
         Returns: {
           attempt: number
           design: string
+          html_etag: string
           id: string
           lease_token: string
           pictures: number
@@ -7728,8 +7773,8 @@ export type Database = {
           isSetofReturn: true
         }
       }
-      claim_klaviyo_results: {
-        Args: { lim?: number }
+      claim_klaviyo_result: {
+        Args: { build: string; fresh?: number; t: string }
         Returns: {
           build_id: string
           campaign_id: string
@@ -7739,6 +7784,8 @@ export type Database = {
           complete: boolean
           context: Json
           created_at: string
+          design_changed: boolean
+          design_evidence: Json | null
           final: boolean
           lease_token: string | null
           lease_until: string | null
@@ -7751,6 +7798,48 @@ export type Database = {
           results_at: string | null
           run_id: string
           sample: boolean
+          scheduled_for: string | null
+          send_strategy: string | null
+          sent_at: string | null
+          slot: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'klaviyo_email_results'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_klaviyo_results: {
+        Args: { lim?: number }
+        Returns: {
+          build_id: string
+          campaign_id: string
+          changed: boolean
+          checked_at: string | null
+          clicks: Json
+          complete: boolean
+          context: Json
+          created_at: string
+          design_changed: boolean
+          design_evidence: Json | null
+          final: boolean
+          lease_token: string | null
+          lease_until: string | null
+          message_id: string | null
+          next_check_at: string
+          paused: string | null
+          planned: Json
+          pulls: number
+          results: Json
+          results_at: string | null
+          run_id: string
+          sample: boolean
+          scheduled_for: string | null
+          send_strategy: string | null
           sent_at: string | null
           slot: number
           status: string
@@ -7864,6 +7953,10 @@ export type Database = {
         }[]
       }
       clean_email_copy: { Args: { build: string }; Returns: undefined }
+      clear_klaviyo_design_change: {
+        Args: { build: string; reason: string }
+        Returns: undefined
+      }
       complete_asset_import: {
         Args: { import_id: string; t: string }
         Returns: undefined
@@ -8064,6 +8157,15 @@ export type Database = {
         Args: { input: Json; source: string; source_id: string; t: string }
         Returns: string
       }
+      email_upload_jobs_waiting: { Args: never; Returns: number }
+      email_upload_room: { Args: { t: string }; Returns: string }
+      email_uploads_to_clean: {
+        Args: { n?: number }
+        Returns: {
+          folder: string
+          id: string
+        }[]
+      }
       enqueue_cancel: {
         Args: { campaign: string; expected_revision: number; t: string }
         Returns: string
@@ -8225,7 +8327,7 @@ export type Database = {
         Returns: string
       }
       finish_email_upload: {
-        Args: { t: string; upload: string }
+        Args: { html_size: number; t: string; upload: string }
         Returns: string
       }
       finish_health_check: {
@@ -8394,6 +8496,7 @@ export type Database = {
         Args: { observed_at: string; t: string }
         Returns: string
       }
+      purge_email_upload: { Args: { upload: string }; Returns: boolean }
       queue_brand_book_write_as_worker: {
         Args: { cause: string; ref: string; t: string }
         Returns: string

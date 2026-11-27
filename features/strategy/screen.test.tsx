@@ -381,6 +381,36 @@ describe('the Plan screen (UI-PLAN-b)', () => {
     expect(screen.getByText(/In Klaviyo as a draft/)).toBeInTheDocument()
   })
 
+  it('says on the row what the owner did with the draft in Klaviyo (PICK-99)', () => {
+    render(
+      <PlanScreen
+        view={planScreen(
+          run({
+            builds: {
+              0: {
+                id: 'b0',
+                state: 'drafted',
+                step: 'push',
+                sampleDraft: false,
+                reason: null,
+                klaviyo: [
+                  'Scheduled in Klaviyo for 14 Jan, 9:00 (store time)',
+                  'Edited in Klaviyo'
+                ]
+              }
+            }
+          }),
+          owner
+        )}
+      />
+    )
+    expect(
+      screen.getByText(/Scheduled in Klaviyo for 14 Jan, 9:00 \(store time\)/)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Edited in Klaviyo/)).toBeInTheDocument()
+    expect(screen.queryByText(/In Klaviyo as a draft/)).toBeNull()
+  })
+
   it('keeps the owner’s ticks and choice when the pick is refused', () => {
     const pulse = {
       start: '2026-11-17',

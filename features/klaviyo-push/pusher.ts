@@ -2,6 +2,7 @@ import 'server-only'
 import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import { logger } from '@/lib/logger'
 import { fingerprints, norm, seen } from './fingerprints'
+import { shownOf, shownText, stillOurs, type Shown } from './shown'
 import {
   KlaviyoError,
   type KlaviyoClient
@@ -259,30 +260,6 @@ function designsOf(input: DraftInput): Design[] {
 const setOf = (s: string | null) => new Set(s ? s.split(',') : [])
 
 /**
- * `shown` read: per variation, the template on it (Klaviyo's copy), a
- * fingerprint of that template's HTML as Klaviyo keeps it (not always byte
- * for byte what we sent), and whether we were changing it (`w`).
- */
-type Shown = Record<
-  string,
-  { template: string; html: string; writing: boolean }
->
-const shownOf = (s: string | null): Shown =>
-  Object.fromEntries(
-    (s ? s.split(',') : []).map((entry) => {
-      const [variation, template, html, w] = entry.split(':')
-      return [variation!, { template: template!, html: html!, writing: !!w }]
-    })
-  )
-const shownText = (m: Shown) =>
-  Object.keys(m)
-    .sort()
-    .map((v) => {
-      const { template, html, writing } = m[v]!
-      return `${v}:${template}:${html}${writing ? ':w' : ''}`
-    })
-    .join(',') || null
-/**
  * A template as Klaviyo keeps it, fingerprinted; null without one. With
  * `withText` (a text email, TXT-001e) its plain text counts too, so an
  * owner's edit of the text alone is seen; a designed email's never does
@@ -302,24 +279,6 @@ async function htmlSeen(
   }
   const html = await templateHtml(client, templateId)
   return html === null ? null : htmlHash(html).slice(0, 16)
-}
-
-/**
- * Whether a template still shows what we recorded (`fingerprint`), with or
- * without its plain text (TXT-001e): a push of the same email as a letter,
- * then as a designed one (or back), is never taken for an owner's edit.
- */
-async function stillOurs(
-  client: KlaviyoClient,
-  templateId: string,
-  fingerprint: string
-) {
-  const parts = await templateParts(client, templateId)
-  return (
-    parts !== null &&
-    (htmlHash(parts.html).slice(0, 16) === fingerprint ||
-      designHash(parts.html, parts.text ?? '').slice(0, 16) === fingerprint)
-  )
 }
 
 /** The client, refusing to start a request that might not end in time. */

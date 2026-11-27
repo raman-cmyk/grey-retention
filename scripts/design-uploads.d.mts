@@ -31,4 +31,6 @@ export function run(options: {
   retry: number
   /** The app runs another engine version: nothing was handed out. */
   skew: boolean
+  /** Deleted uploads' folders and leftover folders removed. */
+  cleaned: number
 }>

@@ -9,7 +9,7 @@ import {
   ENGINE_VERSION,
   type BlueprintFailure
 } from '@/features/design-engine/stored'
-import { uploadBucket } from './intake'
+import { removeUpload, uploadBucket } from './intake'
 import type { UploadDesign } from './limits'
 import { checkUpload } from './measure'
 import { uploadCopyOn } from './switch'
@@ -61,20 +61,25 @@ async function fail(db: Db, job: string, lease: string, code: string) {
     })
 }
 
-/** How many uploads wait to be measured (claims nothing). */
+/**
+ * How many uploads wait to be measured, of active workspaces, plus the
+ * uploads to clean (claims nothing).
+ */
 export async function uploadsWaiting(
   db: Db,
   env: Readonly<Record<string, string | undefined>> = process.env
 ) {
   if (!uploadCopyOn(env)) return 0
-  const { count, error } = await db
-    .from('platform_jobs')
-    .select('id', { count: 'exact', head: true })
-    .eq('kind', 'design.upload')
-    .in('status', ['queued', 'retry_wait'])
-    .lte('available_at', new Date().toISOString())
-  if (error) throw error
-  return count ?? 0
+  const [jobs, clean] = await Promise.all([
+    db.rpc('email_upload_jobs_waiting'),
+    db
+      .from('email_uploads')
+      .select('id', { count: 'exact', head: true })
+      .eq('state', 'deleting')
+  ])
+  if (jobs.error) throw jobs.error
+  if (clean.error) throw clean.error
+  return Number(jobs.data ?? 0) + (clean.count ?? 0)
 }
 
 type Claimed = {
@@ -84,6 +89,7 @@ type Claimed = {
   tenant_id: string
   design: string
   pictures: number
+  html_etag: string | null
 }
 
 /**
@@ -101,12 +107,32 @@ export async function uploadJobs(
   if (claimed.error) throw claimed.error
   const job = (claimed.data as unknown as Claimed[] | null)?.[0]
   if (!job) return { jobs: [], skew: false }
+  // The prepared HTML as it was pinned when the upload was finished: a
+  // file that changed since is never measured.
+  const folder = `${job.tenant_id}/${job.subject_key}`
+  const listed = await db.storage
+    .from(uploadBucket)
+    .list(folder, { search: 'email.html' })
+  if (listed.error) {
+    await fail(db, job.id, job.lease_token, 'upload_link_failed')
+    return { jobs: [], skew: false }
+  }
+  const now = listed.data.find((o) => o.name === 'email.html')
+  if (!now || !job.html_etag || now.metadata?.eTag !== job.html_etag) {
+    const recorded = await db.rpc('record_email_upload', {
+      job: job.id,
+      lease: job.lease_token,
+      failure: 'file_changed'
+    })
+    if (recorded.error)
+      logger.warn('Changed upload not recorded', {
+        code: recorded.error.code ?? 'unknown'
+      })
+    return { jobs: [], skew: false }
+  }
   const link = await db.storage
     .from(uploadBucket)
-    .createSignedUrl(
-      `${job.tenant_id}/${job.subject_key}/email.html`,
-      uploadJobLimits.linkSeconds
-    )
+    .createSignedUrl(`${folder}/email.html`, uploadJobLimits.linkSeconds)
   if (link.error || !link.data) {
     await fail(db, job.id, job.lease_token, 'upload_link_failed')
     return { jobs: [], skew: false }
@@ -226,3 +252,60 @@ export async function finishUpload(
   if (recorded.error) return { ok: false, code: recorded.error.code ?? 'error' }
   return { ok: true, state: String(recorded.data) }
 }
+
+/** At most this many uploads and leftover folders one sweep removes. */
+export const sweepLimits = { uploads: 20, tenants: 10, folders: 100 }
+
+/**
+ * The sweep (each run of the measuring job): every `deleting` upload's
+ * folder removed, then its row (a `saving` upload left over 30 minutes is
+ * made `deleting` first); then, for a few workspaces' folders, any upload
+ * folder with no row (a crashed add, a removal that failed, a workspace
+ * removed). Counts only.
+ */
+export async function sweepUploads(
+  db: Db,
+  random: () => number = Math.random
+): Promise<{ removed: number; leftovers: number }> {
+  let removed = 0
+  let leftovers = 0
+  const due = await db.rpc('email_uploads_to_clean', {
+    n: sweepLimits.uploads
+  })
+  if (due.error) throw due.error
+  for (const u of (due.data ?? []) as { id: string; folder: string }[])
+    if (await removeUpload(db, u.id, u.folder)) removed++
+  const bucket = db.storage.from(uploadBucket)
+  const tenants = await bucket.list('', { limit: 1000 })
+  if (tenants.error) throw tenants.error
+  const all = tenants.data.map((t) => t.name).filter((n) => uuid.test(n))
+  const start = Math.floor(random() * Math.max(1, all.length))
+  const picked = [...all.slice(start), ...all.slice(0, start)].slice(
+    0,
+    sweepLimits.tenants
+  )
+  for (const tenant of picked) {
+    const folders = await bucket.list(tenant, {
+      limit: sweepLimits.folders
+    })
+    if (folders.error) continue
+    const ids = folders.data.map((f) => f.name).filter((n) => uuid.test(n))
+    if (!ids.length) continue
+    const rows = await db.from('email_uploads').select('id').in('id', ids)
+    if (rows.error) continue
+    const known = new Set(rows.data.map((r) => r.id))
+    for (const id of ids) {
+      if (known.has(id)) continue
+      const dir = `${tenant}/${id}`
+      const files = await bucket.list(dir, { limit: 100 })
+      if (files.error || !files.data.length) continue
+      const gone = await bucket.remove(
+        files.data.map((f) => `${dir}/${f.name}`)
+      )
+      if (!gone.error) leftovers++
+    }
+  }
+  return { removed, leftovers }
+}
+
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/

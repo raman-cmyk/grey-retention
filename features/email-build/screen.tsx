@@ -157,7 +157,12 @@ function Summary({ view }: { view: Extract<View, { kind: 'email' }> }) {
   return (
     <Card label="The email">
       <div className="flex flex-wrap items-center gap-[var(--space-3)]">
-        {view.status === 'in_klaviyo' && <Status kind="in_klaviyo" />}
+        {view.status === 'in_klaviyo' &&
+          (view.inKlaviyo ? (
+            view.inKlaviyo.pill && <Status kind={view.inKlaviyo.pill} />
+          ) : (
+            <Status kind="in_klaviyo" />
+          ))}
         {view.status === 'working' && (
           <Status kind="working" word="Adding to Klaviyo" />
         )}
@@ -181,6 +186,23 @@ function Summary({ view }: { view: Extract<View, { kind: 'email' }> }) {
           <dt className="type-label">Preview line</dt>
           <dd className="type-body">{view.preview}</dd>
         </div>
+        {view.inKlaviyo && (
+          <div>
+            <dt className="type-label">
+              {view.inKlaviyo.checked
+                ? `What Klaviyo shows (checked ${view.inKlaviyo.checked}, store time)`
+                : 'What Klaviyo shows'}
+            </dt>
+            <dd className="type-body-strong">
+              {view.inKlaviyo.parts.join(' · ')}
+            </dd>
+            {view.inKlaviyo.note && (
+              <dd className="type-caption mt-[var(--space-2)] text-[var(--stone)]">
+                {view.inKlaviyo.note}
+              </dd>
+            )}
+          </div>
+        )}
       </dl>
       {(sampleDraft || view.sample) && (
         <ul className="mt-[var(--space-5)] flex flex-col gap-[var(--space-2)]">
@@ -207,8 +229,8 @@ function Summary({ view }: { view: Extract<View, { kind: 'email' }> }) {
           {view.klaviyo.name
             ? `In Klaviyo’s campaigns, it is called “${view.klaviyo.name}”.`
             : 'Find it in Klaviyo’s campaigns.'}{' '}
-          It waits there as a draft: you schedule it in Klaviyo when you are
-          ready.
+          {(view.inKlaviyo?.waiting ?? true) &&
+            'It waits there as a draft: you schedule it in Klaviyo when you are ready.'}
         </p>
       )}
     </Card>

@@ -60,7 +60,7 @@ export async function run({
         }
   const measureFor = measure ?? loaded.measureUpload
   const version = engine ?? loaded.ENGINE_VERSION
-  const counts = { measured: 0, failed: 0, retry: 0, skew: false }
+  const counts = { measured: 0, failed: 0, retry: 0, skew: false, cleaned: 0 }
   const until = now() + runBudgetMs
   for (let n = 0; n < perRun && now() < until; n++) {
     const { jobs, skew } = await call(
@@ -109,8 +109,11 @@ export async function run({
       }
     }
   }
+  // The files of deleted uploads, and folders left with no upload.
+  const swept = await call(base, secret, {}, '?sweep=1').catch(() => null)
+  counts.cleaned = Number(swept?.removed ?? 0) + Number(swept?.leftovers ?? 0)
   log(
-    `Uploads measured: ${counts.measured}. Cannot be measured: ${counts.failed}. To try again: ${counts.retry}.${counts.skew ? ' The app runs another engine version: nothing was measured; the next run tries again.' : ''}`
+    `Uploads measured: ${counts.measured}. Cannot be measured: ${counts.failed}. To try again: ${counts.retry}. Cleaned: ${counts.cleaned}.${counts.skew ? ' The app runs another engine version: nothing was measured; the next run tries again.' : ''}`
   )
   return counts
 }

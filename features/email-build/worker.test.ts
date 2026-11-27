@@ -65,6 +65,8 @@ type Saved = {
   discount_codes?: Record<string, unknown>[]
   /** The plan's other builds' subjects (REL-AI). */
   email_builds?: Record<string, unknown>[]
+  /** PICK-99: what the results sync read of this planned email's drafts. */
+  klaviyo_email_results?: Record<string, unknown>[]
 }
 /**
  * A database that hands out the given steps, then nothing, and records
@@ -1190,6 +1192,79 @@ describe('the offers a build uses', () => {
 })
 
 describe('failed steps', () => {
+  it('never push over a draft the owner scheduled, sent, deleted, cancelled or changed in Klaviyo (PICK-99)', async () => {
+    const email = await built()
+    for (const reason of [
+      'edited_in_klaviyo',
+      'scheduled_in_klaviyo',
+      'sent_in_klaviyo',
+      'deleted_in_klaviyo',
+      'cancelled_in_klaviyo'
+    ] as const) {
+      const createDraft = vi.fn<DraftPusher['createDraft']>()
+      const klaviyoState = vi.fn(async () => reason)
+      const { db, calls } = fakeDb([
+        step({ state: 'push_queued', step: 'push', email })
+      ])
+      await runEmailBuilds(db, { pusher: { createDraft }, klaviyoState })
+      expect(klaviyoState).toHaveBeenCalledWith(tenant, 'key-1')
+      expect(failure(calls)).toMatchObject({
+        code: `klaviyo_refused_${reason}`,
+        final: true
+      })
+      expect(createDraft).not.toHaveBeenCalled()
+      expect(calls.some((c) => c.fn === 'finish_email_push')).toBe(false)
+    }
+  })
+
+  it('reads what the sync saw of the same push key, and pushes a draft still as GROS left it (PICK-99)', async () => {
+    const email = await built()
+    const edited = fakeDb(
+      [step({ state: 'push_queued', step: 'push', email })],
+      {},
+      {
+        klaviyo_email_results: [
+          { status: 'draft', changed: false, design_changed: true }
+        ]
+      }
+    )
+    const pusher = fakeDraftPusher()
+    await runEmailBuilds(edited.db, { pusher })
+    expect(failure(edited.calls)).toMatchObject({
+      code: 'klaviyo_refused_edited_in_klaviyo',
+      final: true
+    })
+    expect(pusher.calls).toHaveLength(0)
+    const untouched = fakeDb(
+      [step({ state: 'push_queued', step: 'push', email })],
+      {},
+      {
+        klaviyo_email_results: [
+          { status: 'draft', changed: false, design_changed: false }
+        ]
+      }
+    )
+    await runEmailBuilds(untouched.db, { pusher })
+    expect(pusher.calls).toHaveLength(1)
+    expect(untouched.calls.some((c) => c.fn === 'finish_email_push')).toBe(true)
+  })
+
+  it('a push whose Klaviyo state cannot be read waits for the next try (PICK-99)', async () => {
+    const email = await built()
+    const createDraft = vi.fn<DraftPusher['createDraft']>()
+    const { db, calls } = fakeDb([
+      step({ state: 'push_queued', step: 'push', email })
+    ])
+    await runEmailBuilds(db, {
+      pusher: { createDraft },
+      klaviyoState: async () => {
+        throw Object.assign(new Error('down'), { code: 'PGRST000' })
+      }
+    })
+    expect(failure(calls)).toMatchObject({ final: false })
+    expect(createDraft).not.toHaveBeenCalled()
+  })
+
   it('never push an email whose code no longer works with Settings, and try again when Settings cannot be read (REL-OFF)', async () => {
     const email = { ...(await built()), code: 'CANDLE10' }
     const createDraft = vi.fn<DraftPusher['createDraft']>()

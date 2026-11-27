@@ -1,7 +1,7 @@
 /**
  * DES-ENGINE-003: the bounds and words of "Add your own email", shared by
  * the page, the server and the tests. The database checks the same bounds
- * (`supabase/migrations/20260914090100_email_uploads.sql`).
+ * (`supabase/migrations/20260914090102_email_uploads.sql`).
  */
 
 /** The page (Inspiration → Add your own email). */
@@ -105,7 +105,9 @@ export const measureFailures: Record<string, string> = {
   stored_too_large: 'This email’s design is too large to keep.',
   not_bare:
     'This email still held a picture or a link of the other brand, so it was not kept.',
-  measure_job_failed: 'GROS could not read this email’s design after 4 tries.'
+  measure_job_failed: 'GROS could not read this email’s design after 4 tries.',
+  file_changed:
+    'This email’s saved file changed after it was added, so it was not read. Delete it and add the file again.'
 }
 
 export const measureFailure = (code: string | null) =>
