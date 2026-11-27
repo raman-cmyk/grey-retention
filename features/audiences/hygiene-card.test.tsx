@@ -126,3 +126,34 @@ describe('HygieneCard', () => {
     expect(screen.getByText(/could not be read just now/)).toBeTruthy()
   })
 })
+
+describe('the card on Audiences', () => {
+  const view = hygieneView({
+    settings: on,
+    revision: 0,
+    data: sample,
+    stored: null,
+    now
+  })
+  it('shows above the segments, and not before Klaviyo is connected', async () => {
+    const { AudiencesScreen } = await import('./screen')
+    render(
+      <AudiencesScreen
+        view={{
+          state: 'ready',
+          source: 'Sample data',
+          segments: [],
+          lists: []
+        }}
+        owner
+        hygiene={view}
+      />
+    )
+    expect(screen.getByRole('heading', { name: 'Left out' })).toBeTruthy()
+    cleanup()
+    render(
+      <AudiencesScreen view={{ state: 'not_connected' }} owner hygiene={view} />
+    )
+    expect(screen.queryByRole('heading', { name: 'Left out' })).toBeNull()
+  })
+})

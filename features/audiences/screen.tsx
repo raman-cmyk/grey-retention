@@ -36,7 +36,12 @@ export function AudiencesScreen({
 }) {
   return (
     <AppPage current="audiences" title="Audiences">
-      {hygiene ? <HygieneCard view={hygiene} owner={owner} /> : null}
+      {/* PICK-101: shown once Klaviyo is connected (or read live). */}
+      {hygiene &&
+      view.state !== 'not_connected' &&
+      view.state !== 'reconnect' ? (
+        <HygieneCard view={hygiene} owner={owner} />
+      ) : null}
       {view.state !== 'ready' ? (
         <AudiencesProblemCard
           problem={view}

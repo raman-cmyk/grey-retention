@@ -225,7 +225,8 @@ describe('the live pusher leaves the hygiene segment out of the draft', () => {
         return row ? structuredClone(row) : null
       },
       async save({ key }, step) {
-        const { images, checks: _checks, ...rest } = step
+        const { images, ...rest } = step
+        delete rest.checks
         const row = rows.get(key) ?? {
           state: 'started',
           images: {},
