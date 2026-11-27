@@ -37,6 +37,32 @@ const read = {
     revision: 3,
     codes: []
   },
+  goal: {
+    currency: 'USD',
+    today: '2026-11-16',
+    months: [
+      {
+        month: '2026-11-01',
+        label: 'November 2026',
+        goal: null,
+        revision: 0
+      },
+      {
+        month: '2026-12-01',
+        label: 'December 2026',
+        goal: null,
+        revision: 0
+      }
+    ] as [
+      {
+        month: string
+        label: string
+        goal: null
+        revision: number
+      },
+      { month: string; label: string; goal: null; revision: number }
+    ]
+  },
   klaviyo: {
     status: 'connected' as const,
     mode: 'sample' as const,
@@ -221,6 +247,7 @@ describe('Settings page model (UI-SETa)', () => {
           ...read,
           state: 'demo',
           offers: null,
+          goal: null,
           klaviyo: null,
           team: null,
           account: null,
@@ -233,8 +260,20 @@ describe('Settings page model (UI-SETa)', () => {
       })
     ).toMatchObject({
       demo: true,
-      unread: ['offers', 'klaviyo', 'team', 'account', 'changes']
+      unread: ['offers', 'goal', 'klaviyo', 'team', 'account', 'changes']
     })
+    // #33: a goal that could not be read is missing on its own.
+    expect(
+      settingsView({
+        context,
+        now,
+        read: { ...read, goal: null },
+        zone,
+        support,
+        requests: support,
+        liveKeys: false
+      })
+    ).toMatchObject({ goal: null, unread: ['goal'] })
   })
 
   it('reads each part alone: one that fails hides only itself', async () => {
@@ -266,6 +305,7 @@ describe('Settings page model (UI-SETa)', () => {
     const noRead = await settingsPageModel(context, now)
     expect(noRead.unread).toEqual([
       'offers',
+      'goal',
       'klaviyo',
       'team',
       'account',

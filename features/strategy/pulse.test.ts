@@ -106,6 +106,17 @@ describe('the facts the pulse works from (code)', () => {
     ])
   })
 
+  it('names the margin floor when it, not the owner’s max, leaves a code out (PLN-039b)', () => {
+    const floor = gatherEvidence({
+      ...store,
+      brand: { ...store.brand, limitedBy: 'margin_floor' }
+    })
+    expect(floor.leftOut[0]).toEqual({
+      code: 'BIGSALE40',
+      why: 'It is 40% off, above the 20% your margin floor allows.'
+    })
+  })
+
   it('names launches, bestsellers in stock, and stock warnings', () => {
     const facts = Object.fromEntries(g.evidence.map((e) => [e.id, e.fact]))
     expect(facts['launch:p-oak-tray']).toBe('Oak tray launches on 2026-11-20.')
