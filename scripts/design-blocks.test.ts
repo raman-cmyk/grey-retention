@@ -103,37 +103,32 @@ describe('the block library browser (DES-ENGINE-004)', () => {
     expect(posts).toEqual([{ job: 'j1', lease: 'l1', retry: 'engine_error' }])
   })
 
-  it('renews the lease while it draws a long email, and stops the email when the renewal is refused', async () => {
+  const longEmail = () => [
+    {
+      jobs: [
+        {
+          job: 'j1',
+          lease: 'l1',
+          checks: [1, 2, 3].map((ordinal) => ({
+            ordinal,
+            blueprint: blueprint()
+          }))
+        }
+      ]
+    },
+    { jobs: [] }
+  ]
+  const longRun = async (step: number, refuse: boolean) => {
     const posts: Record<string, unknown>[] = []
     let clock = 0
-    const queue = [
-      {
-        jobs: [
-          {
-            job: 'j1',
-            lease: 'l1',
-            checks: [1, 2, 3].map((ordinal) => ({
-              ordinal,
-              blueprint: blueprint()
-            }))
-          }
-        ]
-      },
-      { jobs: [] }
-    ]
-    let renewals = 0
+    const queue = longEmail()
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
         if (init?.method === 'POST') {
           const body = JSON.parse(String(init.body))
           posts.push(body)
-          if (body.renew) {
-            renewals++
-            return renewals > 1
-              ? new Response('{}', { status: 409 })
-              : new Response('{"ok":true}')
-          }
+          if (body.renew && refuse) return new Response('{}', { status: 409 })
           return new Response('{"ok":true}')
         }
         if (url.includes('peek=1')) return new Response('{"waiting":0}')
@@ -148,14 +143,27 @@ describe('the block library browser (DES-ENGINE-004)', () => {
       log: () => {},
       now: () => clock,
       check: async () => {
-        clock += 3 * 60_000
+        clock += step
         return { pass: true as const }
       }
     })
-    // Renewed before the second section; refused before the third: the
-    // email stops with nothing recorded (its job is tried again later).
-    expect(posts.filter((p) => p.renew)).toHaveLength(2)
-    expect(posts.some((p) => 'checks' in p)).toBe(false)
+    return { posts, counts }
+  }
+
+  it('renews the lease while it draws a long email, and hands the email back when the run’s time is spent', async () => {
+    const { posts, counts } = await longRun(2.5 * 60_000, false)
+    // Renewed before the second section; the run's 4 minutes are spent
+    // before the third: handed back (its try given back), nothing recorded.
+    expect(posts).toEqual([
+      { job: 'j1', lease: 'l1', renew: true },
+      { job: 'j1', lease: 'l1', release: 'run_budget' }
+    ])
+    expect(counts).toMatchObject({ sources: 0, retry: 1 })
+  })
+
+  it('stops the email, nothing recorded, when the renewal is refused', async () => {
+    const { posts, counts } = await longRun(2.1 * 60_000, true)
+    expect(posts).toEqual([{ job: 'j1', lease: 'l1', renew: true }])
     expect(counts).toMatchObject({ sources: 0, retry: 1 })
   })
 })

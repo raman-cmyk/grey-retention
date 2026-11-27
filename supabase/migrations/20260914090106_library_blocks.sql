@@ -77,7 +77,7 @@ create table public.library_blocks (
   -- structure, or the one that later drew back alike): the email a copy's
   -- leak check and the visibility rules start from.
   geometry_message uuid references public.inbox_messages(id),
-  geometry_upload uuid references public.email_uploads(id) on delete set null,
+  geometry_upload uuid references public.email_uploads(id) on delete cascade,
   failure text check (failure ~ '^[a-z_]{1,40}$'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -180,10 +180,15 @@ create trigger library_block_source_gone after delete on public.library_block_so
 
 -- An upload being deleted loses its uses at once (its private blocks are
 -- never read or used again), inside delete_email_upload, which holds its
--- workspace's lock: the block rows are only ever written tenant first.
+-- workspace's lock: the block rows are only ever written tenant first. A
+-- private block whose geometry came from it goes too, whatever other
+-- uploads used the layout (its blueprint was that upload's; the layout
+-- comes back from the next upload that has it), so nothing of the upload
+-- is left for the purge to touch.
 create or replace function private.upload_blocks_gone()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
+  delete from public.library_blocks where tenant_id = new.tenant_id and geometry_upload = new.id;
   delete from public.library_block_sources where upload_id = new.id;
   return null;
 end $$;
@@ -242,15 +247,33 @@ end $$;
 revoke all on function public.claim_library_blocks() from public, anon, authenticated;
 grant execute on function public.claim_library_blocks() to service_role;
 
--- Which structures a source's candidates already have in its scope and
--- passed: the browser job draws only the others (service role).
+-- Whether a block's geometry still comes from an email that exists: a
+-- shared block's Inspiration email still assigned to a brand (a
+-- competitor_emails row), a private block's upload still ready. A block
+-- whose geometry email is gone takes the geometry of the next email with
+-- its structure (`record_library_blocks`), so a layout never stays stuck
+-- on an email nobody may use.
+create or replace function private.library_geometry_available(b public.library_blocks)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select case when b.tenant_id is null
+    then b.geometry_message is not null
+         and exists (select 1 from public.competitor_emails e where e.inbox_message_id = b.geometry_message)
+    else b.geometry_upload is not null
+         and exists (select 1 from public.email_uploads u where u.id = b.geometry_upload and u.state = 'ready')
+  end
+$$;
+revoke all on function private.library_geometry_available(public.library_blocks) from public, anon, authenticated, service_role;
+
+-- Which structures a source's candidates already have in its scope,
+-- passed, with their geometry still available: the browser job draws only
+-- the others (service role).
 create or replace function public.known_library_blocks(t uuid, prints text[])
 returns setof text language plpgsql stable security definer set search_path = '' as $$
 begin
   perform private.blocks_job_role();
   return query select b.fingerprint from public.library_blocks b
     where b.version = 1 and b.fingerprint = any(prints) and b.quality = 'passed'
-      and b.tenant_id is not distinct from t;
+      and b.tenant_id is not distinct from t and private.library_geometry_available(b);
 end $$;
 revoke all on function public.known_library_blocks(uuid, text[]) from public, anon, authenticated;
 grant execute on function public.known_library_blocks(uuid, text[]) to service_role;
@@ -349,19 +372,20 @@ begin
         where x.version = 1 and x.fingerprint = b->>'fingerprint' and x.tenant_id is not distinct from t
         for update;
       if blk is not null then
-        -- A structure that failed once and now draws back alike is kept.
-        if (b->>'quality') = 'passed' then
-          update public.library_blocks x set quality = 'passed', failure = null, blueprint = b->'blueprint',
-              facts = b->'facts', geometry_message = case when is_inbox then src end,
-              geometry_upload = case when is_inbox then null else src end, updated_at = now()
-            where x.id = blk and x.quality = 'failed';
-        end if;
+        -- This email's section takes over the geometry when the block's
+        -- own email is gone (its quality with it), or when the block failed
+        -- and this one draws back alike.
+        update public.library_blocks x set quality = b->>'quality', failure = b->>'failure', blueprint = b->'blueprint',
+            facts = b->'facts', geometry_message = case when is_inbox then src end,
+            geometry_upload = case when is_inbox then null else src end, updated_at = now()
+          where x.id = blk
+            and (not private.library_geometry_available(x) or (x.quality = 'failed' and (b->>'quality') = 'passed'));
         joined := joined + 1;
         exit;
       end if;
     end loop;
     if blk is null then
-      raise exception 'Library block busy' using errcode = 'PT409';
+      raise exception 'Library block busy' using errcode = 'PT409', detail = 'block_busy';
     end if;
     insert into public.library_block_sources(block_id, inbox_message_id, upload_id, ordinal, brand)
       values (blk, case when is_inbox then src end, case when is_inbox then null else src end,
@@ -400,21 +424,32 @@ revoke all on function public.record_library_blocks(uuid, uuid, jsonb) from publ
 grant execute on function public.record_library_blocks(uuid, uuid, jsonb) to service_role;
 
 -- A job handed back without counting a try: the browser ran another
--- engine version than the app, or the app could not read the library just
--- now. It waits 10 minutes; nothing is recorded.
+-- engine version than the app (`version_skew`), the app could not read the
+-- library just now (`read_failed`), the run's time ran out mid-email
+-- (`run_budget`), or a block was busy (`block_busy`). It waits 10 minutes;
+-- nothing is recorded. At most `10` hand-backs per job (counted in its
+-- result): after that a hand-back counts as a failed try, so a source that
+-- can never finish reaches the failed state and its ops task.
 create or replace function public.release_library_blocks(job uuid, lease uuid, code text default 'version_skew')
 returns void language plpgsql security definer set search_path = '' as $$
-declare j public.platform_jobs;
+declare j public.platform_jobs; n integer;
 begin
   perform private.blocks_job_role();
-  if code is null or code not in ('version_skew', 'read_failed') then
+  if code is null or code not in ('version_skew', 'read_failed', 'run_budget', 'block_busy') then
     raise exception 'Invalid code' using errcode = '23514';
   end if;
   j := private.platform_lease(job, lease);
   if j.kind <> 'design.blocks' then raise exception 'Not a blocks job' using errcode = '23514'; end if;
+  n := coalesce(case when (j.result->>'releases') ~ '^[0-9]{1,4}$' then (j.result->>'releases')::integer end, 0);
+  if n >= 10 then
+    update public.platform_jobs set result = j.result || jsonb_build_object('releases', n + 1) where id = j.id;
+    perform public.fail_platform_job(job, lease, 'unavailable', code);
+    return;
+  end if;
   update public.platform_jobs
     set status = 'retry_wait', lease_token = null, lease_expires_at = null,
         attempt = greatest(0, j.attempt - 1), last_error_code = code,
+        result = j.result || jsonb_build_object('releases', n + 1),
         available_at = now() + interval '10 minutes', updated_at = now()
     where id = j.id;
 end $$;

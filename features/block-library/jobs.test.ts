@@ -18,6 +18,7 @@ function fakeDb(o: {
   known?: string[]
   stored?: unknown
   knownError?: boolean
+  recordError?: string
 }) {
   const calls: { fn: string; args: unknown }[] = []
   const rpc = vi.fn(async (fn: string, args?: unknown) => {
@@ -29,7 +30,9 @@ function fakeDb(o: {
         ? { data: null, error: { code: 'XX000' } }
         : { data: o.known ?? [], error: null }
     if (fn === 'record_library_blocks')
-      return { data: { state: 'done' }, error: null }
+      return o.recordError
+        ? { data: null, error: { code: 'PT409', details: o.recordError } }
+        : { data: { state: 'done' }, error: null }
     return { data: null, error: null }
   })
   const chain = (data: unknown) => {
@@ -194,6 +197,29 @@ describe('the block job, the app side (DES-ENGINE-004)', () => {
         args: { job, lease, code: 'version_skew' }
       }
     ])
+  })
+
+  it('hands a job back when the run’s time is spent, or a block was busy', async () => {
+    const spent = fakeDb({})
+    expect(
+      await finishBlocks(spent.db, { job, lease, release: 'run_budget' })
+    ).toEqual({ ok: true, state: 'retry' })
+    expect(spent.calls).toEqual([
+      { fn: 'release_library_blocks', args: { job, lease, code: 'run_budget' } }
+    ])
+    const busy = fakeDb({ stored: twoAlike, recordError: 'block_busy' })
+    expect(
+      await finishBlocks(busy.db, {
+        job,
+        lease,
+        engine: ENGINE_VERSION,
+        checks: [{ ordinal: 1, pass: true }]
+      })
+    ).toEqual({ ok: true, state: 'retry' })
+    expect(busy.calls.at(-1)).toEqual({
+      fn: 'release_library_blocks',
+      args: { job, lease, code: 'block_busy' }
+    })
   })
 
   it('renews the lease while the browser draws a long email', async () => {

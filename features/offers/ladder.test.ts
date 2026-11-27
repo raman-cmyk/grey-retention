@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { ladderStepsDown, offerLadder, type LadderOffer } from './ladder'
+import { offerSpacingDays } from '@/features/strategy/plan'
+import {
+  carriedSalePercent,
+  ladderStepsDown,
+  offerLadder,
+  saleGapDays,
+  type LadderOffer
+} from './ladder'
 
 const offer = (
   code: string,
@@ -217,5 +224,87 @@ describe('ladderStepsDown (PLN-040)', () => {
         { date: '2026-11-25', time: '10:00', percent: 10 }
       ])
     ).toEqual([1])
+  })
+})
+
+describe('carriedSalePercent (PLN-040b)', () => {
+  const sent = (date: string, percent?: number | null, offer = true) => ({
+    date,
+    offer,
+    ...(percent === undefined ? {} : { percent })
+  })
+
+  it('is two offer spacings', () => {
+    expect(saleGapDays).toBe(2 * offerSpacingDays)
+  })
+
+  it('picks the sale up from the latest offer email of known percent', () => {
+    expect(
+      carriedSalePercent(
+        [sent('2026-11-05', 15), sent('2026-11-12', 25)],
+        '2026-11-23'
+      )
+    ).toEqual({ percent: 25, date: '2026-11-12' })
+    // Two that day: the bigger one.
+    expect(
+      carriedSalePercent(
+        [sent('2026-11-12', 15), sent('2026-11-12', 25)],
+        '2026-11-16'
+      )
+    ).toEqual({ percent: 25, date: '2026-11-12' })
+    // Exactly 14 days before the first offer email still counts.
+    expect(carriedSalePercent([sent('2026-11-09', 25)], '2026-11-23')).toEqual({
+      percent: 25,
+      date: '2026-11-09'
+    })
+  })
+
+  it('counts one already scheduled on the plan’s first day or inside its days', () => {
+    // A plan made on 15 Nov starts on the 16th; the 25% email is that day.
+    expect(carriedSalePercent([sent('2026-11-16', 25)], '2026-11-23')).toEqual({
+      percent: 25,
+      date: '2026-11-16'
+    })
+    expect(carriedSalePercent([sent('2026-11-18', 25)], '2026-11-25')).toEqual({
+      percent: 25,
+      date: '2026-11-18'
+    })
+    // Only ones before the first offer email: a later one is not where the
+    // sale stood.
+    expect(
+      carriedSalePercent(
+        [sent('2026-11-12', 15), sent('2026-11-30', 25)],
+        '2026-11-23'
+      )
+    ).toEqual({ percent: 15, date: '2026-11-12' })
+    expect(
+      carriedSalePercent([sent('2026-11-23', 25)], '2026-11-23')
+    ).toBeNull()
+  })
+
+  it('starts a new sale after a longer gap, an unknown percent, or a send that is no offer', () => {
+    expect(
+      carriedSalePercent([sent('2026-11-09', 25)], '2026-11-24')
+    ).toBeNull()
+    for (const e of [
+      sent('2026-11-12'),
+      sent('2026-11-12', null),
+      sent('2026-11-12', 25, false),
+      sent('2026-11-12', 0),
+      sent('2026-11-12', 12.5),
+      sent('12 Nov', 25)
+    ])
+      expect(carriedSalePercent([e], '2026-11-23')).toBeNull()
+    expect(carriedSalePercent([], '2026-11-23')).toBeNull()
+    expect(carriedSalePercent([sent('2026-11-12', 25)], 'soon')).toBeNull()
+  })
+
+  it('ignores an unknown one between: what GROS knows still counts', () => {
+    expect(
+      carriedSalePercent(
+        [sent('2026-11-08', 25), sent('2026-11-13')],
+        '2026-11-20'
+      )
+    ).toEqual({ percent: 25, date: '2026-11-08' })
   })
 })
