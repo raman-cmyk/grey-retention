@@ -1,5 +1,6 @@
 import type { EmailBuildView, PlanRun } from './load'
 import type { EmailType } from './plan'
+import { timingWords } from './send-times'
 
 /**
  * UI-PLAN-a (the owner's request of 16 November: a basic working UI on
@@ -335,7 +336,10 @@ export function planScreen(
         title: lead ? `${kind}: ${lead}` : kind,
         details: [
           dayLabel(s.date),
-          timeLabel(s.time),
+          // PICK-97: "9:00 am — when this group opens most".
+          s.timing
+            ? `${timeLabel(s.time)} — ${timingWords(s.timing)}`
+            : timeLabel(s.time),
           s.audience.label,
           ...(s.offer ? [`${s.offer.percent}% off with ${s.offer.code}`] : []),
           ...(format === 'text' ? ['Text email'] : [])

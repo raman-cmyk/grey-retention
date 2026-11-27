@@ -22,7 +22,11 @@ const reads = vi.hoisted(() => ({
   findings: vi.fn(),
   keyDates: vi.fn(),
   timezone: vi.fn(),
-  corrections: vi.fn()
+  corrections: vi.fn(),
+  sendTimes: vi.fn()
+}))
+vi.mock('@/features/onboarding/history/send-times-store', () => ({
+  readSendTimes: reads.sendTimes
 }))
 vi.mock('@/features/onboarding/brand-book-corrections', async (original) => ({
   ...(await original<
@@ -284,6 +288,75 @@ describe('strategyFrom (ONB-057a)', () => {
   })
 })
 
+describe('strategyFrom: send times (PICK-97)', () => {
+  const counted = (over: Record<string, unknown> = {}) => ({
+    entries: [
+      {
+        audienceId: '*',
+        facts: {} as never,
+        bestHour: 14,
+        bestWeekday: 'Thu' as const,
+        compared: true,
+        reason: 'enough' as const
+      },
+      {
+        audienceId: 'SegA',
+        facts: {} as never,
+        bestHour: 19,
+        bestWeekday: 'Tue' as const,
+        compared: true,
+        reason: 'enough' as const
+      }
+    ],
+    timezone: 'America/New_York',
+    live: true,
+    readAt: '2026-11-15T00:00:00Z',
+    ...over
+  })
+
+  it('hands each audience its best time from the history read', () => {
+    const own = strategyFrom(parts({ sendTimes: counted() }), start, now)!
+    expect(own.plan.sendTimes).toEqual([
+      {
+        audienceId: 'SegA',
+        time: '19:00',
+        basis: 'segment',
+        compared: true,
+        weekday: 'Tue'
+      }
+    ])
+    // The plan puts its emails there.
+    const made = samplePlan({
+      ...own.plan,
+      start,
+      pulse: codePulse(gatherEvidence(readPulseInput(own.pulse).input)),
+      offers: [],
+      moves: []
+    })
+    expect(made.slots.length).toBeGreaterThan(0)
+    expect(made.slots.every((s) => s.time === '19:00')).toBe(true)
+  })
+
+  it('falls back to the usual time when none were read, or they were counted in another timezone or from the sample account', () => {
+    for (const sendTimes of [
+      null,
+      counted({ timezone: 'Europe/London' }),
+      counted({ live: false })
+    ])
+      expect(
+        strategyFrom(parts({ sendTimes }), start, now)!.plan.sendTimes
+      ).toEqual([
+        {
+          audienceId: 'SegA',
+          time: '09:00',
+          basis: 'usual',
+          compared: false,
+          weekday: null
+        }
+      ])
+  })
+})
+
 describe('historyUsable (ONB-057a)', () => {
   it('takes a ready history read in full in the last few days', () => {
     expect(historyFreshDays).toBe(3)
@@ -448,6 +521,7 @@ describe('onboardedStrategyData (ONB-057a)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     reads.corrections.mockResolvedValue([])
+    reads.sendTimes.mockResolvedValue(null)
     catalogStatus = { data: { live: true }, error: null }
     reads.timezone.mockResolvedValue('America/New_York')
     reads.catalog.mockResolvedValue(parts().catalog)
@@ -474,6 +548,12 @@ describe('onboardedStrategyData (ONB-057a)', () => {
       synthetic: false
     })
     expect(reads.history).toHaveBeenCalledWith(expect.anything(), tenantId)
+    // PICK-97: this workspace's send times, as of the plan's clock.
+    expect(reads.sendTimes).toHaveBeenCalledWith(
+      expect.anything(),
+      tenantId,
+      now
+    )
     expect(reads.findings).toHaveBeenCalledWith(expect.anything(), tenantId, {
       topic: 'offering'
     })
@@ -507,6 +587,14 @@ describe('onboardedStrategyData (ONB-057a)', () => {
       expect.objectContaining({ industry: 'Scented candles for the home' })
     )
     expect(own.pulse).toMatchObject({ brand: { industry: 'home' } })
+  })
+
+  it('plans at the usual time when the send times cannot be read (PICK-97)', async () => {
+    reads.sendTimes.mockRejectedValue(new Error('down'))
+    const own = await load()
+    expect(own.plan.sendTimes).toEqual([
+      expect.objectContaining({ audienceId: 'SegA', basis: 'usual' })
+    ])
   })
 
   it('hands back the sample store until there is enough', async () => {

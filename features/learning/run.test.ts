@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
-import type { EmailResult } from '@/features/results/read'
+import { listEmailResults, type EmailResult } from '@/features/results/read'
 import { ruleKey } from './patterns'
 import {
   learnFromRecentResults,
@@ -25,6 +25,7 @@ const email = (over: Partial<EmailResult> = {}): EmailResult => ({
   status: 'sent',
   changed: false,
   designChanged: false,
+  designEvidence: false,
   scheduledFor: null,
   sendStrategy: null,
   sentAt: new Date(now - 5 * 86_400_000).toISOString(),
@@ -70,6 +71,17 @@ const row = (e: EmailResult) => ({
   planned: e.planned,
   status: e.status,
   changed: e.changed,
+  design_changed: e.designChanged,
+  design_evidence: e.designEvidence
+    ? {
+        variation: 'VarA01',
+        recorded: '0123456789abcdef',
+        current: 'fedcba9876543210',
+        firstSeenAt: e.sentAt,
+        lastSeenAt: e.sentAt,
+        checks: 1
+      }
+    : null,
   sent_at: e.sentAt,
   pulls: e.pulls,
   results: e.results,
@@ -104,6 +116,15 @@ describe('sentEmail (LRN-002)', () => {
     // Deleted, cancelled or never sent: no send at all.
     for (const status of ['deleted', 'cancelled', 'stale', 'draft'] as const)
       expect(sentEmail(email({ status }))).toBeNull()
+  })
+
+  it('counts a design edit first seen at the send check as the owner’s, before a second check confirms it (PICK-97, #673 review)', () => {
+    expect(sentEmail(email({ designEvidence: true }))).toMatchObject({
+      edited: true,
+      topBlock: null,
+      clicks: 20
+    })
+    expect(sentEmail(email())).toMatchObject({ edited: false })
   })
 
   it('leaves out samples, unfinished or unsent emails, and an unknown count stays unknown', () => {
@@ -184,6 +205,17 @@ const clicks = (c: number) => [
     }
   }
 ]
+
+describe('listEmailResults (PICK-97, #673 review)', () => {
+  it('reads stored design evidence as an edit not yet confirmed', async () => {
+    const { db } = database({
+      emails: [email({ designEvidence: true }), email()]
+    })
+    const read = await listEmailResults(db, tenant)
+    expect(read.map((e) => e.designEvidence)).toEqual([true, false])
+    expect(read.map((e) => sentEmail(e)?.edited)).toEqual([true, false])
+  })
+})
 
 describe('learnFromResults (LRN-002)', () => {
   const emails = [

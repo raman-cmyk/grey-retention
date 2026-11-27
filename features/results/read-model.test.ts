@@ -34,6 +34,7 @@ const email = (over: Partial<EmailResult> = {}): EmailResult => ({
   status: 'sent',
   changed: false,
   designChanged: false,
+  designEvidence: false,
   scheduledFor: null,
   sendStrategy: null,
   sentAt: '2026-11-17T18:00:00Z',

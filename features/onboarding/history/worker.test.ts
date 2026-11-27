@@ -210,6 +210,67 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
+describe('readBrandHistory: best send time per audience (PICK-97)', () => {
+  type Times = {
+    timezone: string
+    times: {
+      audienceId: string
+      bestHour: number | null
+      compared: boolean
+      reason: string
+      facts: { sends: number; leftOut: number }
+    }[]
+  }
+  const timesOf = (calls: ReturnType<typeof database>['calls']) =>
+    calls.find((c) => c.name === 'record_send_times')?.args as
+      (Times & { job: string; lease: string }) | undefined
+
+  it('counts each list and segment’s sends from the campaigns’ audiences, and keeps them before the history', async () => {
+    const { calls, transport } = await read()
+    // The sent campaigns' audiences are read once, 100 ids at a time.
+    expect(
+      transport.calls.filter(
+        (c) => c.includes('/api/campaigns?') && c.includes('CmpA01')
+      )
+    ).toHaveLength(1)
+    const kept = timesOf(calls)!
+    expect(kept).toMatchObject({
+      job: 'job-1',
+      lease: 'lease-1',
+      timezone: 'America/Los_Angeles'
+    })
+    // Kept under the lease, before the history's write ends it.
+    expect(calls.map((c) => c.name).indexOf('record_send_times')).toBeLessThan(
+      calls.map((c) => c.name).indexOf('record_klaviyo_history')
+    )
+    const by = new Map(kept.times.map((t) => [t.audienceId, t]))
+    expect(kept.times[0]!.audienceId).toBe('*')
+    // The engaged got six sends, at 10:00 and 11:00 (the clocks went
+    // back on 1 November; one at each person's own 11:00); the two at
+    // 10:00 had the most clicks per person. The one at Klaviyo's times
+    // is left out.
+    expect(by.get('SegEng90')).toMatchObject({
+      bestHour: 10,
+      compared: true,
+      reason: 'enough',
+      facts: { sends: 6, leftOut: 1 }
+    })
+    // Two sends to the VIPs: not enough history.
+    expect(by.get('SegVIP')).toMatchObject({
+      bestHour: null,
+      reason: 'few_sends'
+    })
+  })
+
+  it('without the campaigns’ audiences, still keeps the store’s own row', async () => {
+    const { calls, run } = await read({
+      fail: { on: 'audiences', with: refused(400) }
+    })
+    expect(run.state).toBe('ready')
+    expect(timesOf(calls)!.times.map((t) => t.audienceId)).toEqual(['*'])
+  })
+})
+
 describe('readBrandHistory', () => {
   it('counts what the brand sent: results, emails a week, the usual hour, the scheduled days', async () => {
     const { stored, run, transport, waits } = await read()

@@ -252,6 +252,16 @@ const designed = (e: { id: string; subject: string }) => ({
   text: null
 })
 
+/** PICK-97: who each campaign went to (the rest: the engaged). */
+const audiencesOf: Record<string, string[]> = {
+  MsgS02: ['SegVIP'],
+  MsgA02: ['SegEng90', 'SegVIP'],
+  MsgA09: ['SegEng90', 'SegVIP'],
+  MsgA03: ['LstNews'],
+  MsgA08: ['LstNews'],
+  MsgA10: ['LstNews']
+}
+
 const variationIds = (e: Email) =>
   e.testSubject ? [`varA${e.id}`, `varB${e.id}`] : [`varA${e.id}`]
 
@@ -445,31 +455,41 @@ export function historyRecordings(options: HistoryScenario = {}) {
         page(variations(e))
       ])
     ),
-    /** The scheduled campaigns' audiences. */
-    campaignAudiences: page(
-      scheduledEmails.map((e) => ({
-        type: 'campaign',
-        id: campaignId(e),
-        attributes: { definition: { name: e.subject } },
-        relationships: {
-          'campaign-audiences': {
-            data: [{ type: 'campaign-audience', id: `aud-${e.id}` }]
-          }
-        }
-      })),
-      {
-        included: scheduledEmails.map((e) => ({
-          type: 'campaign-audience',
-          id: `aud-${e.id}`,
-          attributes: {
-            definition: {
-              included: e.id === 'MsgS02' ? ['SegVIP'] : ['SegEng90'],
-              excluded: ['LstSuppr']
+    /**
+     * The campaigns' audiences, for the campaign ids asked (PICK-97: the
+     * sent ones too): the scheduled go to the engaged or the VIPs; most
+     * sent emails went to the engaged, two also to the VIPs, and the
+     * founder's note, the mill story and the test send to the newsletter.
+     */
+    campaignAudiences: (ids: readonly string[]) => {
+      const asked = [...scheduledEmails, ...sentEmails].filter((e) =>
+        ids.includes(campaignId(e))
+      )
+      return page(
+        asked.map((e) => ({
+          type: 'campaign',
+          id: campaignId(e),
+          attributes: { definition: { name: e.subject } },
+          relationships: {
+            'campaign-audiences': {
+              data: [{ type: 'campaign-audience', id: `aud-${e.id}` }]
             }
           }
-        }))
-      }
-    ),
+        })),
+        {
+          included: asked.map((e) => ({
+            type: 'campaign-audience',
+            id: `aud-${e.id}`,
+            attributes: {
+              definition: {
+                included: audiencesOf[e.id] ?? ['SegEng90'],
+                excluded: ['LstSuppr']
+              }
+            }
+          }))
+        }
+      )
+    },
     campaignReport: json(200, {
       data: {
         type: 'campaign-values-report',
@@ -676,8 +696,14 @@ export function recordedHistoryTransport(
     if (events?.[1] === 'RfndOr' && !events[2]) return r.returns.refunded
     if (sentQuery.test(path)) return fail('sent') ?? r.sent
     if (path === scheduledQuery) return fail('scheduled') ?? r.scheduled
-    if (audiencesQuery.test(path))
-      return fail('audiences') ?? r.campaignAudiences
+    if (audiencesQuery.test(path)) {
+      const ids = [
+        ...(/any\(id,\[([^\]]*)\]\)/.exec(path)?.[1] ?? '').matchAll(
+          /"([A-Za-z0-9]+)"/g
+        )
+      ].map((m) => m[1]!)
+      return fail('audiences') ?? r.campaignAudiences(ids)
+    }
     if (path === flowsPath) return fail('flows') ?? r.flows
     if (path === listsPath) return fail('lists') ?? r.lists
     if (path === segmentsPath) return fail('segments') ?? r.segments

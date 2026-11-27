@@ -5126,6 +5126,63 @@ export type Database = {
           }
         ]
       }
+      klaviyo_send_times: {
+        Row: {
+          audience_id: string
+          best_hour: number | null
+          best_weekday: string | null
+          compared: boolean
+          facts: Json
+          live: boolean
+          read_at: string
+          reason: string
+          run_id: string
+          tenant_id: string
+          timezone: string
+        }
+        Insert: {
+          audience_id: string
+          best_hour?: number | null
+          best_weekday?: string | null
+          compared: boolean
+          facts: Json
+          live: boolean
+          read_at?: string
+          reason: string
+          run_id: string
+          tenant_id: string
+          timezone: string
+        }
+        Update: {
+          audience_id?: string
+          best_hour?: number | null
+          best_weekday?: string | null
+          compared?: boolean
+          facts?: Json
+          live?: boolean
+          read_at?: string
+          reason?: string
+          run_id?: string
+          tenant_id?: string
+          timezone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'klaviyo_send_times_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'klaviyo_send_times_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       l2_silence_candidates: {
         Row: {
           brand_revision: number
@@ -8566,6 +8623,10 @@ export type Database = {
           sections: Json
           tag_version: string
         }
+        Returns: number
+      }
+      record_send_times: {
+        Args: { job: string; lease: string; times: Json; timezone: string }
         Returns: number
       }
       record_site_findings: {

@@ -19,6 +19,12 @@ export type EmailResult = {
   changed: boolean
   /** PICK-99: its design was changed in Klaviyo since the push. */
   designChanged: boolean
+  /**
+   * PICK-97 (PR #673's review): a design check found a difference it has
+   * not confirmed yet (`design_evidence` stored). An email sent before the
+   * second check confirms it is still treated as edited by the owner.
+   */
+  designEvidence: boolean
   /** PICK-99: when Klaviyo will send it, while scheduled or sending. */
   scheduledFor: string | null
   /** PICK-99: how Klaviyo sends it, while scheduled or sending. */
@@ -62,6 +68,7 @@ export async function listEmailResults(
     status: r.status as EmailStatus,
     changed: r.changed,
     designChanged: r.design_changed ?? false,
+    designEvidence: r.design_evidence != null,
     scheduledFor: r.scheduled_for ?? null,
     sendStrategy: r.send_strategy ?? null,
     sentAt: r.sent_at,

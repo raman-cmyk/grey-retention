@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { letterKinds } from '@/features/letter/kind-list'
 import { emailFormats, emailTypes } from './plan'
+import { sendTimeBases } from './send-times'
 
 /**
  * The shapes a run saves (`strategy_runs.pulse` and `.plan`), checked again
@@ -87,6 +88,16 @@ export const storedPlan = z.object({
         format: z.enum(emailFormats).optional(),
         // DST-PIC #24: a text email's kind.
         letterKind: z.enum(letterKinds).optional().catch(undefined),
+        // PICK-97: why it has its send time (an odd one is none).
+        timing: z
+          .object({
+            basis: z.enum(sendTimeBases),
+            compared: z.boolean(),
+            best: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+            moved: z.boolean()
+          })
+          .optional()
+          .catch(undefined),
         why: words,
         evidence: z
           .array(z.object({ id: z.string().max(160), fact: words }))
