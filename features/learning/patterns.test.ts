@@ -23,7 +23,9 @@ const sent = (over: Partial<SentEmail>): SentEmail => ({
   recipients: 1000,
   clicks: 20,
   unsubscribes: 1,
+  spamComplaints: 0,
   topBlock: null,
+  edited: false,
   ...over
 })
 const many = (k: number, over: Partial<SentEmail>) =>
@@ -133,6 +135,194 @@ describe('the Performance analyst (LRN-002, D22)', () => {
     expect(
       findPatterns(unknown, now).filter((p) => p.dimension === 'unsubscribes')
     ).toEqual([])
+  })
+
+  it('makes a kind people mark as spam a don’t over 1 in 1,000, even when it gets clicks (#76)', () => {
+    // 4 complaints over 3,000 people: 1.3 per 1,000.
+    const emails = [
+      sent({ emailType: 'offer', clicks: 60, spamComplaints: 2 }),
+      sent({ emailType: 'offer', clicks: 60, spamComplaints: 1 }),
+      sent({ emailType: 'offer', clicks: 60, spamComplaints: 1 }),
+      ...many(4, { emailType: 'story', clicks: 20 })
+    ]
+    const found = findPatterns(emails, now)
+    expect(found.map((p) => [p.dimension, p.value, p.kind])).toEqual([
+      ['spam_complaints', 'offer', 'dont'],
+      ['email_type', 'story', 'dont']
+    ])
+    expect(found[0]).toMatchObject({
+      rule: "Send fewer offer emails: people mark them as spam, which hurts how all of this brand's emails reach the inbox.",
+      why: 'offer emails: 1.3 spam complaints per 1,000 people over 3 sends; inbox providers start to warn at 1 per 1,000.',
+      appliesTo: ['brief-writer', 'calendar-planner', 'strategy-critic'],
+      confidence: confidenceFor(3)
+    })
+    expect(found[0]!.evidence).toHaveLength(3)
+    // Its key is its own: it never takes the unsubscribe rule's place.
+    expect(ruleKey(tenant, found[0]!)).toBe(
+      `results:${tenant}:spam_complaints:offer:dont`
+    )
+  })
+
+  it('needs the rate, three complaints and three counted sends before spam teaches anything (#76)', () => {
+    const rest = many(4, { emailType: 'story' })
+    // Under 1 in 1,000: 3 complaints over 6,000 people.
+    expect(
+      findPatterns(
+        [
+          ...many(3, {
+            emailType: 'offer',
+            recipients: 2000,
+            spamComplaints: 1
+          }),
+          ...rest
+        ],
+        now
+      ).filter((p) => p.dimension === 'spam_complaints')
+    ).toEqual([])
+    // Over the rate but only 2 complaints in all (300 people).
+    expect(
+      findPatterns(
+        [
+          sent({ emailType: 'offer', recipients: 100, spamComplaints: 1 }),
+          sent({ emailType: 'offer', recipients: 100, spamComplaints: 1 }),
+          sent({ emailType: 'offer', recipients: 100, spamComplaints: 0 }),
+          ...rest
+        ],
+        now
+      ).filter((p) => p.dimension === 'spam_complaints')
+    ).toEqual([])
+    // An unknown count is left out, never read as 0: two counted sends only.
+    expect(
+      findPatterns(
+        [
+          sent({ emailType: 'offer', spamComplaints: 5 }),
+          sent({ emailType: 'offer', spamComplaints: 5 }),
+          sent({ emailType: 'offer', spamComplaints: null }),
+          ...rest
+        ],
+        now
+      ).filter((p) => p.dimension === 'spam_complaints')
+    ).toEqual([])
+  })
+
+  it('never makes a kind people mark as spam a do, and retires the rule once it fades (#76)', () => {
+    const emails = [
+      ...many(3, { emailType: 'launch', clicks: 80, spamComplaints: 2 }),
+      ...many(4, { emailType: 'story', clicks: 20 })
+    ]
+    const found = findPatterns(emails, now)
+    expect(found.some((p) => p.value === 'launch' && p.kind === 'do')).toBe(
+      false
+    )
+    expect(found.find((p) => p.dimension === 'spam_complaints')?.value).toBe(
+      'launch'
+    )
+    // Six later launch sends with no complaints: the rule is retired.
+    const key = `results:${tenant}:spam_complaints:launch:dont`
+    const quiet = [
+      ...many(retireAfter, { emailType: 'launch', spamComplaints: 0 }),
+      ...many(4, { emailType: 'story' })
+    ]
+    expect(
+      planWrites({
+        tenantId: tenant,
+        patterns: findPatterns(quiet, now),
+        stored: [
+          { id: 'r1', revision: 2, key, status: 'active', confidence: 0.55 }
+        ],
+        emails: quiet,
+        now
+      })
+    ).toContainEqual(
+      expect.objectContaining({
+        op: 'update',
+        id: 'r1',
+        status: 'retired',
+        reason: 'faded'
+      })
+    )
+  })
+
+  it('retires a stored "do" for a kind people now mark as spam or leave over (#76)', () => {
+    const spammy = [
+      ...many(3, { emailType: 'launch', clicks: 80, spamComplaints: 2 }),
+      ...many(4, { emailType: 'story', clicks: 20 })
+    ]
+    const leaving = [
+      ...many(3, { emailType: 'launch', clicks: 80, unsubscribes: 8 }),
+      ...many(4, { emailType: 'story', clicks: 20, unsubscribes: 1 })
+    ]
+    const doKey = `results:${tenant}:email_type:launch:do`
+    for (const emails of [spammy, leaving])
+      expect(
+        planWrites({
+          tenantId: tenant,
+          patterns: findPatterns(emails, now),
+          stored: [
+            {
+              id: 'do1',
+              revision: 4,
+              key: doKey,
+              status: 'active',
+              confidence: 0.7
+            }
+          ],
+          emails,
+          now
+        })
+      ).toContainEqual({
+        op: 'update',
+        id: 'do1',
+        revision: 4,
+        status: 'retired',
+        confidence: 0.7,
+        reason: 'turned'
+      })
+  })
+
+  it('brings a faded spam "don\'t" back as a new rule when complaints return, unless the owner removed it (#76)', () => {
+    const emails = [
+      ...many(3, { emailType: 'offer', spamComplaints: 2 }),
+      ...many(4, { emailType: 'story' })
+    ]
+    const key = `results:${tenant}:spam_complaints:offer:dont`
+    const write = (stored: Parameters<typeof planWrites>[0]['stored']) =>
+      planWrites({
+        tenantId: tenant,
+        patterns: findPatterns(emails, now),
+        stored,
+        emails,
+        now
+      }).filter((w) => w.op === 'add')
+    const faded = {
+      id: 'r1',
+      revision: 3,
+      key,
+      status: 'retired' as const,
+      confidence: 0.55
+    }
+    expect(write([faded])).toEqual([
+      expect.objectContaining({ op: 'add', key: `${key}#2` })
+    ])
+    // Already back and active: no third one; it is kept as before.
+    const back = {
+      ...faded,
+      id: 'r2',
+      key: `${key}#2`,
+      status: 'active' as const
+    }
+    expect(write([faded, back])).toEqual([])
+    expect(
+      planWrites({
+        tenantId: tenant,
+        patterns: findPatterns(emails, now),
+        stored: [faded, back],
+        emails,
+        now
+      }).filter((w) => w.op === 'update' && w.status === 'retired')
+    ).toEqual([])
+    // The owner removed it on Learned: it stays removed.
+    expect(write([{ ...faded, removedByOwner: true }])).toEqual([])
   })
 
   it('names the section that gets the most clicks in most emails', () => {
@@ -369,5 +559,30 @@ describe('the weekly learning report (#74)', () => {
     expect(weeklyLearning([], now).summary).toBe(
       'Nothing new learned this week'
     )
+  })
+
+  it('never counts a rule the owner removed as one GROS retired', () => {
+    expect(
+      weeklyLearning(
+        [
+          {
+            kind: 'do',
+            rule: 'Removed by the owner',
+            status: 'retired',
+            createdAt: at(30),
+            updatedAt: at(1),
+            removedByOwner: true
+          },
+          {
+            kind: 'dont',
+            rule: 'Faded',
+            status: 'retired',
+            createdAt: at(30),
+            updatedAt: at(2)
+          }
+        ],
+        now
+      )
+    ).toMatchObject({ retired: ['Faded'], summary: '1 retired' })
   })
 })

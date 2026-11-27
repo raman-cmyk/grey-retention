@@ -59,6 +59,7 @@ const view = (over: Partial<LearnedView> = {}): LearnedView => ({
     })
   ],
   unread: false,
+  week: null,
   ...over
 })
 
@@ -82,6 +83,60 @@ describe('Learned screen (UI-LRNb)', () => {
     const details = within(card('Do')).getByText('From your results · 9 Nov')
     expect(details).not.toHaveClass('truncate')
     expect(details).toHaveClass('break-words')
+  })
+
+  it('says what was learned this week in one plain sentence (#74)', () => {
+    render(
+      <LearnedScreen
+        view={view({
+          week: {
+            summary: "3 new do's, 1 retired",
+            dos: 3,
+            donts: 0,
+            retired: 1
+          }
+        })}
+      />
+    )
+    const week = card('This week')
+    expect(
+      within(week).getByRole('heading', { name: 'This week' })
+    ).toBeInTheDocument()
+    expect(week).toHaveTextContent("3 new do's, 1 retired.")
+    expect(week).toHaveTextContent(
+      'What GROS started and stopped using in the last 7 days.'
+    )
+    // Above the rules, with them still shown.
+    expect(card('Do')).toHaveTextContent('Lead with one product')
+    expect(
+      week.compareDocumentPosition(card('Do')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  it('shows the week with no rules in use, and no week card when it was not read (#74)', () => {
+    render(
+      <LearnedScreen
+        view={view({
+          do: [],
+          avoid: [],
+          week: {
+            summary: 'Nothing new learned this week',
+            dos: 0,
+            donts: 0,
+            retired: 0
+          }
+        })}
+        assistant="Ava"
+      />
+    )
+    expect(card('This week')).toHaveTextContent(
+      'Nothing new learned this week.What Ava started'
+    )
+    expect(screen.getByText('No rules in use')).toBeInTheDocument()
+    cleanup()
+    render(<LearnedScreen view={view()} />)
+    expect(screen.queryByRole('region', { name: 'This week' })).toBeNull()
   })
 
   it('is titled Learned, with no menu item current', () => {

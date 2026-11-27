@@ -34,6 +34,9 @@ export function LearnedScreen({
         />
       ) : (
         <ActionAnswers>
+          {view.week ? (
+            <WeekCard week={view.week} assistant={assistant} />
+          ) : null}
           {view.do.length + view.avoid.length === 0 ? (
             // Only results fill it; Home is where the owner plans and creates.
             <EmptyState
@@ -59,6 +62,33 @@ export function LearnedScreen({
         </ActionAnswers>
       )}
     </AppPage>
+  )
+}
+
+/**
+ * Owner pick #74: the weekly learning report, one plain sentence ("3 new
+ * do's, 1 retired") on a small card above the rules.
+ */
+function WeekCard({
+  week,
+  assistant
+}: {
+  week: NonNullable<LearnedView['week']>
+  assistant: string
+}) {
+  const title = 'This week'
+  return (
+    <Card label={title} size="small">
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <h2 className="type-heading">{title}</h2>
+        <div className="flex flex-col gap-[var(--space-1)]">
+          <p className="type-body">{week.summary}.</p>
+          <p className="type-caption text-[var(--stone)]">
+            {`What ${assistant} started and stopped using in the last 7 days.`}
+          </p>
+        </div>
+      </div>
+    </Card>
   )
 }
 

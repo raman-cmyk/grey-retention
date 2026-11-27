@@ -89,9 +89,56 @@ describe('sentEmail (LRN-002)', () => {
       recipients: 1000,
       clicks: 20,
       unsubscribes: 1,
+      spamComplaints: null,
       topBlock: 'hero_product',
       edited: false
     })
+  })
+
+  it('reads spam complaints when Klaviyo counted them (#76)', () => {
+    const counted = email({
+      results: [
+        {
+          variation: 'va',
+          name: null,
+          design: 'A',
+          statistics: {
+            recipients: 500,
+            delivered: 500,
+            clicks_unique: 10,
+            spam_complaints: 2
+          }
+        },
+        {
+          variation: 'vb',
+          name: null,
+          design: 'B',
+          statistics: {
+            recipients: 500,
+            delivered: 500,
+            clicks_unique: 10,
+            spam_complaints: 1
+          }
+        }
+      ]
+    })
+    expect(sentEmail(counted)?.spamComplaints).toBe(3)
+    const zero = email({
+      results: [
+        {
+          variation: null,
+          name: null,
+          design: null,
+          statistics: {
+            recipients: 1000,
+            delivered: 1000,
+            clicks_unique: 20,
+            spam_complaints: 0
+          }
+        }
+      ]
+    })
+    expect(sentEmail(zero)?.spamComplaints).toBe(0)
   })
 
   it('marks an email the owner edited in Klaviyo, and learns nothing from its sections (PICK-99)', () => {
