@@ -650,6 +650,8 @@ describe('onboardedStrategyData (ONB-057a)', () => {
     expect(own.plan.existing).toEqual([
       { date: '2026-11-18', audienceId: 'SegA', offer: true, percent: 25 }
     ])
+    // The ladder's own list of known offer emails.
+    expect(own.plan.saleOffers).toEqual([{ date: '2026-11-18', percent: 25 }])
   })
 
   it('plans as before when the drafted offers cannot be read (PLN-040b)', async () => {
@@ -659,6 +661,7 @@ describe('onboardedStrategyData (ONB-057a)', () => {
     expect(own.plan.existing).toEqual([
       { date: '2026-11-18', audienceId: 'SegA', offer: true }
     ])
+    expect(own.plan.saleOffers).toBeUndefined()
   })
 
   it('hands back the sample store until there is enough', async () => {

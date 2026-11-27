@@ -251,7 +251,8 @@ export function strategyFrom(
       }),
       audiences: fromHistory.audiences,
       blackouts: [],
-      existing: fromHistory.existing
+      existing: fromHistory.existing,
+      ...(fromHistory.saleOffers ? { saleOffers: fromHistory.saleOffers } : {})
     }
   }
 }

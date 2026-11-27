@@ -125,7 +125,8 @@ describe('the offer ladder in the plan (#40)', () => {
     expect(withOfferLadder(plain, sale, saleBrief)).toEqual({
       kept: plain,
       dropped: [],
-      changed: 0
+      changed: 0,
+      carried: null
     })
   })
 
@@ -240,7 +241,10 @@ describe('the offer ladder in the plan (#40)', () => {
         pulse: { ...pulse, offers: stepped },
         offers: stepped
       }
-      expect(ladderStart(higher, ['2026-11-16'])).toBe(25)
+      expect(ladderStart(higher, ['2026-11-19'])).toEqual({
+        percent: 25,
+        carried: { percent: 25, date: '2026-11-12' }
+      })
       expect(
         withOfferLadder(
           [{ ...offerOn('2026-11-19'), offerId: 'offer:SMALL10' }, ...others],
@@ -267,7 +271,7 @@ describe('the offer ladder in the plan (#40)', () => {
         pulse: { ...pulse, offers: capped },
         offers: capped
       }
-      expect(ladderStart(lower, ['2026-11-16'])).toBe(15)
+      expect(ladderStart(lower, ['2026-11-19']).percent).toBe(15)
       expect(
         codes(lower, [
           { ...offerOn('2026-11-19'), offerId: 'offer:SMALL10' },
@@ -285,33 +289,88 @@ describe('the offer ladder in the plan (#40)', () => {
         expect(
           codes(after(unknown), [offerOn('2026-11-19'), ...others])
         ).toEqual(codes(sale, [offerOn('2026-11-19'), ...others]))
-      expect(ladderStart(after(null), ['2026-11-16'])).toBe(10)
-      expect(ladderStart(after(25), [])).toBe(10)
+      expect(ladderStart(after(null), ['2026-11-19'])).toEqual({
+        percent: 10,
+        carried: null
+      })
+      expect(ladderStart(after(25), []).percent).toBe(10)
+    })
+
+    it('picks up an offer email already scheduled on the plan’s first day or inside it', () => {
+      // The plan is made on 15 Nov and starts on the 16th, the day the 25%
+      // email is scheduled; the plan's first offer email is a week later.
+      const onStart = after(25, '2026-11-16')
+      const firstWeek = others.filter((o) => o.date !== '2026-11-16')
+      expect(codes(onStart, [offerOn('2026-11-23'), ...firstWeek])).toEqual([
+        'offer:BIG25'
+      ])
+      // Two days in (18 Nov), the next offer email on the 27th.
+      const inside = after(25, '2026-11-18')
+      const rest = others.filter((o) => o.date !== '2026-11-18')
+      expect(codes(inside, [offerOn('2026-11-27'), ...rest])).toEqual([
+        'offer:BIG25'
+      ])
+      expect(
+        withOfferLadder([offerOn('2026-11-27'), ...rest], inside, saleBrief)
+          .carried
+      ).toEqual({ percent: 25, date: '2026-11-18' })
+    })
+
+    it('looks 14 days back for an offer email the checks no longer count', () => {
+      // A 25% email 10 days before the plan: only in `saleOffers`.
+      const earlier = {
+        ...sale,
+        saleOffers: [{ date: '2026-11-06', percent: 25 }]
+      }
+      expect(codes(earlier, [offerOn('2026-11-19'), ...others])).toEqual([
+        'offer:BIG25'
+      ])
+      // It never takes a day, a week's email or an offer's spacing: 4 days
+      // after one only there, an offer email still stands.
+      const close = {
+        ...sale,
+        saleOffers: [{ date: '2026-11-12', percent: 25 }]
+      }
+      expect(
+        withOfferLadder([offerOn('2026-11-16'), ...others], close, saleBrief)
+          .kept
+      ).toHaveLength(others.length + 1)
+      expect(
+        withOfferLadder(
+          [offerOn('2026-11-16'), ...others],
+          after(25),
+          saleBrief
+        ).kept
+      ).toHaveLength(others.length)
+      expect(readPlanInput(earlier).saleOffers).toEqual(earlier.saleOffers)
     })
 
     it('says so in a plain note, only when the sale goes on above 10%', () => {
-      const plan = { existing: after(25).existing, start }
+      const carried = { percent: 25, date: '2026-11-12' }
       const offerSlot = (date: string, percent: number) => ({
         date,
         offer: { percent }
       })
-      expect(saleNote(plan, [offerSlot('2026-11-16', 25)])).toBe(
+      expect(saleNote(carried, [offerSlot('2026-11-19', 25)])).toBe(
         "The sale goes on from your 25% offer email on 2026-11-12, so this plan's offers start at 25%, not back at 10%."
       )
-      expect(saleNote(plan, [offerSlot('2026-11-16', 15)])).toBe(
+      expect(saleNote(carried, [offerSlot('2026-11-19', 15)])).toBe(
         "The sale goes on from your 25% offer email on 2026-11-12. No offer that big works now, so this plan's offers start at 15%, the closest your offers allow."
       )
+      // The note follows the carry the ladder used, even when its first
+      // offer email was dropped afterwards and the next is further away.
+      expect(saleNote(carried, [offerSlot('2026-11-30', 25)])).toContain(
+        'from your 25% offer email on 2026-11-12'
+      )
       expect(
-        saleNote({ existing: after(10).existing, start }, [
-          offerSlot('2026-11-16', 10)
+        saleNote({ percent: 10, date: '2026-11-12' }, [
+          offerSlot('2026-11-19', 10)
         ])
       ).toBeNull()
-      expect(saleNote(plan, [{ date: '2026-11-16', offer: null }])).toBeNull()
       expect(
-        saleNote({ existing: after(undefined).existing, start }, [
-          offerSlot('2026-11-16', 10)
-        ])
+        saleNote(carried, [{ date: '2026-11-19', offer: null }])
       ).toBeNull()
+      expect(saleNote(null, [offerSlot('2026-11-19', 10)])).toBeNull()
     })
 
     it('carries a sale on in the sample plan, with the note', () => {

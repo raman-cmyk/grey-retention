@@ -159,12 +159,14 @@ const daysBetween = (from: string, to: string) =>
   )
 
 /**
- * PLN-040b: where a new plan picks a sale up. Of the offer emails before
- * `start` whose percent GROS knows (the code it planned and drafted for
- * that email, never read from Klaviyo's words), the latest one counts when
- * it is at most `saleGapDays` before `firstOfferDay` (the new plan's first
- * offer email): its percent (the highest that day). Null when there is
- * none: an offer email of unknown percent, or one further back, changes
+ * PLN-040b: where a new plan picks a sale up. Of the offer emails already
+ * in Klaviyo whose percent GROS knows (the code it planned and drafted for
+ * that email, never read from Klaviyo's words), the latest one before
+ * `firstOfferDay` (the new plan's first offer email) counts when it is at
+ * most `saleGapDays` before it: its percent (the highest that day). It may
+ * be before the plan's days or in them (a plan starts tomorrow, and the
+ * last offer email is often scheduled for then). Null when there is none:
+ * an offer email of unknown percent, or one further back, changes
  * nothing, and the sale starts low.
  *
  * Example: a 25% email on 12 Nov and the next offer email on 23 Nov (11
@@ -176,16 +178,14 @@ export function carriedSalePercent(
     offer: boolean
     percent?: number | null
   }[],
-  start: string,
   firstOfferDay: string
 ): { percent: number; date: string } | null {
-  if (!isoDay.test(start) || !isoDay.test(firstOfferDay)) return null
+  if (!isoDay.test(firstOfferDay)) return null
   const known = before.filter(
     (e): e is typeof e & { percent: number } =>
       e.offer &&
       isoDay.test(e.date) &&
-      e.date < start &&
-      e.date <= firstOfferDay &&
+      e.date < firstOfferDay &&
       typeof e.percent === 'number' &&
       validPercent(e.percent) &&
       daysBetween(e.date, firstOfferDay) <= saleGapDays

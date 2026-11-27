@@ -15,7 +15,10 @@ import type { Database } from '@/lib/supabase/database.types'
  * (`email.code`, `email.offer.percent`); for a build made before the email
  * kept its percent, the planned email's offer (`strategy_runs.plan`, its
  * slot), when it names the same code. A draft without a code gives nothing.
- * Both reads are this workspace's only, with the worker's client.
+ * PICK-99: a draft the owner edited in Klaviyo (`klaviyo_email_results`
+ * `changed` or `design_changed`) is never evidence: its code may be
+ * another, so its percent is not known. Every read is this workspace's
+ * only, with the worker's client.
  */
 
 type Db = SupabaseClient<Database>
@@ -25,6 +28,7 @@ export const maxLookups = 200
 
 const percent = z.coerce.number().int().min(1).max(100)
 const buildRow = z.object({
+  id: z.string().min(1),
   run_id: z.string(),
   slot: z.number().int().min(0),
   klaviyo_campaign_id: z.string().min(1),
@@ -55,7 +59,7 @@ export async function readOfferPercents(
   const builds = await db
     .from('email_builds')
     .select(
-      'run_id,slot,klaviyo_campaign_id,code:email->>code,offer:email->offer'
+      'id,run_id,slot,klaviyo_campaign_id,code:email->>code,offer:email->offer'
     )
     .eq('tenant_id', tenantId)
     .eq('state', 'drafted')
@@ -64,16 +68,38 @@ export async function readOfferPercents(
     .order('created_at', { ascending: false })
   if (builds.error) throw builds.error
   // The newest drafted build of each campaign: what Klaviyo was given.
+  // A broken newest row is skipped with its campaign, never an older one.
+  const seen = new Set<string>()
   const newest = new Map<string, z.infer<typeof buildRow>>()
   for (const raw of builds.data ?? []) {
+    const campaign = (raw as { klaviyo_campaign_id?: unknown })
+      .klaviyo_campaign_id
+    if (typeof campaign !== 'string' || seen.has(campaign)) continue
+    seen.add(campaign)
     const row = buildRow.safeParse(raw)
-    if (!row.success || newest.has(row.data.klaviyo_campaign_id)) continue
-    newest.set(row.data.klaviyo_campaign_id, row.data)
+    if (row.success) newest.set(campaign, row.data)
   }
+  const coded = [...newest.values()].filter((r) => r.code !== null)
+  if (!coded.length) return found
+  // PICK-99: an edited draft is never evidence.
+  const results = await db
+    .from('klaviyo_email_results')
+    .select('build_id,changed,design_changed')
+    .eq('tenant_id', tenantId)
+    .in(
+      'build_id',
+      coded.map((r) => r.id)
+    )
+  if (results.error) throw results.error
+  const edited = new Set(
+    (results.data ?? []).flatMap((r) =>
+      r.changed || r.design_changed ? [r.build_id] : []
+    )
+  )
   const older: z.infer<typeof buildRow>[] = []
-  for (const [campaign, row] of newest) {
-    if (row.code === null) continue
-    if (row.offer) found.set(campaign, row.offer.percent)
+  for (const row of coded) {
+    if (edited.has(row.id)) continue
+    if (row.offer) found.set(row.klaviyo_campaign_id, row.offer.percent)
     else older.push(row)
   }
   if (!older.length) return found

@@ -45,7 +45,9 @@ function fakeDb(answers: Record<string, Answer>) {
   return { db: db as never, calls }
 }
 
+let builds = 0
 const build = (over: Record<string, unknown> = {}) => ({
+  id: `build-${++builds}`,
   run_id: 'run-1',
   slot: 0,
   klaviyo_campaign_id: 'C1',
@@ -64,8 +66,10 @@ describe('readOfferPercents (PLN-040b)', () => {
       live: true
     })
     expect([...found]).toEqual([['C1', 25]])
-    expect(calls).toHaveLength(1)
-    expect(calls[0]!.table).toBe('email_builds')
+    expect(calls.map((c) => c.table)).toEqual([
+      'email_builds',
+      'klaviyo_email_results'
+    ])
     expect(calls[0]!.filters).toEqual([
       ['eq', 'tenant_id', tenantId],
       ['eq', 'state', 'drafted'],
@@ -74,8 +78,12 @@ describe('readOfferPercents (PLN-040b)', () => {
       ['in', 'klaviyo_campaign_id', ['C1', 'C2']],
       ['order', 'created_at', { ascending: false }]
     ])
+    expect(calls[1]!.filters).toEqual([
+      ['eq', 'tenant_id', tenantId],
+      ['in', 'build_id', [expect.stringMatching(/^build-/)]]
+    ])
     await readOfferPercents(db, tenantId, { campaignIds: ['C1'], live: false })
-    expect(calls[1]!.filters).toContainEqual(['eq', 'sample_draft', true])
+    expect(calls[2]!.filters).toContainEqual(['eq', 'sample_draft', true])
   })
 
   it('asks nothing for no campaigns, and at most the plan’s 200', async () => {
@@ -116,6 +124,66 @@ describe('readOfferPercents (PLN-040b)', () => {
     expect([...found]).toEqual([['C1', 15]])
   })
 
+  it('never falls back to an older build when the newest is broken', async () => {
+    const { db } = fakeDb({
+      email_builds: {
+        data: [{ klaviyo_campaign_id: 'C1', slot: 'x' }, build()],
+        error: null
+      }
+    })
+    expect(
+      (
+        await readOfferPercents(db, tenantId, {
+          campaignIds: ['C1'],
+          live: true
+        })
+      ).size
+    ).toBe(0)
+  })
+
+  it('gives no percent for a draft the owner edited in Klaviyo (PICK-99)', async () => {
+    const edited = build({ klaviyo_campaign_id: 'C1' })
+    const redesigned = build({ klaviyo_campaign_id: 'C2' })
+    const older = build({ klaviyo_campaign_id: 'C3', offer: undefined })
+    const kept = build({ klaviyo_campaign_id: 'C4' })
+    const { db, calls } = fakeDb({
+      email_builds: { data: [edited, redesigned, older, kept], error: null },
+      klaviyo_email_results: {
+        data: [
+          { build_id: edited.id, changed: true, design_changed: false },
+          { build_id: redesigned.id, changed: false, design_changed: true },
+          { build_id: older.id, changed: true, design_changed: false },
+          { build_id: kept.id, changed: false, design_changed: false }
+        ],
+        error: null
+      },
+      strategy_runs: {
+        data: [
+          { id: 'run-1', slots: [{ offer: { code: 'BIG25', percent: 25 } }] }
+        ],
+        error: null
+      }
+    })
+    const found = await readOfferPercents(db, tenantId, {
+      campaignIds: ['C1', 'C2', 'C3', 'C4'],
+      live: true
+    })
+    expect([...found]).toEqual([['C4', 25]])
+    // Only this workspace's results, and no plan read for an edited one.
+    expect(calls[1]!.filters[0]).toEqual(['eq', 'tenant_id', tenantId])
+    expect(calls.map((c) => c.table)).not.toContain('strategy_runs')
+    const failed = fakeDb({
+      email_builds: { data: [build()], error: null },
+      klaviyo_email_results: { data: null, error: { code: 'PGRST000' } }
+    })
+    await expect(
+      readOfferPercents(failed.db, tenantId, {
+        campaignIds: ['C1'],
+        live: true
+      })
+    ).rejects.toMatchObject({ code: 'PGRST000' })
+  })
+
   it('falls back to the planned email’s offer, in this workspace, when it names the same code', async () => {
     const { db, calls } = fakeDb({
       email_builds: {
@@ -151,7 +219,7 @@ describe('readOfferPercents (PLN-040b)', () => {
       live: true
     })
     expect([...found]).toEqual([['C1', 25]])
-    expect(calls[1]).toEqual({
+    expect(calls[2]).toEqual({
       table: 'strategy_runs',
       select: 'id,slots:plan->slots',
       filters: [
