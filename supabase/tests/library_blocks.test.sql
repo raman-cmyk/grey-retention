@@ -1,5 +1,5 @@
 begin;
-select plan(65);
+select plan(73);
 
 -- DES-ENGINE-004: every section of a stored Inspiration blueprint, and of
 -- a workspace's own upload, becomes a library block (structure only), one
@@ -101,6 +101,15 @@ insert into public.inbox_blueprints(inbox_message_id, version, state, failure) v
 select is((select count(*)::int from public.platform_jobs where kind = 'design.blocks' and subject_key = 'inbox:' || current_setting('test.m3')),
   0, 'a failed one queues nothing');
 select pg_temp.ready(current_setting('test.m2')::uuid);
+-- Each email assigned to its brand (a competitor_emails row).
+create function pg_temp.assign(message uuid) returns void language sql as $$
+  insert into public.competitor_emails(capture_id, external_id, received_at, subject, text_content, safe_html, micro, synthetic,
+      inbox_message_id)
+    select m.capture_id, 'msg:lb' || m.uid, now(), 'Email', 'x', '<p>x</p>', '{}', true, m.id
+    from public.inbox_messages m where m.id = message
+$$;
+select pg_temp.assign(current_setting('test.m1')::uuid);
+select pg_temp.assign(current_setting('test.m2')::uuid);
 
 -- Only the job claims (service role), with the stored blueprint.
 select pg_temp.as_user('00000000-0000-4000-8000-000000000001');
@@ -203,6 +212,52 @@ select is((select count(*)::int from public.library_blocks where tenant_id is no
 delete from public.email_uploads where id = current_setting('test.u1')::uuid;
 select is((select count(*)::int from public.library_blocks where tenant_id is null), 2, 'and its purge leaves the shared ones');
 
+-- Two uploads share a layout; the one its geometry came from is deleted:
+-- the block goes (never left showing a deleted upload's layout), and the
+-- next upload with the layout makes it again.
+create function pg_temp.upload_blocks(u uuid) returns jsonb language plpgsql as $$
+declare c jsonb;
+begin
+  update public.platform_jobs set available_at = now() where subject_key = 'upload:' || u;
+  c := pg_temp.claim();
+  return public.record_library_blocks((c->>'job')::uuid, (c->>'lease')::uuid, jsonb_build_array(pg_temp.block(1, pg_temp.fp(9))));
+end $$;
+select set_config('test.g1', pg_temp.upload('00000000-0000-4000-8000-000000000101', 'measuring')::text, true);
+update public.email_uploads set state = 'ready', blueprint = pg_temp.section_bp() where id = current_setting('test.g1')::uuid;
+select set_config('test.g2', pg_temp.upload('00000000-0000-4000-8000-000000000101', 'measuring')::text, true);
+update public.email_uploads set state = 'ready', blueprint = pg_temp.section_bp() where id = current_setting('test.g2')::uuid;
+select pg_temp.as_job();
+select pg_temp.upload_blocks(current_setting('test.g1')::uuid);
+select is(pg_temp.upload_blocks(current_setting('test.g2')::uuid)->>'joined', '1', 'a second upload joins the private block');
+reset role;
+update public.email_uploads set state = 'deleting' where id = current_setting('test.g1')::uuid;
+select is((select count(*)::int from public.library_blocks where fingerprint = pg_temp.fp(9)), 0,
+  'its geometry''s upload being deleted takes the block with it');
+select set_config('test.g3', pg_temp.upload('00000000-0000-4000-8000-000000000101', 'measuring')::text, true);
+update public.email_uploads set state = 'ready', blueprint = pg_temp.section_bp() where id = current_setting('test.g3')::uuid;
+select pg_temp.as_job();
+select is(pg_temp.upload_blocks(current_setting('test.g3')::uuid)->>'new', '1', 'the next upload with the layout makes it again');
+select is((select geometry_upload::text from public.library_blocks where fingerprint = pg_temp.fp(9)), current_setting('test.g3'),
+  'with its own geometry');
+reset role;
+
+-- A shared block whose geometry email is no longer assigned to a brand is
+-- not known any more, and the next email with its layout re-cuts it.
+delete from public.competitor_emails where inbox_message_id = current_setting('test.m2')::uuid;
+select pg_temp.as_job();
+select is((select count(*)::int from public.known_library_blocks(null, array[pg_temp.fp(2)])), 0,
+  'a layout whose geometry email is gone is not known');
+select set_config('test.m4', pg_temp.message(4, 'blocks-a.example')::text, true);
+select pg_temp.assign(current_setting('test.m4')::uuid);
+select pg_temp.ready(current_setting('test.m4')::uuid);
+update public.platform_jobs set available_at = now() where subject_key = 'inbox:' || current_setting('test.m4');
+select set_config('test.c7', pg_temp.claim()::text, true);
+select public.record_library_blocks((current_setting('test.c7')::jsonb->>'job')::uuid, (current_setting('test.c7')::jsonb->>'lease')::uuid,
+  jsonb_build_array(pg_temp.block(1, pg_temp.fp(2))));
+select is((select geometry_message::text || '/' || uses from public.library_blocks where fingerprint = pg_temp.fp(2)),
+  current_setting('test.m4') || '/3', 'the next email takes over its geometry, its uses kept');
+reset role;
+
 -- An upload deleted while its blocks were checked: gone, the job cancelled.
 select set_config('test.u2', pg_temp.upload('00000000-0000-4000-8000-000000000101', 'measuring')::text, true);
 update public.email_uploads set state = 'ready', blueprint = pg_temp.section_bp() where id = current_setting('test.u2')::uuid;
@@ -261,6 +316,22 @@ select throws_ok(format($$select public.renew_library_blocks(%L, %L)$$, current_
 select pg_temp.claim();
 select is((select status || '/' || last_error_code from public.platform_jobs where id = (current_setting('test.c6')::jsonb->>'job')::uuid),
   'leased/lease_expired', 'an expired lease is recovered and claimed again');
+-- A lease is renewed for at most 30 minutes after its claim.
+reset role;
+update public.platform_jobs set updated_at = now() - interval '31 minutes', lease_expires_at = now() + interval '1 minute'
+  where id = (current_setting('test.c6')::jsonb->>'job')::uuid;
+select pg_temp.as_job();
+select throws_ok(format($$select public.renew_library_blocks(%L, (select lease_token from public.platform_jobs where id = %L))$$,
+  current_setting('test.c6')::jsonb->>'job', current_setting('test.c6')::jsonb->>'job'), 'PT409', 'Lease held too long',
+  'never past 30 minutes after the claim');
+-- At most 10 hand-backs: the 11th counts as a failed try.
+reset role;
+update public.platform_jobs set result = '{"releases":10}', attempt = 1 where id = (current_setting('test.c6')::jsonb->>'job')::uuid;
+select pg_temp.as_job();
+select public.release_library_blocks((current_setting('test.c6')::jsonb->>'job')::uuid,
+  (select lease_token from public.platform_jobs where id = (current_setting('test.c6')::jsonb->>'job')::uuid), 'run_budget');
+select is((select status || '/' || attempt || '/' || failure_class || '/' || (result->>'releases') from public.platform_jobs
+  where id = (current_setting('test.c6')::jsonb->>'job')::uuid), 'retry_wait/1/unavailable/11', 'the 11th hand-back counts as a try');
 reset role;
 
 select * from finish();

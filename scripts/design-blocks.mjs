@@ -94,7 +94,15 @@ export async function run({
       let broken = false
       let lost = false
       let renewed = now()
+      let spent = false
       for (const c of job.checks ?? []) {
+        // The run's time is spent: the email is handed back (its try given
+        // back) and goes on in the next run, never cut by the job's own
+        // timeout (a lost lease would cost a try).
+        if (now() >= until) {
+          spent = true
+          break
+        }
         if (now() - renewed >= renewEveryMs) {
           if (!(await report({ renew: true }))) {
             lost = true
@@ -119,6 +127,11 @@ export async function run({
       }
       if (lost) {
         counts.retry++
+        continue
+      }
+      if (spent) {
+        counts.retry++
+        await report({ release: 'run_budget' })
         continue
       }
       if (broken) {

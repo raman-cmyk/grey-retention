@@ -53,14 +53,16 @@ type Claimed = {
 }
 
 /**
- * A job handed back without counting a try (another engine version, or a
- * read that failed just now): it waits 10 minutes (`release_library_blocks`).
+ * A job handed back without counting a try (another engine version, a
+ * read that failed just now, the run's time spent mid-email, a block
+ * busy): it waits 10 minutes (`release_library_blocks`; after 10
+ * hand-backs one counts as a try).
  */
 async function release(
   db: Db,
   job: string,
   lease: string,
-  code: 'version_skew' | 'read_failed'
+  code: 'version_skew' | 'read_failed' | 'run_budget' | 'block_busy'
 ) {
   const done = await db.rpc('release_library_blocks', { job, lease, code })
   if (done.error)
@@ -179,7 +181,9 @@ export const blockResult = z.union([
     retry: z.enum(['timeout', 'engine_error'])
   }),
   // The browser keeps its lease while it draws a long email.
-  z.object({ job: z.uuid(), lease: z.uuid(), renew: z.literal(true) })
+  z.object({ job: z.uuid(), lease: z.uuid(), renew: z.literal(true) }),
+  // The run's time is spent mid-email: handed back, its try given back.
+  z.object({ job: z.uuid(), lease: z.uuid(), release: z.literal('run_budget') })
 ])
 export type BlockResult = z.infer<typeof blockResult>
 
@@ -235,7 +239,14 @@ async function record(
     lease,
     blocks: blockRows(cut, have, verdicts) as unknown as Json
   })
-  if (done.error) return { ok: false, code: done.error.code ?? 'error' }
+  if (done.error) {
+    // Another job held the block a moment: handed back, its try given back.
+    if (done.error.details === 'block_busy') {
+      await release(db, job, lease, 'block_busy')
+      return { ok: true, state: 'retry' }
+    }
+    return { ok: false, code: done.error.code ?? 'error' }
+  }
   const state = (done.data as { state?: string } | null)?.state ?? 'done'
   return { ok: true, state }
 }
@@ -256,6 +267,10 @@ export async function finishBlocks(
     })
     if (renewed.error) return { ok: false, code: renewed.error.code ?? 'error' }
     return { ok: true, state: 'renewed' }
+  }
+  if ('release' in result) {
+    await release(db, result.job, result.lease, result.release)
+    return { ok: true, state: 'retry' }
   }
   if ('retry' in result) {
     await retry(db, result.job, result.lease, result.retry)
