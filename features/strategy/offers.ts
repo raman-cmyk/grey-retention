@@ -248,7 +248,7 @@ export function droppedOffersNote(dropped: readonly PlannedSlot[]) {
   const words = (named: string[]) => {
     const more =
       all.length > named.length ? ` and ${all.length - named.length} more` : ''
-    return `Left out of ${one ? 'its email' : 'their emails'} because ${one ? 'it' : 'they'} would not work on that day (above your max, not one of your codes, or ended): ${named.join(', ')}${more}. ${one ? 'That email goes' : 'Those emails go'} out without a discount.`
+    return `Left out of ${one ? 'its email' : 'their emails'} because ${one ? 'it' : 'they'} would not work on that day (above your biggest discount or what your margin floor allows, not one of your codes, or ended): ${named.join(', ')}${more}. ${one ? 'That email goes' : 'Those emails go'} out without a discount.`
   }
   // At most ten named, and fewer until the note fits a stored note's 600
   // characters (whole names, a whole sentence).
