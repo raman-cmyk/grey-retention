@@ -464,4 +464,23 @@ describe('the Plan screen (UI-PLAN-a)', () => {
     expect(theirs.progress).toEqual(mine.progress)
     expect(theirs.toCreate).toBe(0)
   })
+
+  it('says a build still queued after its send time is overdue, not writing (PICK-102)', () => {
+    const queued = {
+      id: 'b1',
+      state: 'build_queued' as const,
+      step: 'copy' as const,
+      sampleDraft: false,
+      reason: null
+    }
+    const late = plan(
+      run({ builds: { 1: queued }, sendPassed: [false, true, false, false] })
+    ).emails.find((e) => e.slot === 1)!
+    expect(late.status).toEqual({ kind: 'working', word: 'Overdue' })
+    expect(late.stage).toBe('working')
+    const onTime = plan(run({ builds: { 1: queued } })).emails.find(
+      (e) => e.slot === 1
+    )!
+    expect(onTime.status).toEqual({ kind: 'working', word: 'Writing' })
+  })
 })

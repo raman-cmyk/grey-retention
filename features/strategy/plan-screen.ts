@@ -279,7 +279,12 @@ function emailState(
       action: { kind: 'open', buildId: build.id }
     }
   return {
-    status: { kind: 'working', word: stepWords[build.step] ?? 'Working' },
+    // PICK-102 review: still queued after its send time passed, it waits
+    // for the job, which stops it (send_time_passed): never "Writing".
+    status: {
+      kind: 'working',
+      word: passed ? 'Overdue' : (stepWords[build.step] ?? 'Working')
+    },
     action: { kind: 'open', buildId: build.id }
   }
 }

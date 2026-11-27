@@ -91,7 +91,9 @@ function command(refuse: Record<number, QueueAnswer> = {}) {
 }
 
 describe('queueing every email (PICK-102)', () => {
-  it('makes one build per planned email, whatever the clicks and tabs', async () => {
+  it('asks the command again on every click, and keeps the build it returns', async () => {
+    // A stand-in for the command; the database's own dedupe is proven in
+    // supabase/tests/email_builds.test.sql.
     const db = command()
     // Two tabs click at once, then the owner clicks again.
     const [a, b] = await Promise.all([

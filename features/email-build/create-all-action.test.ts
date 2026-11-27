@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 const auth = vi.hoisted(() => ({ requireRequestContext: vi.fn() }))
@@ -19,9 +19,12 @@ vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
 vi.mock('next/server', () => ({ after }))
 vi.mock('./worker', () => worker)
 vi.mock('./agents', () => agents)
-vi.mock('@/features/klaviyo-push/live', () => ({
-  draftPusherFor: () => ({ createDraft: vi.fn() })
+const pushers = vi.hoisted(() => ({
+  draftPusherFor: vi.fn<
+    (db: unknown, options?: { deadline?: number }) => { createDraft: unknown }
+  >(() => ({ createDraft: vi.fn() }))
 }))
+vi.mock('@/features/klaviyo-push/live', () => pushers)
 vi.mock('@/features/strategy/load', () => load)
 
 import { redirect } from 'next/navigation'
@@ -121,6 +124,7 @@ beforeEach(() => {
   open.clear()
   rpc.mockImplementation(command)
   service.client = null
+  worker.runEmailBuilds.mockImplementation(async () => ({ ran: 0 }))
   auth.requireRequestContext.mockResolvedValue({
     tenantId,
     tenantRole: 'owner',
@@ -179,6 +183,63 @@ describe('Create all emails (PICK-102)', () => {
     expect(most).toBe(1)
   })
 
+  describe('the click’s time (PICK-102 review)', () => {
+    // 110 s from the action's start; the last 35 s (a push's 30 s and a
+    // little) are kept for a push: nothing is claimed in them.
+    const start = 1_000_000
+    const end = start + 110_000
+    const claimBy = end - 35_000
+    let clock = start
+    beforeEach(() => {
+      clock = start
+      vi.spyOn(Date, 'now').mockImplementation(() => clock)
+      service.client = { service: true }
+    })
+    afterEach(() => vi.restoreAllMocks())
+
+    it('counts from the action’s start, keeps a push’s time, and leaves the rest to the cron', async () => {
+      worker.runEmailBuilds.mockImplementation(async () => {
+        clock += 30_000
+        return { ran: 1 }
+      })
+      await createAllEmails({}, form({ run: runId }))
+      // The reply took 10 s before the background work began.
+      clock += 10_000
+      await after.mock.calls[0]![0]()
+      const runs = worker.runEmailBuilds.mock.calls.map(([, deps]) => deps)
+      // At 10 s and 40 s a build starts; at 70 s too (before 75 s); at
+      // 100 s no build is claimed: the cron builds it.
+      expect(runs.map((d) => d.build)).toEqual([
+        'build-1',
+        'build-0',
+        'build-2'
+      ])
+      for (const d of runs) expect(d.deadline).toBe(claimBy)
+      // No push request starts past the click's end.
+      expect(pushers.draftPusherFor).toHaveBeenCalledTimes(3)
+      for (const [, options] of pushers.draftPusherFor.mock.calls)
+        expect(options).toEqual({ deadline: end })
+    })
+
+    it('starts nothing when the reply alone used the click’s time', async () => {
+      await createAllEmails({}, form({ run: runId }))
+      clock = claimBy
+      await after.mock.calls[0]![0]()
+      expect(worker.runEmailBuilds).not.toHaveBeenCalled()
+    })
+
+    it('goes on to the next build when one throws', async () => {
+      worker.runEmailBuilds
+        .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'boom' }))
+        .mockResolvedValue({ ran: 1 })
+      await createAllEmails({}, form({ run: runId }))
+      await after.mock.calls[0]![0]()
+      expect(
+        worker.runEmailBuilds.mock.calls.map(([, deps]) => deps.build)
+      ).toEqual(['build-1', 'build-0', 'build-2', 'build-3'])
+    })
+  })
+
   it('skips emails that already have a build: made, being made or failed', async () => {
     load.latestPlanRun.mockResolvedValue({
       ok: true,
@@ -196,8 +257,10 @@ describe('Create all emails (PICK-102)', () => {
     )
   })
 
-  it('never makes a second build on a second click or another tab', async () => {
-    // Both tabs read the plan before either queued anything.
+  it('relies on the command for one build per email when two tabs click at once', async () => {
+    // Both tabs read the plan before either queued anything. The command
+    // here is a stand-in for `email_builds_one_open`: the database's own
+    // dedupe is proven in supabase/tests/email_builds.test.sql.
     const [a, b] = await Promise.all([
       createAllEmails({}, form({ run: runId })),
       createAllEmails({}, form({ run: runId }))

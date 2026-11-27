@@ -12,6 +12,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logger } from '@/lib/logger'
 import { draftPusherFor } from '@/features/klaviyo-push/live'
+import { pushBudgetMs } from '@/features/klaviyo-push/pusher'
 import { latestPlanRun } from '@/features/strategy/load'
 import { planScreen } from '@/features/strategy/plan-screen'
 import { emailAgentsReady } from './agents'
@@ -27,31 +28,41 @@ import { runEmailBuilds } from './worker'
 export type CreateEmailState = { error?: string; message?: string }
 
 /**
- * Time the click gives this email's steps (the plan page allows 120 s);
- * with the agents on, a step starts only while a whole step fits, and the
- * cron sweep (code only) runs the rest.
+ * Time a click has, counted from the action's start (the plan page allows
+ * 120 s); with the agents on, a step starts only while a whole step fits,
+ * and the cron sweep (code only) runs the rest.
  */
 const clickBudgetMs = 110_000
+/**
+ * PICK-102 review: kept for a draft push at the end (its 30 s budget and a
+ * little more). No build and no step is claimed inside it, and no push
+ * request goes past the click's end, so a click ends inside its 120 s.
+ */
+const pushMarginMs = pushBudgetMs + 5_000
 
 /**
  * Builds these emails right after the reply, one after another inside the
- * click's one budget (PICK-102: "Create all" hands in several, so a click
- * never runs more than one build at a time); the cron picks up the rest.
+ * click's one budget from `started` (the action's own start). PICK-102:
+ * "Create all" hands in several, so a click never runs more than one build
+ * at a time; one that throws never stops the next; the cron picks up what
+ * the click does not reach.
  */
-function buildSoon(...builds: string[]) {
+function buildSoon(started: number, ...builds: string[]) {
+  const end = started + clickBudgetMs
+  const claimBy = end - pushMarginMs
   after(async () => {
     const service = createServiceClient()
     if (!service) return
-    const deadline = Date.now() + clickBudgetMs
     for (const build of builds) {
-      if (Date.now() >= deadline) break
+      if (Date.now() >= claimBy) break
       try {
         // The fake draft pusher unless the owner's write switch is on
-        // (KLAVIYO_DRAFT_PUSH=live with KLAVIYO_MODE=live, PSH-001).
+        // (KLAVIYO_DRAFT_PUSH=live with KLAVIYO_MODE=live, PSH-001); no
+        // push request starts past the click's end.
         await runEmailBuilds(service, {
           build,
-          deadline,
-          pusher: draftPusherFor(service)
+          deadline: claimBy,
+          pusher: draftPusherFor(service, { deadline: end })
         })
       } catch (error) {
         logger.error('Email build could not start', {
@@ -83,6 +94,7 @@ export async function createEmail(
   _state: CreateEmailState,
   form: FormData
 ): Promise<CreateEmailState> {
+  const started = Date.now()
   const context = await requireRequestContext('client')
   if (context.tenantRole !== 'owner')
     return { error: 'Only this workspace’s owner creates emails.' }
@@ -111,7 +123,7 @@ export async function createEmail(
   if (refused) return refused
   if (typeof data !== 'string')
     return { error: 'We could not create the email. Try again.' }
-  buildSoon(data)
+  buildSoon(started, data)
   revalidatePath('/plan')
   redirect('/plan' as Route)
 }
@@ -177,6 +189,7 @@ export async function createEmailFromInspiration(
   _state: CreateEmailState,
   form: FormData
 ): Promise<CreateEmailState> {
+  const started = Date.now()
   const context = await requireRequestContext('client')
   if (context.tenantRole !== 'owner')
     return { error: 'Only this workspace’s owner creates emails.' }
@@ -235,7 +248,7 @@ export async function createEmailFromInspiration(
     revalidatePath('/plan')
     return { error: alreadyMade }
   }
-  buildSoon(data)
+  buildSoon(started, data)
   revalidatePath('/plan')
   redirect(`/plan/email/${data}` as Route)
 }
@@ -264,6 +277,7 @@ export async function createEmailFromUpload(
   _state: CreateEmailState,
   form: FormData
 ): Promise<CreateEmailState> {
+  const started = Date.now()
   const context = await requireRequestContext('client')
   if (context.tenantRole !== 'owner')
     return { error: 'Only this workspace’s owner creates emails.' }
@@ -305,7 +319,7 @@ export async function createEmailFromUpload(
     revalidatePath('/plan')
     return { error: alreadyMade }
   }
-  buildSoon(data)
+  buildSoon(started, data)
   revalidatePath('/plan')
   redirect(`/plan/email/${data}` as Route)
 }
@@ -331,6 +345,7 @@ export async function createAllEmails(
   _state: CreateEmailState,
   form: FormData
 ): Promise<CreateEmailState> {
+  const started = Date.now()
   const context = await requireRequestContext('client')
   if (context.tenantRole !== 'owner')
     return { error: 'Only this workspace’s owner creates emails.' }
@@ -358,7 +373,8 @@ export async function createAllEmails(
     })
     return queueAnswer(data, error)
   })
-  if (result.queued.length) buildSoon(...result.queued.map((q) => q.build))
+  if (result.queued.length)
+    buildSoon(started, ...result.queued.map((q) => q.build))
   revalidatePath('/plan')
   if (result.stopped && !result.queued.length) return { error: result.stopped }
   const agents = result.queued.length > 0 && emailAgentsReady(process.env)
