@@ -45,6 +45,8 @@ export type UploadJob = {
   pictures: number
   /** The prepared HTML (our own marks). */
   html: string
+  /** Its pinned tag: the job measures only those very bytes. */
+  etag: string
 }
 
 async function fail(db: Db, job: string, lease: string, code: string) {
@@ -144,7 +146,8 @@ export async function uploadJobs(
         lease: job.lease_token,
         design: job.design === 'other' ? 'other' : 'own',
         pictures: job.pictures,
-        html: link.data.signedUrl
+        html: link.data.signedUrl,
+        etag: job.html_etag
       }
     ],
     skew: false

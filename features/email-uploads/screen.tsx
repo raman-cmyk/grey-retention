@@ -185,6 +185,15 @@ function YoursCard({ view }: { view: Extract<UploadsView, { ok: true }> }) {
                   end={
                     <div className="flex flex-wrap items-center gap-[var(--space-2)]">
                       {stateEnd(u)}
+                      {/* DES-ENGINE-003b: Create email from it, on a planned email. */}
+                      {u.state === 'ready' && view.owner ? (
+                        <ButtonLink
+                          href={`/inspiration/use?upload=${u.id}` as Route}
+                          label="Use this design"
+                          kind="outline"
+                          size="row"
+                        />
+                      ) : null}
                       {view.manager ? (
                         <ActionButton
                           action={deleteUpload}

@@ -175,3 +175,103 @@ begin
 end $$;
 revoke all on function public.request_email_copy(uuid, uuid, uuid, jsonb, integer, uuid) from public, anon, authenticated;
 grant execute on function public.request_email_copy(uuid, uuid, uuid, jsonb, integer, uuid) to service_role;
+
+-- DES-ENGINE-003a follow-ups (review of #674): a retry of an unfinished add
+-- refreshes it, so a sweep running meanwhile never takes it as left over;
+-- otherwise as in 090102.
+create or replace function public.add_email_upload(t uuid, request uuid, name text, design text,
+  file_kind text, byte_size integer, sha256 text, pictures jsonb default '[]'::jsonb,
+  missing jsonb default '[]'::jsonb)
+returns table (id uuid, state text)
+language plpgsql security definer set search_path = '' as $$
+declare u public.email_uploads; p jsonb; i integer := 0; total bigint := 0; why text;
+begin
+  perform private.require_upload_manager(t);
+  select * into u from public.email_uploads x where x.tenant_id = t and x.request_key = request;
+  if found then
+    if u.sha256 is distinct from add_email_upload.sha256 or u.design is distinct from add_email_upload.design
+       or u.byte_size is distinct from add_email_upload.byte_size or u.file_kind is distinct from add_email_upload.file_kind
+       or u.state = 'deleting' then
+      raise exception 'This form was used for another file' using errcode = 'PT409', hint = 'upload_request_used';
+    end if;
+    -- A retry of an unfinished add keeps it from being swept meanwhile.
+    if u.state = 'saving' then
+      update public.email_uploads x set updated_at = now() where x.id = u.id;
+    end if;
+    return query select u.id, u.state;
+    return;
+  end if;
+  -- The same file, an add of it not finished yet: that add goes on.
+  select * into u from public.email_uploads x
+    where x.tenant_id = t and x.state = 'saving' and not private.upload_stale(x)
+      and x.sha256 = add_email_upload.sha256 and x.design = add_email_upload.design
+      and x.byte_size = add_email_upload.byte_size and x.file_kind = add_email_upload.file_kind
+    order by x.created_at desc limit 1;
+  if found then
+    update public.email_uploads x set updated_at = now() where x.id = u.id;
+    return query select u.id, u.state;
+    return;
+  end if;
+  why := private.upload_refusal(t);
+  if why = 'upload_limit' then
+    raise exception 'Upload limit reached' using errcode = 'PT409', hint = 'upload_limit';
+  elsif why = 'upload_hourly_limit' then
+    raise exception 'Too many uploads this hour' using errcode = 'PT409', hint = 'upload_hourly_limit';
+  end if;
+  if pictures is null or jsonb_typeof(pictures) <> 'array' or jsonb_array_length(pictures) > 40
+     or missing is null or jsonb_typeof(missing) <> 'array' or jsonb_array_length(missing) > 20 then
+    raise exception 'Invalid pictures' using errcode = '22023';
+  end if;
+  if design = 'other' and jsonb_array_length(pictures) > 0 then
+    -- Another brand's pictures are never kept (rule 8).
+    raise exception 'Another brand''s pictures are not kept' using errcode = '22023';
+  end if;
+  for p in select * from jsonb_array_elements(pictures) loop
+    if jsonb_typeof(p) <> 'object'
+       or (p->>'index') is distinct from i::text
+       or p->>'type' is null or p->>'type' not in ('image/png', 'image/jpeg', 'image/gif', 'image/webp')
+       or (p->>'width') !~ '^[0-9]{1,5}$' or (p->>'height') !~ '^[0-9]{1,5}$'
+       or (p->>'width')::integer < 1 or (p->>'height')::integer < 1
+       or (p->>'bytes') !~ '^[0-9]{1,8}$' or (p->>'bytes')::integer not between 1 and 3145728
+       or coalesce(p->>'sha256', '') !~ '^[0-9a-f]{64}$'
+       or p->>'from' is null or p->>'from' not in ('file', 'web') then
+      raise exception 'Invalid picture' using errcode = '22023';
+    end if;
+    total := total + (p->>'bytes')::bigint;
+    i := i + 1;
+  end loop;
+  if total > 25165824 then
+    raise exception 'Pictures too large' using errcode = '22023';
+  end if;
+  for p in select * from jsonb_array_elements(missing) loop
+    if jsonb_typeof(p) <> 'object'
+       or jsonb_typeof(p->'host') is distinct from 'string' or char_length(p->>'host') not between 1 and 120
+       or jsonb_typeof(p->'why') is distinct from 'string' or char_length(p->>'why') not between 1 and 200
+       or (p->>'count') !~ '^[0-9]{1,3}$' or (p->>'count')::integer < 1 then
+      raise exception 'Invalid missing picture' using errcode = '22023';
+    end if;
+  end loop;
+  insert into public.email_upload_adds (tenant_id) values (t);
+  insert into public.email_uploads (tenant_id, request_key, name, design, file_kind, byte_size, sha256,
+      pictures, missing, created_by)
+    values (t, request, add_email_upload.name, add_email_upload.design, add_email_upload.file_kind,
+      add_email_upload.byte_size, add_email_upload.sha256, add_email_upload.pictures,
+      add_email_upload.missing, auth.uid())
+    returning * into u;
+  return query select u.id, u.state;
+end $$;
+
+-- The sweep also forgets adds older than a day (the hour's limit needs
+-- only the last hour); otherwise as in 090102.
+create or replace function public.email_uploads_to_clean(n integer default 20)
+returns table (id uuid, folder text)
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform private.upload_job_role();
+  -- The hour's count needs only the last hour: a day's adds are kept.
+  delete from public.email_upload_adds a where a.added_at < now() - interval '1 day';
+  update public.email_uploads x set state = 'deleting', updated_at = now()
+    where x.state = 'saving' and x.updated_at < now() - interval '30 minutes';
+  return query select x.id, x.tenant_id || '/' || x.id || '/' from public.email_uploads x
+    where x.state = 'deleting' order by x.updated_at limit greatest(1, least(coalesce(n, 20), 100));
+end $$;

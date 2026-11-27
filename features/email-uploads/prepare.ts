@@ -193,6 +193,10 @@ export async function prepareUpload(
       open: options.open,
       maxBytes: Math.min(uploadLimits.pictureBytes, left)
     })
+    // A picture refused as too large was read up to its limit: those bytes
+    // count against the budget too.
+    if ('failed' in got && got.failed === over3 && from === 'web')
+      budget -= Math.min(uploadLimits.pictureBytes, left)
     if ('failed' in got)
       return {
         ok: false,

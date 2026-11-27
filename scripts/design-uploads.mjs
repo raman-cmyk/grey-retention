@@ -84,6 +84,12 @@ export async function run({
           signal: AbortSignal.timeout(20_000)
         })
         if (!got.ok) throw new Error('html')
+        // DES-ENGINE-003b: only the bytes pinned when it was added (a file
+        // replaced between the app's check and this download is not read;
+        // the next claim finds it changed).
+        const tag = got.headers.get('etag')
+        if (job.etag && tag && tag.replace(/^W\//, '') !== job.etag)
+          throw new Error('changed')
         html = await got.text()
       } catch {
         counts.retry++

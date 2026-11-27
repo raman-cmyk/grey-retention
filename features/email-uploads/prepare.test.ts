@@ -238,6 +238,30 @@ describe('an uploaded email made ready (DES-ENGINE-003)', () => {
     ])
   })
 
+  it('counts the bytes read of a picture refused as too large against the 24 MB in all', async () => {
+    const huge = Buffer.concat([png(10, 10), Buffer.alloc(3 * 1024 * 1024)])
+    const answers = Object.fromEntries(
+      Array.from({ length: 10 }, (_, i) => [
+        `https://cdn.shopify.com/h${i}.png`,
+        huge
+      ])
+    )
+    const { open } = web(answers)
+    const got = await prepareUpload(
+      email(
+        Object.keys(answers)
+          .map((u) => `<img src="${u}">`)
+          .join('')
+      ),
+      [],
+      'own',
+      { open }
+    )
+    expect(got.ok && got.missing.map((m) => m.why)).toContain(
+      'the email’s pictures are larger than 24 MB in all'
+    )
+  })
+
   it('reads each picture once and stops at the cap, in one pass', async () => {
     const tags = Array.from(
       { length: 30_000 },

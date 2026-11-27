@@ -7,6 +7,7 @@ export type UploadJob = {
   design: 'own' | 'other'
   pictures: number
   html: string
+  etag?: string
 }
 
 export const perRun: number

@@ -85,6 +85,39 @@ describe('the upload measuring browser (DES-ENGINE-003)', () => {
     expect(lines.join(' ')).not.toMatch(/https?:|s{40}/)
   })
 
+  it('never measures a prepared HTML other than the one pinned (its tag)', async () => {
+    const queue = [[{ ...job(1), etag: '"pinned"' }], []]
+    const posts: Record<string, unknown>[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.startsWith('https://app.test/')) {
+          if (init?.method === 'POST') {
+            posts.push(JSON.parse(String(init.body)))
+            return new Response('{"ok":true}')
+          }
+          if (url.includes('sweep=1')) return new Response('{}')
+          return new Response(JSON.stringify({ jobs: queue.shift() ?? [] }))
+        }
+        return new Response('<p>other</p>', { headers: { etag: '"replaced"' } })
+      })
+    )
+    const counts = await run({
+      base: 'https://app.test',
+      secret: 's'.repeat(40),
+      browser: {} as Browser,
+      engine: 'v1',
+      log: () => {},
+      measure: async () => {
+        throw new Error('never')
+      }
+    })
+    expect(posts).toEqual([
+      { job: 'j1', lease: 'l1', retry: 'html_unreadable' }
+    ])
+    expect(counts.retry).toBe(1)
+  })
+
   it('stops at once when the app runs another engine version or hands out nothing', async () => {
     vi.stubGlobal(
       'fetch',

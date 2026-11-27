@@ -196,6 +196,8 @@ export async function run({
             rules: input.rules,
             vocabulary: input.vocabulary,
             mode: input.mode,
+            // DES-ENGINE-003b: the brand's own uploaded design keeps its look.
+            ...(input.keepLook === true ? { keepLook: true } : {}),
             crop: 'canvas',
             // Photos only from the server's fixed list (never the input's).
             tools: toolsFor(photoHosts(job.origins))
@@ -255,6 +257,9 @@ export async function run({
             value: String(l.value).slice(0, 200)
           })),
           footerAdded: made.footerAdded,
+          ...(made.look?.length
+            ? { look: made.look.slice(0, 60).map((l) => String(l).slice(0, 300)) }
+            : {}),
           photos
         }
       })
