@@ -57,7 +57,7 @@ export async function readSendTimes(
   const { data, error } = await db
     .from('klaviyo_send_times')
     .select(
-      'audience_id,facts,best_hour,best_weekday,compared,reason,timezone,live,read_at'
+      'audience_id,facts,best_hour,best_weekday,rivals,compared,reason,timezone,live,read_at'
     )
     .eq('tenant_id', tenantId)
     .limit(200)
@@ -73,6 +73,7 @@ export async function readSendTimes(
       facts: r.facts,
       bestHour: r.best_hour,
       bestWeekday: r.best_weekday,
+      rivals: r.rivals,
       compared: r.compared,
       reason: r.reason
     })

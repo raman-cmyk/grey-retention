@@ -5136,6 +5136,7 @@ export type Database = {
           live: boolean
           read_at: string
           reason: string
+          rivals: number
           run_id: string
           tenant_id: string
           timezone: string
@@ -5149,6 +5150,7 @@ export type Database = {
           live: boolean
           read_at?: string
           reason: string
+          rivals: number
           run_id: string
           tenant_id: string
           timezone: string
@@ -5162,6 +5164,7 @@ export type Database = {
           live?: boolean
           read_at?: string
           reason?: string
+          rivals?: number
           run_id?: string
           tenant_id?: string
           timezone?: string

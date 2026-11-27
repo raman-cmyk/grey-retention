@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { letterKinds } from '@/features/letter/kind-list'
 import { emailFormats, emailTypes } from './plan'
-import { sendTimeBases } from './send-times'
+import { sendTimeBases, timeStrengths } from './send-times'
 
 /**
  * The shapes a run saves (`strategy_runs.pulse` and `.plan`), checked again
@@ -92,7 +92,8 @@ export const storedPlan = z.object({
         timing: z
           .object({
             basis: z.enum(sendTimeBases),
-            compared: z.boolean(),
+            strength: z.enum(timeStrengths),
+            othersTried: z.boolean(),
             best: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
             moved: z.boolean()
           })

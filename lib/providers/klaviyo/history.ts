@@ -99,14 +99,22 @@ export function messagesPath(status: 'sent' | 'scheduled', since: Date | null) {
 
 const kidPattern = /^[A-Za-z0-9]{1,64}$/
 
+/**
+ * The campaigns' audiences, at most 100 ids a question. Listing campaigns
+ * needs a channel filter (email campaigns only) and pages by cursor alone
+ * (no page size): Klaviyo's next pages are followed, `maxAudiencePagesPerAsk`
+ * at most.
+ */
 export function campaignAudiencesPath(ids: string[]) {
   if (!ids.length || ids.length > 100 || ids.some((id) => !kidPattern.test(id)))
     throw new KlaviyoError('invalid_response', { endpoint: '/api/campaigns/' })
   return (
     `/api/campaigns?fields[campaign]=definition.name&fields[campaign-audience]=definition.included,definition.excluded` +
-    `&filter=any(id,[${ids.map((id) => `"${id}"`).join(',')}])&include=campaign-audiences&page[size]=100`
+    `&filter=equals(messages.channel,'email'),any(id,[${ids.map((id) => `"${id}"`).join(',')}])&include=campaign-audiences`
   )
 }
+/** Pages followed for one question of 100 campaigns. */
+export const maxAudiencePagesPerAsk = 10
 
 export function variationsPath(messageId: string) {
   if (!kidPattern.test(messageId))
@@ -367,7 +375,7 @@ export async function readCampaignAudiences(
       client,
       campaignAudiencesPath(campaignIds.slice(start, start + 100)),
       'campaigns:read',
-      1,
+      maxAudiencePagesPerAsk,
       more,
       (body) => {
         const audiences = new Map<string, z.infer<typeof audienceRecord>>()

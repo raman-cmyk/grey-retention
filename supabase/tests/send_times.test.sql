@@ -1,13 +1,16 @@
 begin;
-select plan(46);
+select plan(63);
 
 -- PICK-97: the best send time per audience, kept by the history read.
 -- Owner ...01 and staff ...05 are in workspace 101; owner ...04 runs
 -- workspace 102. Reads are started some minutes apart (`age`): a newer
--- read's rows are never replaced by an older one.
+-- read's rows are never replaced by an older one. Both workspaces keep
+-- their hours in New York time here.
+update public.tenants set timezone='America/New_York'
+  where id in ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000102');
 
 create function pg_temp.facts(sends integer default 3) returns jsonb language sql as $$
-  select jsonb_build_object('sends',sends,'leftOut',1,
+  select jsonb_build_object('sends',sends,'leftOut',1,'shared',0,'within',jsonb_build_array('SegA'),
     'firstSentAt',case when sends = 0 then null else '2026-11-02T14:00:00Z' end,
     'lastSentAt',case when sends = 0 then null else '2026-11-11T23:00:00Z' end,
     'recipients',3000,'opens',900,'clicks',60,'machineOpens',0,
@@ -18,7 +21,7 @@ create function pg_temp.facts(sends integer default 3) returns jsonb language sq
 $$;
 create function pg_temp.t(id text, extra jsonb default '{}') returns jsonb language sql as $$
   select jsonb_build_object('audienceId',id,'facts',pg_temp.facts(),'bestHour',9,'bestWeekday','Tue',
-    'compared',false,'reason','enough') || extra
+    'rivals',0,'compared',false,'reason','enough') || extra
 $$;
 -- The store's row with these facts changed, as the refused list's text.
 create function pg_temp.tf(extra jsonb) returns text language sql as $$
@@ -98,10 +101,23 @@ select throws_ok(format('select pg_temp.record(%L::jsonb)', x),'23514',null,'ref
     pg_temp.tf('{"firstSentAt":null}'),
     pg_temp.tf('{"hours":[{"hour":24,"sends":1,"recipients":1,"opens":1,"clicks":1,"machineOpens":0}]}'),
     pg_temp.tf('{"hours":[{"hour":9,"sends":1,"recipients":1,"opens":1,"clicks":1,"machineOpens":0},{"hour":9,"sends":1,"recipients":1,"opens":1,"clicks":1,"machineOpens":0}]}'),
-    pg_temp.tf('{"weekdays":[{"weekday":"Someday","sends":1,"recipients":1,"opens":1,"clicks":1,"machineOpens":0}]}')
+    pg_temp.tf('{"weekdays":[{"weekday":"Someday","sends":1,"recipients":1,"opens":1,"clicks":1,"machineOpens":0}]}'),
+    pg_temp.tf('{"opens":10000000000000000}'),
+    pg_temp.tf('{"shared":301}'),
+    pg_temp.tf('{"within":["bad id"]}'),
+    pg_temp.tf(jsonb_build_object('within',(select jsonb_agg('Seg'||i) from generate_series(1,51) i))),
+    pg_temp.tf('{"within":"SegA"}'),
+    jsonb_build_array(pg_temp.t('*') - 'rivals')::text,
+    jsonb_build_array(pg_temp.t('*','{"rivals":15}'))::text,
+    jsonb_build_array(pg_temp.t('*','{"rivals":"1"}'))::text,
+    jsonb_build_array(pg_temp.t('*','{"compared":true,"rivals":0}'))::text,
+    jsonb_build_array(pg_temp.t('*','{"bestHour":null,"reason":"no_repeated_time","rivals":1}'))::text,
+    jsonb_build_array(pg_temp.t('*','{"reason":"out_of_hours"}'))::text
   ]) x;
 select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.t('*')),current_setting('test.job'),'Mars/Olympus')$$,
   '23514',null,'only a real timezone');
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.t('*')),current_setting('test.job'),'Europe/London')$$,
+  '23514',null,'and only the workspace''s own');
 select throws_ok($$select public.record_send_times(current_setting('test.job')::uuid,gen_random_uuid(),'UTC',
   jsonb_build_array(pg_temp.t('*')))$$,'PT409',null,'only with the job''s lease');
 select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.t('*')),current_setting('test.expired'))$$,'PT409',null,
@@ -110,16 +126,18 @@ select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.t('*')),curre
   'only a history read keeps send times');
 
 -- A read keeps its rows: facts apart from the recommendation.
-select is(pg_temp.record(jsonb_build_array(pg_temp.t('*','{"compared":true}'),
+select is(pg_temp.record(jsonb_build_array(pg_temp.t('*','{"compared":true,"rivals":1}'),
   pg_temp.t('SegVIP',jsonb_build_object('bestHour',null,'bestWeekday',null,'reason','few_sends','facts',pg_temp.facts(2))))),2,
   'the store and one segment kept');
-select is(pg_temp.record(jsonb_build_array(pg_temp.t('*')),current_setting('test.live102')),1,'another workspace''s live read keeps its own');
+select is(pg_temp.record(jsonb_build_array(pg_temp.t('*',jsonb_build_object('bestHour',null,'bestWeekday',null,'reason','out_of_hours',
+  'facts',pg_temp.facts() || '{"recipients":6000000000000,"opens":900000000000}'))),current_setting('test.live102')),1,
+  'another workspace''s live read keeps its own: hours outside the send hours, a very large store');
 reset role;
-select results_eq($$select audience_id, best_hour::integer, best_weekday, compared, reason, timezone, live, run_id::text,
-    (facts->>'sends')::integer from public.klaviyo_send_times
+select results_eq($$select audience_id, best_hour::integer, best_weekday, rivals::integer, compared, reason, timezone, live,
+    run_id::text, (facts->>'sends')::integer from public.klaviyo_send_times
     where tenant_id='00000000-0000-4000-8000-000000000101' order by audience_id$$,
-  $$values ('*',9,'Tue',true,'enough','America/New_York',false,current_setting('test.job'),3),
-    ('SegVIP',null::integer,null::text,false,'few_sends','America/New_York',false,current_setting('test.job'),2)$$,
+  $$values ('*',9,'Tue',1,true,'enough','America/New_York',false,current_setting('test.job'),3),
+    ('SegVIP',null::integer,null::text,0,false,'few_sends','America/New_York',false,current_setting('test.job'),2)$$,
   'with the recommendation, its reason and the facts');
 select is((select live from public.klaviyo_send_times where tenant_id='00000000-0000-4000-8000-000000000102'),true,
   'a live read''s rows say so');
@@ -139,6 +157,10 @@ reset role;
 set local role service_role;
 select pg_temp.as_worker();
 select null from (select set_config('test.job2',pg_temp.job('00000000-0000-4000-8000-000000000101','times-2','10 minutes'),true)) x;
+reset role;
+update public.tenants set timezone='Europe/London' where id='00000000-0000-4000-8000-000000000101';
+set local role service_role;
+select pg_temp.as_worker();
 select is(pg_temp.record(jsonb_build_array(pg_temp.t('*','{"bestHour":18}')),current_setting('test.job2'),'Europe/London'),1,'a newer read');
 reset role;
 select is((select string_agg(audience_id||' '||best_hour||' '||timezone,',') from public.klaviyo_send_times
@@ -146,11 +168,48 @@ select is((select string_agg(audience_id||' '||best_hour||' '||timezone,',') fro
 set local role service_role;
 select pg_temp.as_worker();
 select null from (select set_config('test.job0',pg_temp.job('00000000-0000-4000-8000-000000000101','times-0','30 minutes'),true)) x;
-select is(pg_temp.record(jsonb_build_array(pg_temp.t('*','{"bestHour":7}')),current_setting('test.job0')),0,
+select is(pg_temp.record(jsonb_build_array(pg_temp.t('*','{"bestHour":7}')),current_setting('test.job0'),'Europe/London'),0,
   'an older read, resumed late, writes nothing');
 reset role;
 select is((select best_hour::integer from public.klaviyo_send_times where tenant_id='00000000-0000-4000-8000-000000000101'),18,
   'the newer rows stay');
+
+-- A newer history read counts too, even one that kept no send times: a
+-- stored (ready) history beats an older read; a paused one does not.
+reset role;
+delete from public.klaviyo_send_times where tenant_id='00000000-0000-4000-8000-000000000102';
+select null from (select set_config('test.h102',pg_temp.job('00000000-0000-4000-8000-000000000102','times-h102','5 minutes','live'),true)) x;
+insert into public.klaviyo_history(tenant_id, run_id, state, snapshot, live)
+  values ('00000000-0000-4000-8000-000000000102', current_setting('test.h102')::uuid, 'paused', null, true)
+  on conflict (tenant_id) do update set run_id = excluded.run_id, state = 'paused', snapshot = null;
+set local role service_role;
+select pg_temp.as_worker();
+select null from (select set_config('test.old102',pg_temp.job('00000000-0000-4000-8000-000000000102','times-old102','30 minutes','live'),true)) x;
+select is(pg_temp.record(jsonb_build_array(pg_temp.t('*')),current_setting('test.old102')),1,
+  'a newer paused history does not stop an older read');
+reset role;
+delete from public.klaviyo_send_times where tenant_id='00000000-0000-4000-8000-000000000102';
+update public.klaviyo_history set state='ready', snapshot='{}' where tenant_id='00000000-0000-4000-8000-000000000102';
+set local role service_role;
+select pg_temp.as_worker();
+select null from (select set_config('test.older102',pg_temp.job('00000000-0000-4000-8000-000000000102','times-older102','40 minutes','live'),true)) x;
+select is(pg_temp.record(jsonb_build_array(pg_temp.t('*')),current_setting('test.older102')),0,
+  'a newer stored history, with no send times of its own, stops an older read');
+reset role;
+select is((select count(*)::integer from public.klaviyo_send_times where tenant_id='00000000-0000-4000-8000-000000000102'),0,
+  'so nothing older is kept beside it');
+
+-- Two reads started at the same moment: the larger id is the newer.
+delete from public.klaviyo_history where tenant_id='00000000-0000-4000-8000-000000000102';
+set local role service_role;
+select pg_temp.as_worker();
+select null from (select set_config('test.tieA',pg_temp.job('00000000-0000-4000-8000-000000000102','times-tieA','1 minute','live'),true)) x;
+select null from (select set_config('test.tieB',pg_temp.job('00000000-0000-4000-8000-000000000102','times-tieB','1 minute','live'),true)) x;
+select null from (select set_config('test.tieHi',greatest(current_setting('test.tieA')::uuid,current_setting('test.tieB')::uuid)::text,true)) x;
+select null from (select set_config('test.tieLo',least(current_setting('test.tieA')::uuid,current_setting('test.tieB')::uuid)::text,true)) x;
+select is(pg_temp.record(jsonb_build_array(pg_temp.t('*')),current_setting('test.tieHi')),1,'the larger id keeps its rows');
+select is(pg_temp.record(jsonb_build_array(pg_temp.t('*')),current_setting('test.tieLo')),0,'the smaller one, same moment, writes nothing');
+reset role;
 
 select * from finish();
 rollback;

@@ -178,6 +178,12 @@ export function strategyFrom(
       ? parts.sendTimes.entries
       : null
   const sendTime = fromHistory.sendTime ?? fallbackSendTime
+  const sendTimes = resolveSendTimes(
+    fromHistory.audiences.map((a) => a.id),
+    counted,
+    fromHistory.sendTime,
+    fallbackSendTime
+  )
   return {
     sample: !history.live,
     own: true,
@@ -223,12 +229,9 @@ export function strategyFrom(
       industry,
       sendsPerWeek: fromHistory.sendsPerWeek,
       sendTime,
-      sendTimes: resolveSendTimes(
-        fromHistory.audiences.map((a) => a.id),
-        counted,
-        fromHistory.sendTime,
-        fallbackSendTime
-      ),
+      // Nothing counted yet: no send times, so no time is changed or
+      // explained (never "not enough history" for a history not counted).
+      ...(sendTimes ? { sendTimes } : {}),
       products: products.map((p) => {
         const launched = day(p.launchedAt, parts.timezone)
         return {

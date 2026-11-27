@@ -508,8 +508,16 @@ export async function readBrandHistory(
   ]
   if (sentIds.length && more())
     try {
-      sentAudiences = (await readCampaignAudiences(deps.client, sentIds, more))
-        .records
+      const read = await readCampaignAudiences(deps.client, sentIds, more)
+      sentAudiences = read.records
+      // A campaign whose audiences were not read counts for the store only.
+      if (!read.complete || read.skipped)
+        logger.warn('History read: send-time audiences read in part', {
+          asked: sentIds.length,
+          read: read.records.length,
+          skipped: read.skipped,
+          complete: read.complete
+        })
     } catch (error) {
       // The store-wide row still counts every send read.
       logger.warn('History read: send times per audience left out', {

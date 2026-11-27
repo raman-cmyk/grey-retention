@@ -7,6 +7,7 @@ import {
   sendTimeRules,
   sendTimes,
   storeWide,
+  strengthOf,
   type SendSample
 } from './send-times'
 import type { SentEmail } from './facts'
@@ -30,17 +31,17 @@ const send = (
 })
 const of = (rows: ReturnType<typeof sendTimes>, id: string) =>
   rows.find((r) => r.audienceId === id)!
+// 9:00 in New York (EST, UTC-5) on Mondays 2 and 9 Nov; 18:00 on
+// Wednesdays 4 and 11 Nov.
+const nine = ['2026-11-02T14:00:00Z', '2026-11-09T14:00:00Z']
+const six = ['2026-11-04T23:00:00Z', '2026-11-11T23:00:00Z']
 
 describe('sendTimes (PICK-97)', () => {
-  it('gives each audience the hour its people open and click most, in store time', () => {
+  it('gives an audience the hour its people open and click most, in store time, by a clear margin', () => {
     const rows = sendTimes(
       [
-        // 9:00 in New York (EST, UTC-5): few clicks.
-        send('2026-11-02T14:00:00Z', ['SegA'], { clicks: 10 }),
-        send('2026-11-09T14:00:00Z', ['SegA'], { clicks: 12 }),
-        // 18:00 in New York: more clicks.
-        send('2026-11-04T23:00:00Z', ['SegA'], { clicks: 40 }),
-        send('2026-11-11T23:00:00Z', ['SegA'], { clicks: 44 })
+        ...nine.map((t) => send(t, ['SegA'], { clicks: 10 })),
+        ...six.map((t) => send(t, ['SegA'], { clicks: 40 }))
       ],
       zone,
       now
@@ -48,17 +49,20 @@ describe('sendTimes (PICK-97)', () => {
     const a = of(rows, 'SegA')
     expect(a).toMatchObject({
       bestHour: 18,
+      rivals: 1,
       compared: true,
       reason: 'enough',
-      // 4 and 11 Nov are Wednesdays, 2 and 9 Nov Mondays.
       bestWeekday: 'Wed'
     })
+    expect(strengthOf(a)).toBe('clear')
     expect(a.facts).toMatchObject({
       sends: 4,
       leftOut: 0,
+      shared: 0,
+      within: ['SegA'],
       recipients: 4000,
       opens: 1200,
-      clicks: 106,
+      clicks: 100,
       firstSentAt: '2026-11-02T14:00:00Z',
       lastSentAt: '2026-11-11T23:00:00Z'
     })
@@ -67,27 +71,83 @@ describe('sendTimes (PICK-97)', () => {
       [18, 2]
     ])
     // The facts and the recommendation fit the stored shape.
-    expect(sendTimeEntry.safeParse(a).success).toBe(true)
-    // The store's row counts every send.
+    for (const r of rows) expect(sendTimeEntry.safeParse(r).success).toBe(true)
     expect(rows[0]).toMatchObject({ audienceId: storeWide, bestHour: 18 })
+  })
+
+  it('a best hour within the margin is not a clear winner: “the time that did best so far”', () => {
+    const rows = sendTimes(
+      [
+        ...nine.map((t) => send(t, ['SegA'], { clicks: 20 })),
+        ...six.map((t) => send(t, ['SegA'], { clicks: 21 }))
+      ],
+      zone,
+      now
+    )
+    const a = of(rows, 'SegA')
+    expect(a).toMatchObject({ bestHour: 18, rivals: 1, compared: false })
+    expect(strengthOf(a)).toBe('close')
+    // (210 + 300) / 1000 against (200 + 300) / 1000: 2% better, not 10%.
+    expect(sendTimeRules.minMargin).toBe(0.1)
+  })
+
+  it('never compares hours across different people: an email to several audiences counts for none of them', () => {
+    // The reviewer's case: "Engaged 30d" at 18:00, the full list at 10:00.
+    // The engaged always do better; that says who, not when.
+    const rows = sendTimes(
+      [
+        ...['2026-11-02', '2026-11-03', '2026-11-04'].map((d) =>
+          send(`${d}T23:00:00Z`, ['SegEng30'], { clicks: 80 })
+        ),
+        ...['2026-11-05', '2026-11-06', '2026-11-09', '2026-11-10'].map((d) =>
+          send(`${d}T15:00:00Z`, ['LstAll'], { clicks: 10 })
+        ),
+        // To both at 13:00: neither's own.
+        send('2026-11-11T18:00:00Z', ['LstAll', 'SegEng30'], { clicks: 90 }),
+        send('2026-11-12T18:00:00Z', ['SegEng30', 'LstAll'], { clicks: 90 })
+      ],
+      zone,
+      now
+    )
+    const engaged = of(rows, 'SegEng30')
+    const all = of(rows, 'LstAll')
+    // Each has only its own hour: no comparison, nothing claimed.
+    expect(engaged).toMatchObject({
+      bestHour: 18,
+      rivals: 0,
+      compared: false,
+      facts: { sends: 3, shared: 2, within: ['SegEng30'] }
+    })
+    expect(all).toMatchObject({
+      bestHour: 10,
+      rivals: 0,
+      compared: false,
+      facts: { sends: 4, shared: 2 }
+    })
+    expect(strengthOf(engaged)).toBe('only')
+    // The store compares hours within its most-sent audience set only:
+    // the full list's 10:00, never "the engaged at 18:00 beat it".
+    expect(rows[0]).toMatchObject({
+      audienceId: storeWide,
+      bestHour: 10,
+      compared: false,
+      facts: { sends: 4, shared: 5, within: ['LstAll'] }
+    })
   })
 
   it('needs three counted sends, and an hour tried twice: otherwise "not enough history"', () => {
     const two = sendTimes(
-      [
-        send('2026-11-02T14:00:00Z', ['SegA']),
-        send('2026-11-09T14:00:00Z', ['SegA'])
-      ],
+      nine.map((t) => send(t, ['SegA'])),
       zone,
       now
     )
     expect(of(two, 'SegA')).toMatchObject({
       bestHour: null,
       bestWeekday: null,
+      rivals: 0,
       compared: false,
       reason: 'few_sends'
     })
-    // Three sends, each at another hour: no hour was tried enough.
     const spread = sendTimes(
       [
         send('2026-11-02T14:00:00Z', ['SegA']),
@@ -99,26 +159,53 @@ describe('sendTimes (PICK-97)', () => {
     )
     expect(of(spread, 'SegA')).toMatchObject({
       bestHour: null,
-      reason: 'no_repeated_time',
-      compared: false
+      reason: 'no_repeated_time'
     })
-    // Three at one hour: that hour, but nothing was compared.
+    // Three at one hour, one at another: that hour, compared with nothing.
     const same = sendTimes(
       [
-        send('2026-11-02T14:00:00Z', ['SegA']),
+        ...nine.map((t) => send(t, ['SegA'])),
         send('2026-11-03T14:00:00Z', ['SegA']),
-        send('2026-11-04T14:00:00Z', ['SegA'])
+        send('2026-11-04T23:00:00Z', ['SegA'])
       ],
       zone,
       now
     )
-    expect(of(same, 'SegA')).toMatchObject({
-      bestHour: 9,
-      compared: false,
-      reason: 'enough'
-    })
+    const one = of(same, 'SegA')
+    expect(one).toMatchObject({ bestHour: 9, rivals: 0, compared: false })
+    expect(one.facts.hours).toHaveLength(2)
     for (const r of [...two, ...spread, ...same])
       expect(sendTimeEntry.safeParse(r).success).toBe(true)
+  })
+
+  it('says when every hour tried enough is outside the send hours', () => {
+    // 23:00 in New York, three times.
+    const rows = sendTimes(
+      ['2026-11-03', '2026-11-04', '2026-11-05'].map((d) =>
+        send(`${d}T04:00:00Z`, ['SegA'])
+      ),
+      zone,
+      now
+    )
+    expect(of(rows, 'SegA')).toMatchObject({
+      bestHour: null,
+      reason: 'out_of_hours'
+    })
+    expect(sendTimeEntry.safeParse(of(rows, 'SegA')).success).toBe(true)
+  })
+
+  it('never recommends an hour outside the send hours when another fits', () => {
+    const rows = sendTimes(
+      [
+        send('2026-11-03T04:00:00Z', ['SegA'], { clicks: 90 }),
+        send('2026-11-04T04:00:00Z', ['SegA'], { clicks: 90 }),
+        ...nine.map((t) => send(t, ['SegA']))
+      ],
+      zone,
+      now
+    )
+    expect(of(rows, 'SegA')).toMatchObject({ bestHour: 9, rivals: 0 })
+    expect(of(rows, 'SegA').facts.hours.map((h) => h.hour)).toEqual([9, 23])
   })
 
   it('leaves out per-person times, small sends, sends without results and those still collecting opens', () => {
@@ -129,7 +216,6 @@ describe('sendTimes (PICK-97)', () => {
         send('2026-11-04T14:00:00Z', ['SegA'], { opens: null }),
         send('2026-11-05T14:00:00Z', ['SegA'], { clicks: null }),
         send('2026-11-06T14:00:00Z', ['SegA'], { recipients: null }),
-        // A day ago: its opens are still coming in.
         send('2026-11-25T14:00:00Z', ['SegA']),
         send('2026-11-09T14:00:00Z', ['SegA'])
       ],
@@ -140,12 +226,12 @@ describe('sendTimes (PICK-97)', () => {
       reason: 'few_sends',
       facts: { sends: 1, leftOut: 6 }
     })
+    expect(rows[0]!.facts).toMatchObject({ sends: 1, leftOut: 6 })
   })
 
   it('reads the hour across a daylight-saving change: 9:00 local is 9:00 in summer and winter', () => {
     const rows = sendTimes(
       [
-        // EDT (UTC-4) before 2 Nov, EST (UTC-5) after.
         send('2026-10-26T13:00:00Z', ['SegA']),
         send('2026-10-30T13:00:00Z', ['SegA']),
         send('2026-11-02T14:00:00Z', ['SegA']),
@@ -157,7 +243,6 @@ describe('sendTimes (PICK-97)', () => {
     expect(of(rows, 'SegA').facts.hours).toEqual([
       expect.objectContaining({ hour: 9, sends: 4 })
     ])
-    // The same moments read in UTC are two different hours.
     const utc = sendTimes(
       [
         send('2026-10-26T13:00:00Z', ['SegA']),
@@ -171,11 +256,9 @@ describe('sendTimes (PICK-97)', () => {
 
   it('reads a send at each person’s own clock time by that clock hour', () => {
     const rows = sendTimes(
-      [
-        send('2026-11-02T11:00:00Z', ['SegA'], { strategy: 'local' }),
-        send('2026-11-03T11:00:00Z', ['SegA'], { strategy: 'local' }),
-        send('2026-11-04T11:00:00Z', ['SegA'], { strategy: 'local' })
-      ],
+      ['2026-11-02', '2026-11-03', '2026-11-04'].map((d) =>
+        send(`${d}T11:00:00Z`, ['SegA'], { strategy: 'local' })
+      ),
       zone,
       now
     )
@@ -183,31 +266,18 @@ describe('sendTimes (PICK-97)', () => {
   })
 
   it('weights clicks over opens, and takes off opens flagged as Apple privacy (machine) opens', () => {
-    // 9:00 has many opens but few clicks; 18:00 fewer opens, more clicks.
     const opensOnly = [
-      send('2026-11-02T14:00:00Z', ['SegA'], { opens: 600, clicks: 5 }),
-      send('2026-11-09T14:00:00Z', ['SegA'], { opens: 600, clicks: 5 }),
-      send('2026-11-04T23:00:00Z', ['SegA'], { opens: 250, clicks: 45 }),
-      send('2026-11-11T23:00:00Z', ['SegA'], { opens: 250, clicks: 45 })
+      ...nine.map((t) => send(t, ['SegA'], { opens: 600, clicks: 5 })),
+      ...six.map((t) => send(t, ['SegA'], { opens: 250, clicks: 45 }))
     ]
     expect(of(sendTimes(opensOnly, zone, now), 'SegA').bestHour).toBe(18)
-    // Opens decide when clicks are equal, without machine opens.
     const flagged = [
-      send('2026-11-02T14:00:00Z', ['SegA'], {
-        opens: 700,
-        machineOpens: 500
-      }),
-      send('2026-11-09T14:00:00Z', ['SegA'], {
-        opens: 700,
-        machineOpens: 500
-      }),
-      send('2026-11-04T23:00:00Z', ['SegA'], { opens: 400 }),
-      send('2026-11-11T23:00:00Z', ['SegA'], { opens: 400 })
+      ...nine.map((t) => send(t, ['SegA'], { opens: 700, machineOpens: 500 })),
+      ...six.map((t) => send(t, ['SegA'], { opens: 400 }))
     ]
     const r = of(sendTimes(flagged, zone, now), 'SegA')
     expect(r.bestHour).toBe(18)
     expect(r.facts.machineOpens).toBe(1000)
-    // Unflagged, the inflated opens would have won.
     const unflagged = flagged.map((s) => ({ ...s, machineOpens: null }))
     expect(of(sendTimes(unflagged, zone, now), 'SegA').bestHour).toBe(9)
     expect(
@@ -221,36 +291,49 @@ describe('sendTimes (PICK-97)', () => {
     ).toBe(sendTimeRules.clickWeight / 100)
   })
 
-  it('never recommends an hour outside the send hours', () => {
+  it('keeps very large counts (a big store) within the stored shape', () => {
     const rows = sendTimes(
-      [
-        // 23:00 in New York: the most clicks, but outside 07 to 21.
-        send('2026-11-03T04:00:00Z', ['SegA'], { clicks: 90 }),
-        send('2026-11-04T04:00:00Z', ['SegA'], { clicks: 90 }),
-        send('2026-11-05T14:00:00Z', ['SegA']),
-        send('2026-11-06T14:00:00Z', ['SegA'])
-      ],
+      [...nine, '2026-11-03T14:00:00Z'].map((t) =>
+        send(t, ['SegA'], {
+          recipients: 2_000_000_000,
+          opens: 900_000_000,
+          clicks: 40_000_000
+        })
+      ),
       zone,
       now
     )
-    expect(of(rows, 'SegA')).toMatchObject({ bestHour: 9, compared: false })
-    expect(of(rows, 'SegA').facts.hours.map((h) => h.hour)).toEqual([9, 23])
+    expect(of(rows, 'SegA').facts.recipients).toBe(6_000_000_000)
+    for (const r of rows) expect(sendTimeEntry.safeParse(r).success).toBe(true)
   })
 
-  it('counts a send for every audience it went to, and keeps the store row first', () => {
+  it('prefers a known audience set over sends whose audiences were not read', () => {
     const rows = sendTimes(
       [
-        send('2026-11-02T14:00:00Z', ['SegA', 'SegB', 'SegA']),
-        send('2026-11-03T14:00:00Z', ['SegB', 'bad id'])
+        ...['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05'].map((d) =>
+          send(`${d}T23:00:00Z`, [])
+        ),
+        ...['2026-11-09', '2026-11-10', '2026-11-11'].map((d) =>
+          send(`${d}T14:00:00Z`, ['SegA'])
+        )
       ],
       zone,
       now
     )
-    expect(rows.map((r) => [r.audienceId, r.facts.sends])).toEqual([
-      ['*', 2],
-      ['SegB', 2],
-      ['SegA', 1]
-    ])
+    expect(rows[0]).toMatchObject({
+      bestHour: 9,
+      facts: { within: ['SegA'], shared: 4 }
+    })
+    // With no audience known at all, the store row still counts them.
+    const unknown = sendTimes(
+      ['2026-11-02', '2026-11-03', '2026-11-04'].map((d) =>
+        send(`${d}T23:00:00Z`, [])
+      ),
+      zone,
+      now
+    )
+    expect(unknown).toHaveLength(1)
+    expect(unknown[0]).toMatchObject({ bestHour: 18, facts: { within: [] } })
   })
 })
 
@@ -280,31 +363,31 @@ describe('sendSamples (PICK-97)', () => {
 describe('resolveSendTimes (PICK-97)', () => {
   const rows = sendTimes(
     [
-      send('2026-11-02T14:00:00Z', ['SegA']),
-      send('2026-11-09T14:00:00Z', ['SegA']),
-      send('2026-11-04T23:00:00Z', ['SegA', 'SegB'], { clicks: 60 }),
-      send('2026-11-11T23:00:00Z', ['SegA'], { clicks: 60 })
+      ...nine.map((t) => send(t, ['SegA'])),
+      ...six.map((t) => send(t, ['SegA'], { clicks: 60 })),
+      send('2026-11-05T23:00:00Z', ['SegB'], { clicks: 60 })
     ],
     zone,
     now
   )
 
-  it('uses the audience’s own time, then the store’s, then the usual hour, then the default', () => {
+  it('uses the audience’s own time, then the store’s (never its weekday), then the usual hour, then the default', () => {
     expect(resolveSendTimes(['SegA', 'SegB'], rows, '10:00', '10:00')).toEqual([
       {
         audienceId: 'SegA',
         time: '18:00',
         basis: 'segment',
-        compared: true,
+        strength: 'clear',
+        othersTried: true,
         weekday: 'Wed'
       },
-      // One send: not enough history; the store's best hour.
       {
         audienceId: 'SegB',
         time: '18:00',
         basis: 'store',
-        compared: true,
-        weekday: 'Wed'
+        strength: 'clear',
+        othersTried: true,
+        weekday: null
       }
     ])
     const noStore = rows.map((r) =>
@@ -312,6 +395,8 @@ describe('resolveSendTimes (PICK-97)', () => {
         ? {
             ...r,
             bestHour: null,
+            bestWeekday: null,
+            rivals: 0,
             compared: false,
             reason: 'few_sends' as const
           }
@@ -322,18 +407,25 @@ describe('resolveSendTimes (PICK-97)', () => {
         audienceId: 'SegB',
         time: '11:00',
         basis: 'usual',
-        compared: false,
+        strength: 'none',
+        othersTried: false,
         weekday: null
       }
     ])
-    expect(resolveSendTimes(['SegB'], null, null, '10:00')).toEqual([
-      {
-        audienceId: 'SegB',
-        time: '10:00',
-        basis: 'default',
-        compared: false,
-        weekday: null
-      }
+    expect(resolveSendTimes(['SegB'], noStore, null, '10:00')).toEqual([
+      expect.objectContaining({ time: '10:00', basis: 'default' })
     ])
+  })
+
+  it('is null when nothing was counted yet: no time is changed or explained', () => {
+    expect(resolveSendTimes(['SegA'], null, '10:00', '10:00')).toBeNull()
+    expect(
+      resolveSendTimes(
+        ['SegA'],
+        rows.filter((r) => r.audienceId !== storeWide),
+        '10:00',
+        '10:00'
+      )
+    ).toBeNull()
   })
 })

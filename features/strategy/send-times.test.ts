@@ -14,7 +14,8 @@ import {
   minHoursApart,
   timingWords,
   withSendTimes,
-  type PlanSendTime
+  type PlanSendTime,
+  type SlotTiming
 } from './send-times'
 
 const start = '2026-11-16'
@@ -42,7 +43,8 @@ const time = (over: Partial<PlanSendTime> = {}): PlanSendTime => ({
   audienceId: 'SegEng',
   time: '09:00',
   basis: 'segment',
-  compared: true,
+  strength: 'clear',
+  othersTried: true,
   weekday: 'Tue',
   ...over
 })
@@ -61,7 +63,8 @@ describe('withSendTimes (PICK-97)', () => {
       audienceId: 'SegEng',
       timing: {
         basis: 'segment',
-        compared: true,
+        strength: 'clear',
+        othersTried: true,
         best: '09:00',
         moved: false
       }
@@ -77,7 +80,7 @@ describe('withSendTimes (PICK-97)', () => {
   it(`keeps two emails on one day at least ${minHoursApart} hours apart: the later one moves to the nearest hour that fits`, () => {
     const times = [
       time(),
-      time({ audienceId: 'SegVIP', time: '10:00', compared: false })
+      time({ audienceId: 'SegVIP', time: '10:00', strength: 'close' })
     ]
     const out = withSendTimes(
       [slot('2026-11-17', 'SegVIP'), slot('2026-11-17', 'SegEng')],
@@ -108,26 +111,71 @@ describe('withSendTimes (PICK-97)', () => {
     expect(out.map((s) => s.time)).toEqual(['21:00', '18:00'])
   })
 
-  it('says why in plain words', () => {
-    const t = { best: '09:00', moved: false }
-    expect(timingWords({ ...t, basis: 'segment', compared: true })).toBe(
-      'when this group opens most'
+  it('never lets a fallback push a real recommendation off its hour: the stronger reason keeps its time', () => {
+    const times = [
+      // The VIPs have no history: the usual 09:00.
+      time({
+        audienceId: 'SegVIP',
+        time: '09:00',
+        basis: 'usual',
+        strength: 'none',
+        othersTried: false,
+        weekday: null
+      }),
+      // The engaged clearly open and click most at 10:00.
+      time({ time: '10:00' })
+    ]
+    const out = withSendTimes(
+      [slot('2026-11-17', 'SegVIP'), slot('2026-11-17', 'SegEng')],
+      times
     )
-    expect(timingWords({ ...t, basis: 'segment', compared: false })).toBe(
+    expect(out.map((s) => [s.audienceId, s.time, s.timing?.moved])).toEqual([
+      ['SegVIP', '07:00', true],
+      ['SegEng', '10:00', false]
+    ])
+    // Among two counted times, a clear one before a close one.
+    const counted = withSendTimes(
+      [slot('2026-11-17', 'A'), slot('2026-11-17', 'B')],
+      [
+        time({ audienceId: 'A', time: '09:00', strength: 'close' }),
+        time({ audienceId: 'B', time: '10:00', strength: 'clear' })
+      ]
+    )
+    expect(counted.map((s) => s.time)).toEqual(['07:00', '10:00'])
+  })
+
+  it('says why in plain words, claiming only what the history shows', () => {
+    const t = { best: '09:00', moved: false, othersTried: true }
+    const words = (over: Partial<SlotTiming>) =>
+      timingWords({ ...t, basis: 'segment', strength: 'clear', ...over })
+    expect(words({})).toBe('when this group opens and clicks most')
+    expect(words({ strength: 'close' })).toBe(
+      'the time that did best so far for this group'
+    )
+    expect(words({ strength: 'only' })).toBe(
+      'the only time this group has had more than once'
+    )
+    expect(words({ strength: 'only', othersTried: false })).toBe(
       'the time this group has always had; no other time tried yet'
     )
-    expect(timingWords({ ...t, basis: 'store', compared: true })).toBe(
-      'not enough history for this group; when your subscribers open most'
+    expect(words({ basis: 'store' })).toBe(
+      'not enough history for this group; when your subscribers open and click most'
     )
-    expect(timingWords({ ...t, basis: 'usual', compared: false })).toBe(
+    expect(words({ basis: 'store', strength: 'close' })).toBe(
+      'not enough history for this group; the time that did best so far for your store'
+    )
+    expect(words({ basis: 'store', strength: 'only' })).toBe(
+      'not enough history for this group; your store’s best hour so far'
+    )
+    expect(words({ basis: 'usual', strength: 'none' })).toBe(
       'not enough history yet; your usual send time'
     )
-    expect(timingWords({ ...t, basis: 'default', compared: false })).toBe(
+    expect(words({ basis: 'default', strength: 'none' })).toBe(
       'not enough history yet; a standard morning time'
     )
-    expect(
-      timingWords({ ...t, basis: 'segment', compared: true, moved: true })
-    ).toBe('moved from 9:00 am so two emails that day are not too close')
+    expect(words({ moved: true })).toBe(
+      'moved from 9:00 am so two emails that day are not too close'
+    )
   })
 })
 
@@ -139,7 +187,8 @@ describe('the plan’s send times (PICK-97)', () => {
       expect(s.time).toBe('09:00')
       expect(s.timing).toEqual({
         basis: 'segment',
-        compared: true,
+        strength: 'clear',
+        othersTried: true,
         best: '09:00',
         moved: false
       })
@@ -154,7 +203,7 @@ describe('the plan’s send times (PICK-97)', () => {
     expect(samplePlan(input).slots.every((s) => s.time === '10:00')).toBe(true)
   })
 
-  it('shows the time and why on the Plan row: "9:00 am — when this group opens most"', () => {
+  it('shows the time and why on the Plan row: "9:00 am — when this group opens and clicks most"', () => {
     const plan = samplePlan({ ...input, sendTimes: [time()] })
     const view = planScreen(
       {
@@ -172,7 +221,7 @@ describe('the plan’s send times (PICK-97)', () => {
     )
     if (view.kind !== 'plan') throw new Error(view.kind)
     expect(view.emails[0]!.details[1]).toBe(
-      '9:00 am — when this group opens most'
+      '9:00 am — when this group opens and clicks most'
     )
   })
 
@@ -197,7 +246,41 @@ describe('the plan’s send times (PICK-97)', () => {
       })
     )
     expect(task.send_times).toEqual([
-      { audienceId: 'SegEng', time: '09:00', opens_most_on: 'Tue' }
+      {
+        audienceId: 'SegEng',
+        time: '09:00',
+        basis: 'segment',
+        opens_most_on: 'Tue'
+      }
+    ])
+    // The store's time carries no weekday as if it were the audience's,
+    // and a time not counted from the history is not sent at all.
+    const fallbacks = JSON.parse(
+      calendarPlannerAgent.task({
+        input: {
+          ...input,
+          audiences: [
+            ...input.audiences,
+            { id: 'SegVIP', label: 'VIPs' },
+            { id: 'SegNew', label: 'New' }
+          ],
+          sendTimes: [
+            time({ basis: 'store', weekday: null }),
+            time({
+              audienceId: 'SegNew',
+              basis: 'usual',
+              strength: 'none',
+              weekday: null
+            })
+          ]
+        },
+        brief: [],
+        previous: null,
+        problems: []
+      })
+    )
+    expect(fallbacks.send_times).toEqual([
+      { audienceId: 'SegEng', time: '09:00', basis: 'store' }
     ])
     expect(
       JSON.parse(

@@ -289,25 +289,43 @@ describe('strategyFrom (ONB-057a)', () => {
 })
 
 describe('strategyFrom: send times (PICK-97)', () => {
+  const facts = (hours: number[]) =>
+    ({
+      sends: 4,
+      leftOut: 0,
+      shared: 0,
+      within: [],
+      firstSentAt: '2026-11-02T14:00:00Z',
+      lastSentAt: '2026-11-11T23:00:00Z',
+      recipients: 4000,
+      opens: 1200,
+      clicks: 100,
+      machineOpens: 0,
+      hours: hours.map((hour) => ({
+        hour,
+        sends: 2,
+        recipients: 2000,
+        opens: 600,
+        clicks: 50,
+        machineOpens: 0
+      })),
+      weekdays: []
+    }) as never
+  const row = (
+    audienceId: string,
+    bestHour: number,
+    weekday: 'Thu' | 'Tue'
+  ) => ({
+    audienceId,
+    facts: facts([9, bestHour]),
+    bestHour,
+    bestWeekday: weekday,
+    rivals: 1,
+    compared: true,
+    reason: 'enough' as const
+  })
   const counted = (over: Record<string, unknown> = {}) => ({
-    entries: [
-      {
-        audienceId: '*',
-        facts: {} as never,
-        bestHour: 14,
-        bestWeekday: 'Thu' as const,
-        compared: true,
-        reason: 'enough' as const
-      },
-      {
-        audienceId: 'SegA',
-        facts: {} as never,
-        bestHour: 19,
-        bestWeekday: 'Tue' as const,
-        compared: true,
-        reason: 'enough' as const
-      }
-    ],
+    entries: [row('*', 14, 'Thu'), row('SegA', 19, 'Tue')],
     timezone: 'America/New_York',
     live: true,
     readAt: '2026-11-15T00:00:00Z',
@@ -321,11 +339,12 @@ describe('strategyFrom: send times (PICK-97)', () => {
         audienceId: 'SegA',
         time: '19:00',
         basis: 'segment',
-        compared: true,
+        strength: 'clear',
+        othersTried: true,
         weekday: 'Tue'
       }
     ])
-    // The plan puts its emails there.
+    // The plan puts its emails there, and says why.
     const made = samplePlan({
       ...own.plan,
       start,
@@ -335,25 +354,44 @@ describe('strategyFrom: send times (PICK-97)', () => {
     })
     expect(made.slots.length).toBeGreaterThan(0)
     expect(made.slots.every((s) => s.time === '19:00')).toBe(true)
+    expect(made.slots.every((s) => s.timing?.basis === 'segment')).toBe(true)
   })
 
-  it('falls back to the usual time when none were read, or they were counted in another timezone or from the sample account', () => {
+  it('when the store has no best hour either, an audience gets the usual hour, said so', () => {
+    const own = strategyFrom(
+      parts({
+        sendTimes: counted({
+          entries: [
+            {
+              ...row('*', 14, 'Thu'),
+              bestHour: null,
+              bestWeekday: null,
+              rivals: 0,
+              compared: false,
+              reason: 'few_sends'
+            }
+          ]
+        })
+      }),
+      start,
+      now
+    )!
+    expect(own.plan.sendTimes).toEqual([
+      expect.objectContaining({ time: '09:00', basis: 'usual' })
+    ])
+  })
+
+  it('changes and explains no time when nothing was counted yet, or it was counted in another timezone or from the sample account', () => {
     for (const sendTimes of [
       null,
+      counted({ entries: [] }),
       counted({ timezone: 'Europe/London' }),
       counted({ live: false })
-    ])
-      expect(
-        strategyFrom(parts({ sendTimes }), start, now)!.plan.sendTimes
-      ).toEqual([
-        {
-          audienceId: 'SegA',
-          time: '09:00',
-          basis: 'usual',
-          compared: false,
-          weekday: null
-        }
-      ])
+    ]) {
+      const own = strategyFrom(parts({ sendTimes }), start, now)!
+      expect(own.plan.sendTimes).toBeUndefined()
+      expect(own.plan.sendTime).toBe('09:00')
+    }
   })
 })
 
@@ -589,12 +627,11 @@ describe('onboardedStrategyData (ONB-057a)', () => {
     expect(own.pulse).toMatchObject({ brand: { industry: 'home' } })
   })
 
-  it('plans at the usual time when the send times cannot be read (PICK-97)', async () => {
+  it('plans without changing any time when the send times cannot be read (PICK-97)', async () => {
     reads.sendTimes.mockRejectedValue(new Error('down'))
     const own = await load()
-    expect(own.plan.sendTimes).toEqual([
-      expect.objectContaining({ audienceId: 'SegA', basis: 'usual' })
-    ])
+    expect(own.sample).toBe(false)
+    expect(own.plan.sendTimes).toBeUndefined()
   })
 
   it('hands back the sample store until there is enough', async () => {

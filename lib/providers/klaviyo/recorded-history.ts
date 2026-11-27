@@ -642,7 +642,7 @@ const scheduledQuery = messagesPath('scheduled', null)
 const eventsQuery =
   /^\/api\/events\?fields\[event\]=event_properties,datetime&filter=equals\(metric_id,"([A-Za-z0-9]+)"\),greater-than\(datetime,\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\)&sort=-datetime(&include=attributions)?$/
 const audiencesQuery =
-  /^\/api\/campaigns\?fields\[campaign\]=definition\.name&fields\[campaign-audience\]=definition\.included,definition\.excluded&filter=any\(id,\[("[A-Za-z0-9]+",?)+\]\)&include=campaign-audiences&page\[size\]=100$/
+  /^\/api\/campaigns\?fields\[campaign\]=definition\.name&fields\[campaign-audience\]=definition\.included,definition\.excluded&filter=equals\(messages\.channel,'email'\),any\(id,\[("[A-Za-z0-9]+",?)+\]\)&include=campaign-audiences$/
 
 export type HistoryFailure =
   | 'sent'
