@@ -7,6 +7,8 @@ import {
   type MemoryRule
 } from '@/features/agents/memory'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
+import type { weeklyLearning } from '@/features/learning/patterns'
+import { weeklyLearningFor } from '@/features/learning/run'
 import type { Database } from '@/lib/supabase/database.types'
 import { createClient } from '@/lib/supabase/server'
 
@@ -46,12 +48,26 @@ export type LearnedItem = {
   revision: number
 }
 
+/**
+ * Owner pick #74: the weekly learning report in plain words ("3 new do's,
+ * 1 retired"): the rules added in the last 7 days, and those retired or
+ * expired in them (`weeklyLearning`). Null when it could not be read: the
+ * page then shows the rules without it.
+ */
+export type LearnedWeek = {
+  summary: string
+  dos: number
+  donts: number
+  retired: number
+}
+
 export type LearnedView = {
   owner: boolean
   do: LearnedItem[]
   avoid: LearnedItem[]
   /** The rules could not be read (the screen says so). */
   unread: boolean
+  week: LearnedWeek | null
 }
 
 type Db = SupabaseClient<Database>
@@ -157,10 +173,20 @@ export function learnedView(input: {
   context: Pick<ClientRequestContext, 'tenantRole' | 'timezone'>
   now: Date
   rows: readonly LearnedRow[] | null
+  /** #74: this week's report (`weeklyLearning`), or null when unread. */
+  week?: ReturnType<typeof weeklyLearning> | null
 }): LearnedView {
   const { context, now, rows } = input
   const owner = context.tenantRole === 'owner'
-  if (!rows) return { owner, do: [], avoid: [], unread: true }
+  const week = input.week
+    ? {
+        summary: input.week.summary,
+        dos: input.week.dos.length,
+        donts: input.week.donts.length,
+        retired: input.week.retired.length
+      }
+    : null
+  if (!rows) return { owner, do: [], avoid: [], unread: true, week: null }
   const sure = new Map(rows.map((r) => [r.id, Number(r.confidence)]))
   const items = rows
     .map((r) => itemOf(r, context.timezone, now))
@@ -175,7 +201,8 @@ export function learnedView(input: {
     owner,
     do: items.filter((i) => i.kind === 'do'),
     avoid: items.filter((i) => i.kind === 'dont'),
-    unread: false
+    unread: false,
+    week
   }
 }
 
@@ -185,8 +212,14 @@ export async function learnedReadModel(
   now = new Date()
 ): Promise<LearnedView> {
   const db = await createClient()
-  const rows = db
-    ? await learnedRows(db, context.tenantId, now).catch(() => null)
-    : null
-  return learnedView({ context, now, rows })
+  const [rows, week] = db
+    ? await Promise.all([
+        learnedRows(db, context.tenantId, now).catch(() => null),
+        // #74: what the learning runs added and retired this week. The
+        // hourly run writes the rules; the report is read from them, so it
+        // is current after every run.
+        weeklyLearningFor(db, context.tenantId, now.getTime()).catch(() => null)
+      ])
+    : [null, null]
+  return learnedView({ context, now, rows, week })
 }
