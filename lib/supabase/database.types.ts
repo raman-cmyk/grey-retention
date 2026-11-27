@@ -3400,6 +3400,7 @@ export type Database = {
       }
       email_copies: {
         Row: {
+          blocks: string[] | null
           build_id: string
           cleaned_at: string | null
           created_at: string
@@ -3414,6 +3415,7 @@ export type Database = {
           upload_id: string | null
         }
         Insert: {
+          blocks?: string[] | null
           build_id: string
           cleaned_at?: string | null
           created_at?: string
@@ -3428,6 +3430,7 @@ export type Database = {
           upload_id?: string | null
         }
         Update: {
+          blocks?: string[] | null
           build_id?: string
           cleaned_at?: string | null
           created_at?: string
@@ -5561,6 +5564,198 @@ export type Database = {
           },
           {
             foreignKeyName: 'learning_runs_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      library_block_hides: {
+        Row: {
+          block_id: string
+          hidden_at: string
+          hidden_by: string
+          tenant_id: string
+        }
+        Insert: {
+          block_id: string
+          hidden_at?: string
+          hidden_by: string
+          tenant_id: string
+        }
+        Update: {
+          block_id?: string
+          hidden_at?: string
+          hidden_by?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'library_block_hides_block_id_fkey'
+            columns: ['block_id']
+            isOneToOne: false
+            referencedRelation: 'library_blocks'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_block_hides_hidden_by_fkey'
+            columns: ['hidden_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_block_hides_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      library_block_sources: {
+        Row: {
+          block_id: string
+          brand: string | null
+          created_at: string
+          inbox_message_id: string | null
+          ordinal: number
+          upload_id: string | null
+        }
+        Insert: {
+          block_id: string
+          brand?: string | null
+          created_at?: string
+          inbox_message_id?: string | null
+          ordinal: number
+          upload_id?: string | null
+        }
+        Update: {
+          block_id?: string
+          brand?: string | null
+          created_at?: string
+          inbox_message_id?: string | null
+          ordinal?: number
+          upload_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'library_block_sources_block_id_fkey'
+            columns: ['block_id']
+            isOneToOne: false
+            referencedRelation: 'library_blocks'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_block_sources_inbox_message_id_fkey'
+            columns: ['inbox_message_id']
+            isOneToOne: false
+            referencedRelation: 'inbox_messages'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_block_sources_upload_id_fkey'
+            columns: ['upload_id']
+            isOneToOne: false
+            referencedRelation: 'email_uploads'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      library_blocks: {
+        Row: {
+          blueprint: Json
+          brands: number
+          created_at: string
+          email_types: string[]
+          facts: Json
+          failure: string | null
+          family: string | null
+          fingerprint: string
+          geometry_message: string | null
+          geometry_upload: string | null
+          id: string
+          industries: string[]
+          kind: string
+          layout: string | null
+          purpose: string | null
+          quality: string
+          roles: string[]
+          source: string
+          styles: string[] | null
+          tenant_id: string | null
+          updated_at: string
+          uses: number
+          version: number
+        }
+        Insert: {
+          blueprint: Json
+          brands?: number
+          created_at?: string
+          email_types?: string[]
+          facts: Json
+          failure?: string | null
+          family?: string | null
+          fingerprint: string
+          geometry_message?: string | null
+          geometry_upload?: string | null
+          id?: string
+          industries?: string[]
+          kind: string
+          layout?: string | null
+          purpose?: string | null
+          quality: string
+          roles: string[]
+          source: string
+          styles?: string[] | null
+          tenant_id?: string | null
+          updated_at?: string
+          uses?: number
+          version: number
+        }
+        Update: {
+          blueprint?: Json
+          brands?: number
+          created_at?: string
+          email_types?: string[]
+          facts?: Json
+          failure?: string | null
+          family?: string | null
+          fingerprint?: string
+          geometry_message?: string | null
+          geometry_upload?: string | null
+          id?: string
+          industries?: string[]
+          kind?: string
+          layout?: string | null
+          purpose?: string | null
+          quality?: string
+          roles?: string[]
+          source?: string
+          styles?: string[] | null
+          tenant_id?: string | null
+          updated_at?: string
+          uses?: number
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'library_blocks_geometry_message_fkey'
+            columns: ['geometry_message']
+            isOneToOne: false
+            referencedRelation: 'inbox_messages'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_blocks_geometry_upload_fkey'
+            columns: ['geometry_upload']
+            isOneToOne: false
+            referencedRelation: 'email_uploads'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'library_blocks_tenant_id_fkey'
             columns: ['tenant_id']
             isOneToOne: false
             referencedRelation: 'tenants'
@@ -8017,6 +8212,17 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_library_blocks: {
+        Args: never
+        Returns: {
+          attempt: number
+          blueprint: Json
+          id: string
+          lease_token: string
+          subject_key: string
+          tenant_id: string
+        }[]
+      }
       claim_platform_job: {
         Args: { kinds: string[]; subject?: string }
         Returns: {
@@ -8611,6 +8817,48 @@ export type Database = {
       }
       klaviyo_api_key: { Args: { t: string }; Returns: string }
       klaviyo_results_waiting: { Args: never; Returns: number }
+      known_library_blocks: {
+        Args: { prints: string[]; t: string }
+        Returns: string[]
+      }
+      library_block_counts: {
+        Args: never
+        Returns: {
+          blocks: number
+          kind: string
+          quality: string
+          reused: number
+          source: string
+          two_brands: number
+          uses: number
+        }[]
+      }
+      library_block_jobs_waiting: { Args: never; Returns: number }
+      library_blocks_check: {
+        Args: { blocks: string[]; t: string }
+        Returns: {
+          emails: Json
+          geometry_message: string
+          geometry_upload: string
+          id: string
+          tenant_id: string
+        }[]
+      }
+      library_blocks_for: {
+        Args: { t: string; with_hidden?: boolean }
+        Returns: {
+          brands: number
+          email_types: string[]
+          emails: Json
+          facts: Json
+          hidden: boolean
+          id: string
+          kind: string
+          tenant_id: string
+          uses: number
+          width: number
+        }[]
+      }
       my_pending_invites: {
         Args: never
         Returns: {
@@ -8624,6 +8872,10 @@ export type Database = {
         Returns: string
       }
       operator_diagnostics: { Args: never; Returns: Json }
+      park_email_copy: {
+        Args: { job: string; lease: string }
+        Returns: undefined
+      }
       pause_source_reading: {
         Args: { job: string; lease: string; reason: string; seconds?: number }
         Returns: undefined
@@ -8842,6 +9094,10 @@ export type Database = {
         }
         Returns: Json
       }
+      record_library_blocks: {
+        Args: { blocks: Json; job: string; lease: string }
+        Returns: Json
+      }
       record_never_words: {
         Args: { job: string; lease: string; words: Json }
         Returns: number
@@ -8953,6 +9209,14 @@ export type Database = {
         Args: { job: string; lease: string }
         Returns: undefined
       }
+      release_library_blocks: {
+        Args: { code?: string; job: string; lease: string }
+        Returns: undefined
+      }
+      renew_library_blocks: {
+        Args: { job: string; lease: string }
+        Returns: string
+      }
       reply_support: {
         Args: {
           body: string
@@ -8965,6 +9229,7 @@ export type Database = {
       }
       request_email_copy: {
         Args: {
+          blocks?: string[]
           build: string
           input: Json
           lease: string
@@ -9306,6 +9571,10 @@ export type Database = {
       set_holiday_country: {
         Args: { country: string; t: string }
         Returns: undefined
+      }
+      set_library_block_hidden: {
+        Args: { block: string; hide: boolean; t: string }
+        Returns: boolean
       }
       set_list_hygiene: {
         Args: {

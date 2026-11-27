@@ -33,6 +33,8 @@ const serverEnvironmentSchema = z.object({
   DESIGN_LIBRARY_COPY: z.string().optional(),
   /** `on` turns on "Add your own email" and copying an uploaded design (DES-ENGINE-003); off by default. */
   DESIGN_UPLOAD_COPY: z.string().optional(),
+  /** `on` lets a Scratch email pick its sections from the block library (DES-ENGINE-004b); off by default. */
+  DESIGN_LIBRARY_SCRATCH: z.string().optional(),
   /** `live` reads real brand websites (ONB-101); the owner's switch, off by default. */
   SITE_READER_MODE: z.string().optional(),
   AI_DEFAULT_PROVIDER: z.string().default('fake'),

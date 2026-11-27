@@ -23,6 +23,7 @@ import { buildAgentsFor, emailAgentsReady } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { libraryCopyOn } from './library-copy'
 import { libraryPortsFor } from './library-copy-live'
+import { libraryScratchOn } from './scratch-switch'
 import { uploadCopyOn } from '@/features/email-uploads/switch'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, refusedCode, type BuildFailureCode } from './failure-words'
@@ -119,6 +120,8 @@ export async function runEmailBuilds(
      * Default: the owner's switch (`DESIGN_LIBRARY_COPY=on`).
      */
     library?: boolean
+    /** DES-ENGINE-004b: Scratch from the block library (`DESIGN_LIBRARY_SCRATCH=on`). */
+    scratch?: boolean
     /** DES-ENGINE-003b: copying uploads (`DESIGN_UPLOAD_COPY=on`). */
     uploads?: boolean
     /**
@@ -150,6 +153,7 @@ export async function runEmailBuilds(
   const studio = deps.studio ?? designStudioOn(process.env)
   const library = deps.library ?? libraryCopyOn(process.env)
   const uploadOn = deps.uploads ?? uploadCopyOn(process.env)
+  const scratchOn = deps.scratch ?? libraryScratchOn(process.env)
   // The owner's click: every step, every save of the steps with rounds
   // (REL-AI part 2b) and the push. Its deadline, not this count, ends it.
   // DST-006b: a build claimed already is the only build this run runs.
@@ -270,6 +274,16 @@ export async function runEmailBuilds(
           job.step === 'design' && uploadOn
             ? await buildUpload(db, job)
             : undefined
+        // DES-ENGINE-004b: a Scratch email's design step, with the library
+        // on, picks its sections from the block library (a text email has
+        // no design to pick).
+        const scratch =
+          job.step === 'design' &&
+          scratchOn &&
+          !upload &&
+          planned.data.format !== 'text'
+            ? await buildIsScratch(db, job)
+            : false
         // DST-002b: the owner's Copy or Remix, for the step that plans it.
         // A text email is never copied or remixed (DST-002b1): no read.
         const reference =
@@ -303,13 +317,14 @@ export async function runEmailBuilds(
             ...(reference ? { reference } : {}),
             // DES-ENGINE-002b2: a Copy email's design copied for the brand;
             // DES-ENGINE-003b: or the workspace's own uploaded email.
-            ...((library || upload) && job.step === 'design'
+            ...((library || upload || scratch) && job.step === 'design'
               ? {
                   library: libraryPortsFor(db, {
                     tenant: job.tenant_id,
                     build: job.id,
                     lease: job.lease_token,
-                    ...(upload ? { upload } : {})
+                    ...(upload ? { upload } : {}),
+                    ...(scratch ? { scratch: true } : {})
                   })
                 }
               : {}),
@@ -703,6 +718,24 @@ export async function buildReference(
           )
         }
   } as const
+}
+
+/**
+ * DES-ENGINE-004b: whether a build is a Scratch email (mode `scratch`, no
+ * inspiration email chosen, no upload), the one the library builds.
+ */
+export async function buildIsScratch(
+  db: Db,
+  job: { id: string; tenant_id: string }
+): Promise<boolean> {
+  const { data, error } = await db
+    .from('email_builds')
+    .select('mode,reference_id,upload_id')
+    .eq('id', job.id)
+    .eq('tenant_id', job.tenant_id)
+    .maybeSingle()
+  if (error) throw error
+  return data?.mode === 'scratch' && !data.reference_id && !data.upload_id
 }
 
 /** DES-ENGINE-003b: the upload a build copies (`email_builds.upload_id`), if any. */

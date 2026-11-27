@@ -100,6 +100,9 @@ export function localEnvironment(status) {
     // DES-ENGINE-003: "Add your own email" in local fake mode (the
     // measuring job runs only when a journey or a developer runs it).
     DESIGN_UPLOAD_COPY: 'on',
+    // DES-ENGINE-004b: Scratch picks from the block library in local fake
+    // mode (the copying job runs only when a journey or a developer runs it).
+    DESIGN_LIBRARY_SCRATCH: 'on',
     CRON_SECRET: status.cronSecret
   }
 }
