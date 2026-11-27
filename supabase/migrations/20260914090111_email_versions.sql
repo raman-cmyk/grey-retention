@@ -13,13 +13,17 @@
 --   an earlier build of it), or 'restore' (the owner's "Use this version":
 --   `restored_from` names the version brought back).
 -- * A restore's `outcome`: 'pending' while its push runs, then 'applied'
---   (the draft holds it) or 'failed' (`failure`: the push's code; the draft
---   kept the email it had). Nothing else of a version ever changes. No
+--   (the draft holds it), 'failed' (`failure`: the push's code; it wrote
+--   nothing to the draft, which kept the email it had) or 'unknown'
+--   (`failure`: the push's code; it may have written part of it: what
+--   Klaviyo holds is not known, and the page says to check it there).
+--   Nothing else of a version ever changes. No
 --   member, job or service role writes versions directly; only the
 --   commands and the build trigger here do. Members of the workspace (and
 --   platform operators) read their own workspace's versions (RLS).
 -- * The current version is the newest one that is not a pending or failed
---   restore.
+--   restore. When that one is an unknown restore, nothing is confirmed as
+--   current (and any version may be brought back, that one too).
 -- * Retention: at most 20 versions per planned email
 --   (`private.email_versions_kept`): when one is added, the oldest past 20
 --   are dropped, never the current one. A restored version is a full copy,
@@ -34,16 +38,23 @@
 --   version as a new one (pending) and puts that email on the build's push
 --   step with the planned email's push key, so the worker's push updates
 --   the same GROS draft with every check and switch of the push. The draft's
---   email and campaign id are kept beside it (`restore_*`): if the push is
---   refused or fails for good, the build goes back to that draft (never
---   "failed", never counted as a failed try) and the restore is marked
---   failed; the owner can try again. Nothing is scheduled or sent. A draft
+--   email and campaign id are kept beside it (`restore_*`), with what the
+--   push row said the draft showed (`restore_push`: written, target,
+--   shown). When the push ends any other way than drafted, the build is
+--   never "failed" (never counted as a failed try): if the push row is as
+--   the restore found it, nothing reached the draft, so the build goes
+--   back to its email and the restore is 'failed'; if it changed, part of
+--   the restore may be in Klaviyo, so the build stays a draft of the same
+--   campaign with the restored email, the restore is 'unknown', and the
+--   results sync goes on checking the draft. Either way the owner can try
+--   again. Nothing is scheduled or sent. A draft
 --   the owner scheduled, sent, deleted, cancelled or changed in Klaviyo (as
 --   PICK-99's sync last read it) is refused, as is an email whose day has
 --   passed. Each refusal carries a stable hint.
 -- * When a restore reaches the draft, the email's results row (PICK-99,
 --   LRN-001) gets the restored subject, code, approach and send time in
---   `planned`, so learning credits the version that is sent.
+--   `planned` (and the designs the push left), so learning credits the
+--   version that is sent.
 -- * The number is chosen at merge time (D24).
 
 create table public.email_versions (
@@ -59,7 +70,7 @@ create table public.email_versions (
     check (how in ('scratch', 'library_copy', 'upload_copy', 'remix', 'try_again', 'restore')),
   restored_from integer check (restored_from is null or restored_from between 1 and 100000),
   -- A restore's push: pending, applied or failed (null for an email GROS made).
-  outcome text check (outcome is null or outcome in ('pending', 'applied', 'failed')),
+  outcome text check (outcome is null or outcome in ('pending', 'applied', 'failed', 'unknown')),
   failure text check (failure is null or failure ~ '^[a-z][a-z0-9_]{1,59}$'),
   subject text not null check (length(subject) between 1 and 500),
   -- The built email as stored (email_builds.email), at most as large.
@@ -72,7 +83,7 @@ create table public.email_versions (
   check ((how = 'restore') = (restored_from is not null)),
   check ((how = 'restore') = (created_by is not null)),
   check ((how = 'restore') = (outcome is not null)),
-  check ((failure is not null) = (outcome is not distinct from 'failed')),
+  check ((failure is not null) = (outcome is not distinct from 'failed' or outcome is not distinct from 'unknown')),
   check (restored_from is null or restored_from < number),
   unique (tenant_id, run_id, slot, number)
 );
@@ -99,8 +110,13 @@ alter table public.email_builds
     check (restore_email is null or (jsonb_typeof(restore_email) = 'object' and octet_length(restore_email::text) <= 300000)),
   add column restore_campaign_id text
     check (restore_campaign_id is null or length(restore_campaign_id) between 1 and 200),
+  -- What the push row said the draft showed when the restore began (null:
+  -- no push row): unchanged when its push ends means nothing was written.
+  add column restore_push jsonb
+    check (restore_push is null or (jsonb_typeof(restore_push) = 'object' and octet_length(restore_push::text) <= 2000)),
   add constraint email_builds_restore_parts
-    check ((restore_version is null) = (restore_email is null) and (restore_version is null) = (restore_campaign_id is null)),
+    check ((restore_version is null) = (restore_email is null) and (restore_version is null) = (restore_campaign_id is null)
+      and (restore_version is not null or restore_push is null)),
   add constraint email_builds_restore_push
     check (restore_version is null or (state = 'push_queued' and step = 'push'));
 
@@ -109,7 +125,8 @@ create or replace function private.email_versions_kept()
 returns integer language sql immutable set search_path = '' as $$ select 20 $$;
 
 -- The current version's number of a planned email: the newest that is not
--- a pending or failed restore (null: none).
+-- a pending or failed restore (null: none). It may be an unknown restore:
+-- then nothing is confirmed (`restore_email_version` lets any be used).
 create or replace function private.current_email_version(t uuid, run uuid, s integer)
 returns integer language sql stable security definer set search_path = '' as $$
   select max(v.number) from public.email_versions v
@@ -240,30 +257,45 @@ begin
   return case when give_up then 'failed' else 'retry' end;
 end $$;
 
--- A restore's push ends: reached the draft (applied), or did not (failed,
--- for good: the build goes back to the draft it was, with its email and
--- campaign id). Every way a push ends goes through here: the push's
--- finish, its refusal or last failure, and a claim that gives it up (its
--- day passed, its lease ran out three times).
+-- A restore's push ends: reached the draft (applied), or did not, for
+-- good. The push row says whether anything was written: as the restore
+-- found it (written, target, shown), nothing reached the draft and the
+-- build goes back to it (failed); changed, part of it may be in Klaviyo,
+-- so the build stays a draft of that campaign with the restored email and
+-- nothing is claimed (unknown). Every way a push ends goes through here:
+-- the push's finish, its refusal or last failure, and a claim that gives
+-- it up (its day passed, its lease ran out three times).
 create or replace function private.email_restore_ended()
 returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  now_push jsonb;
 begin
   if new.state = 'drafted' then
     update public.email_versions set outcome = 'applied' where id = old.restore_version;
-    -- The results row describes the email now in the draft.
+    -- The results row describes the email now in the draft, and the
+    -- designs the push left (a sample draft holds design A only).
     update public.klaviyo_email_results r
-      set planned = (r.planned - 'subject' - 'code' - 'approach' - 'plannedSendAt')
+      set planned = (r.planned - 'subject' - 'code' - 'approach' - 'plannedSendAt' - 'designs')
         || jsonb_strip_nulls(jsonb_build_object('subject', new.email->'subject', 'code', new.email->'code',
-          'approach', new.email->'approach', 'plannedSendAt', new.email->'plannedSendAt')),
+          'approach', new.email->'approach', 'plannedSendAt', new.email->'plannedSendAt',
+          'designs', case when new.sample_draft then '"A"'::jsonb
+            else (select to_jsonb(p.designs) from public.klaviyo_draft_pushes p
+                  where p.tenant_id = new.tenant_id and p.push_key = new.push_key) end)),
         updated_at = now()
-      from public.email_builds e
-      where r.tenant_id = new.tenant_id and e.tenant_id = r.tenant_id and e.id = r.build_id
-        and e.push_key = new.push_key;
+      where r.tenant_id = new.tenant_id and r.build_id = new.id;
   else
-    update public.email_versions set outcome = 'failed', failure = coalesce(new.error_code, 'push_failed')
-      where id = old.restore_version;
+    select jsonb_build_object('written', p.written, 'target', p.target, 'shown', p.shown) into now_push
+      from public.klaviyo_draft_pushes p where p.tenant_id = new.tenant_id and p.push_key = new.push_key;
+    if now_push is not distinct from old.restore_push then
+      update public.email_versions set outcome = 'failed', failure = coalesce(new.error_code, 'push_failed')
+        where id = old.restore_version;
+      new.email := old.restore_email;
+    else
+      -- The restored email stays: it is what may be there; nothing is claimed.
+      update public.email_versions set outcome = 'unknown', failure = coalesce(new.error_code, 'push_failed')
+        where id = old.restore_version;
+    end if;
     new.state := 'drafted';
-    new.email := old.restore_email;
     new.klaviyo_campaign_id := old.restore_campaign_id;
     new.step := 'push';
     new.error_code := null;
@@ -276,6 +308,7 @@ begin
   new.restore_version := null;
   new.restore_email := null;
   new.restore_campaign_id := null;
+  new.restore_push := null;
   return new;
 end $$;
 create trigger email_builds_restore_ended before update of state on public.email_builds
@@ -294,6 +327,7 @@ declare
   v public.email_versions;
   newest integer;
   cur integer;
+  cv public.email_versions;
   zone text;
   day date;
   seen text[];
@@ -332,9 +366,12 @@ begin
   if not found then
     raise exception 'This version is not kept' using errcode = '22023', hint = 'version_unknown';
   end if;
-  -- The current version, or one the draft already holds word for word.
+  -- The current version, or one it holds word for word (nothing is current
+  -- while an unknown restore is the newest settled one).
   cur := private.current_email_version(t, b.run_id, b.slot);
-  if v.number = cur or v.email = b.email then
+  select * into cv from public.email_versions x
+    where x.tenant_id = t and x.run_id = b.run_id and x.slot = b.slot and x.number = cur;
+  if cv.outcome is distinct from 'unknown' and (v.number = cur or v.email = cv.email) then
     raise exception 'This is the current version' using errcode = '22023', hint = 'version_current';
   end if;
   -- PICK-99: what the owner did with this planned email's draft in Klaviyo
@@ -375,6 +412,8 @@ begin
   update public.email_builds e
     set email = v.email, step = 'push', state = 'push_queued', klaviyo_campaign_id = null,
         restore_version = made, restore_email = b.email, restore_campaign_id = b.klaviyo_campaign_id,
+        restore_push = (select jsonb_build_object('written', p.written, 'target', p.target, 'shown', p.shown)
+          from public.klaviyo_draft_pushes p where p.tenant_id = t and p.push_key = b.push_key),
         attempts = 0, waits = 0, error_code = null, not_before = null, lease_token = null, lease_until = null,
         updated_at = now()
     where e.id = b.id;

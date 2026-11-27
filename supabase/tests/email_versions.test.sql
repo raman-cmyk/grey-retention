@@ -1,5 +1,5 @@
 begin;
-select plan(89);
+select plan(114);
 
 -- PICK-106: every email GROS makes for a planned email is kept as a
 -- version, and the owner brings an older one back. Workspace 101: owner
@@ -236,6 +236,10 @@ select is((select count(*)::integer from public.email_versions where how = 'rest
 select is((select state from public.email_builds where id = (select id from cur)), 'drafted', 'nor changed the draft');
 
 -- 8. "Use this version": version 1 comes back as version 3, pending.
+-- The draft's own results row (the sync's), as first read.
+insert into public.klaviyo_email_results (tenant_id, build_id, run_id, slot, sample, campaign_id, message_id, planned)
+  select '00000000-0000-4000-8000-000000000101', id, '00000000-0000-4000-8000-00000000e106', 0, false, 'CmpV01', 'MsgV01',
+    '{"date":"2026-12-01","subject":"Second try","code":"OLD10","designs":"both"}' from cur;
 create temp table lease (token uuid);
 grant select, insert, delete on lease to service_role;
 select pg_temp.as_member('00000000-0000-4000-8000-000000000001');
@@ -272,8 +276,11 @@ select is((select outcome from public.email_versions where run_id = '00000000-00
 select is(private.current_email_version('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-00000000e106', 0), 3,
   'and current');
 select is((select (planned->>'subject') || '|' || coalesce(planned->>'code', '-') || '|' || (planned->>'date')
-  from public.klaviyo_email_results where build_id = '00000000-0000-4000-8000-00000000b161'), 'First try|-|2026-12-01',
-  'the results row now describes the version sent (no code any more), its other facts kept');
+    || '|' || coalesce(planned->>'designs', '-')
+  from public.klaviyo_email_results where build_id = (select id from cur)), 'First try|-|2026-12-01|-',
+  'the draft''s results row now describes the version sent (no code any more, the designs as the push row says: none), its other facts kept');
+select is((select (planned->>'subject') || '|' || (planned->>'code') from public.klaviyo_email_results
+  where build_id = '00000000-0000-4000-8000-00000000b161'), 'Second try|OLD10', 'another build''s results row is not touched');
 -- Version 1 again (the draft holds it word for word): nothing to do.
 select pg_temp.as_member('00000000-0000-4000-8000-000000000001');
 set local role authenticated;
@@ -346,6 +353,93 @@ select is((select state || '|' || klaviyo_campaign_id from public.email_builds w
 select is((select outcome || '|' || failure from public.email_versions where run_id = '00000000-0000-4000-8000-00000000e106'
   and slot = 0 and number = 6), 'failed|step_timed_out', 'the restore says why');
 
+-- 9b. What the push row says decides: nothing written, the draft is back;
+-- something written, nothing is claimed. No restore ever adds a drafts notice.
+create temp table notices as select count(*)::integer n from public.notification_events
+  where tenant_id = '00000000-0000-4000-8000-000000000101';
+insert into public.klaviyo_draft_pushes (tenant_id, push_key, state, campaign_id, message_id, designs, written) values
+  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-00000000c161', 'drafted', 'CmpV01', 'MsgV01', 'both',
+   repeat('a', 16));
+select pg_temp.as_member('00000000-0000-4000-8000-000000000001');
+set local role authenticated;
+select is(public.restore_email_version('00000000-0000-4000-8000-000000000101', (select id from cur), 2, 6), 7,
+  'version 2 again, with a push row in Klaviyo');
+reset role;
+select is((select restore_push->>'written' from public.email_builds where id = (select id from cur)), repeat('a', 16),
+  'the restore keeps what the push row said');
+select pg_temp.as_job();
+set local role service_role;
+delete from lease;
+insert into lease select c.lease_token from public.claim_email_build((select id from cur)) c;
+select is(public.fail_email_step((select id from cur), (select token from lease), 'klaviyo_refused_audience_changed', true),
+  'failed', 'refused before anything was written');
+reset role;
+select is((select state || '|' || (email->>'html') || '|' || klaviyo_campaign_id from public.email_builds
+  where id = (select id from cur)), 'drafted|<p>one</p>|CmpV01', 'the push row is unchanged: the draft is back');
+select is((select outcome from public.email_versions where run_id = '00000000-0000-4000-8000-00000000e106' and slot = 0
+  and number = 7), 'failed', 'and the restore not used');
+-- Part of it written (the push set its target, then stopped).
+select pg_temp.as_member('00000000-0000-4000-8000-000000000001');
+set local role authenticated;
+select is(public.restore_email_version('00000000-0000-4000-8000-000000000101', (select id from cur), 2, 7), 8, 'tried again');
+reset role;
+select pg_temp.as_job();
+set local role service_role;
+delete from lease;
+insert into lease select c.lease_token from public.claim_email_build((select id from cur)) c;
+reset role;
+update public.klaviyo_draft_pushes set target = repeat('b', 16)
+  where push_key = '00000000-0000-4000-8000-00000000c161';
+select pg_temp.as_job();
+set local role service_role;
+select is(public.fail_email_step((select id from cur), (select token from lease), 'klaviyo_rejected', true), 'failed',
+  'it stops part way');
+reset role;
+select is((select state || '|' || (email->>'html') || '|' || klaviyo_campaign_id || '|' || coalesce(error_code, '-')
+  from public.email_builds where id = (select id from cur)), 'drafted|<p>two</p>|CmpV01|-',
+  'a draft of the same campaign (the sync checks it on), the old email not claimed');
+select is((select outcome || '|' || failure from public.email_versions where run_id = '00000000-0000-4000-8000-00000000e106'
+  and slot = 0 and number = 8), 'unknown|klaviyo_rejected', 'the restore is not confirmed');
+select is(private.current_email_version('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-00000000e106', 0), 8,
+  'it is the newest settled version, nothing confirmed');
+select is((select count(*)::integer from public.email_builds where run_id = '00000000-0000-4000-8000-00000000e106' and slot = 0
+  and state = 'failed'), 1, 'still no failed try counted');
+-- The same version again is allowed (nothing is confirmed), and gets there.
+select pg_temp.as_member('00000000-0000-4000-8000-000000000001');
+set local role authenticated;
+select is(public.restore_email_version('00000000-0000-4000-8000-000000000101', (select id from cur), 2, 8), 9,
+  'the unconfirmed version can be put on the draft again');
+reset role;
+select pg_temp.as_job();
+set local role service_role;
+delete from lease;
+insert into lease select c.lease_token from public.claim_email_build((select id from cur)) c;
+select lives_ok($$select public.finish_email_push((select id from cur), (select token from lease), 'CmpV01', false)$$,
+  'this time it gets there');
+reset role;
+select is((select (planned->>'subject') || '|' || (planned->>'designs') from public.klaviyo_email_results
+  where build_id = (select id from cur)), 'Second try|both',
+  'its results row: the restored subject, and the designs the push row says');
+-- A claim that gives the push up because its day passed keeps the draft.
+select pg_temp.as_member('00000000-0000-4000-8000-000000000001');
+set local role authenticated;
+select is(public.restore_email_version('00000000-0000-4000-8000-000000000101', (select id from cur), 1, 9), 10, 'version 1');
+reset role;
+update public.strategy_runs set plan = jsonb_set(plan, '{slots,0,date}', to_jsonb(to_char(current_date - 1, 'YYYY-MM-DD')))
+  where id = '00000000-0000-4000-8000-00000000e106';
+select pg_temp.as_job();
+set local role service_role;
+select is((select count(*)::integer from public.claim_email_build((select id from cur))), 0, 'its day passed: given up');
+reset role;
+update public.strategy_runs set plan = jsonb_set(plan, '{slots,0,date}', to_jsonb(to_char(current_date + 3, 'YYYY-MM-DD')))
+  where id = '00000000-0000-4000-8000-00000000e106';
+select is((select state || '|' || (email->>'html') from public.email_builds where id = (select id from cur)),
+  'drafted|<p>two</p>', 'the draft keeps version 9');
+select is((select outcome || '|' || failure from public.email_versions where run_id = '00000000-0000-4000-8000-00000000e106'
+  and slot = 0 and number = 10), 'failed|day_passed', 'the restore says why');
+select is((select count(*)::integer from public.notification_events where tenant_id = '00000000-0000-4000-8000-000000000101'),
+  (select n from notices), 'no restore, applied or not, added a drafts notice');
+
 -- 10. A day that has passed is refused.
 insert into public.email_builds (id, tenant_id, run_id, slot, push_key, state, step, email, klaviyo_campaign_id, created_by) values
   ('00000000-0000-4000-8000-00000000b165', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-00000000e106', 2,
@@ -394,10 +488,38 @@ select is((select count(*)::integer || ':' || min(number) || '-' || max(number) 
   where run_id = '00000000-0000-4000-8000-00000000e106' and slot = 3), '20:2-24', 'the current one and the 19 newest are kept');
 select is((select string_agg(number::text, ',' order by number) from public.email_versions
   where run_id = '00000000-0000-4000-8000-00000000e106' and slot = 3 and number < 7), '2,6', 'the oldest others went');
-select is(pg_temp.versions('00000000-0000-4000-8000-00000000e106', 0), '1:scratch,2:try_again,3:restore<1,4:restore<2,5:restore<2,6:restore<2',
+select is(pg_temp.versions('00000000-0000-4000-8000-00000000e106', 0), '1:scratch,2:try_again,3:restore<1,4:restore<2,5:restore<2,6:restore<2,7:restore<2,8:restore<2,9:restore<2,10:restore<1',
   'another email''s versions are untouched');
+-- A sample draft's restore: the results row says design A.
+update public.email_builds set sample_draft = true where id = '00000000-0000-4000-8000-00000000b166';
+insert into public.klaviyo_email_results (tenant_id, build_id, run_id, slot, sample, campaign_id, message_id, planned) values
+  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-00000000b166', '00000000-0000-4000-8000-00000000e106', 3,
+   true, 'CmpV03', null, '{"date":"2026-12-02","designs":"both"}');
+select pg_temp.as_member('00000000-0000-4000-8000-000000000001');
+set local role authenticated;
+select is(public.restore_email_version('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-00000000b166', 24, 24),
+  25, 'a sample draft''s restore');
+reset role;
+select pg_temp.as_job();
+set local role service_role;
+delete from lease;
+insert into lease select c.lease_token from public.claim_email_build('00000000-0000-4000-8000-00000000b166') c;
+select lives_ok($$select public.finish_email_push('00000000-0000-4000-8000-00000000b166', (select token from lease),
+  'sample-draft-x', true)$$, 'the fake pusher keeps it a sample draft');
+reset role;
+select is((select (planned->>'subject') || '|' || (planned->>'designs') from public.klaviyo_email_results
+  where build_id = '00000000-0000-4000-8000-00000000b166'), 'A|A', 'its results row: the restored subject, design A');
 
--- 12. Who else reads and finishes.
+-- 12. Who else reads and finishes; a push that is no restore still fails.
+select pg_temp.as_job();
+set local role service_role;
+delete from lease;
+insert into lease select c.lease_token from public.claim_email_build('00000000-0000-4000-8000-00000000b261') c;
+select is(public.fail_email_step('00000000-0000-4000-8000-00000000b261', (select token from lease), 'klaviyo_rejected', true),
+  'failed', 'a push that is no restore fails for good');
+reset role;
+select is((select state || '|' || error_code from public.email_builds where id = '00000000-0000-4000-8000-00000000b261'),
+  'failed|klaviyo_rejected', 'and ends failed, as before');
 select pg_temp.as_member('00000000-0000-4000-8000-000000000002');
 set local role authenticated;
 select ok((select count(*)::integer from public.email_versions) > 20, 'a platform operator reads them');

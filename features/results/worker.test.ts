@@ -600,10 +600,10 @@ describe('the hourly results run', () => {
   })
 
   it('never takes a restore’s own write, mid-push, for the owner’s edit (PICK-106)', async () => {
-    // The push is taking the draft to new words (its target is set): what
-    // Klaviyo shows may be ours, so nothing is marked changed.
+    // The push is taking the draft to new words (its target is set) and the
+    // draft shows them: they may be ours, so nothing is marked changed.
     for (const options of [
-      { written: { b1: 'f'.repeat(16) }, target: { b1: 'e'.repeat(16) } },
+      { written: { b1: 'f'.repeat(16) }, target: { b1: written() } },
       // The push ended while we looked: its record is not what we read.
       { written: { b1: 'f'.repeat(16) }, writtenAfter: { b1: written() } }
     ]) {
@@ -617,6 +617,19 @@ describe('the hourly results run', () => {
     const a = account('Draft')
     const { db, saved } = database([[row()]], {
       written: { b1: 'f'.repeat(16) }
+    })
+    await run(db, live(recordedResultsTransport({ rest: a.transport })))
+    expect(saved[0]!.patch).toMatchObject({ changed: true })
+  })
+
+  it('still sees the owner’s edit after a restore stopped part way (PICK-106)', async () => {
+    // The restore's push left its target (other words than the draft
+    // shows) and our last write; the owner then changed the words in
+    // Klaviyo: neither ours, so it is his edit, seen at once.
+    const a = account('Draft')
+    const { db, saved } = database([[row()]], {
+      written: { b1: 'f'.repeat(16) },
+      target: { b1: 'e'.repeat(16) }
     })
     await run(db, live(recordedResultsTransport({ rest: a.transport })))
     expect(saved[0]!.patch).toMatchObject({ changed: true })

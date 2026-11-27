@@ -3316,6 +3316,7 @@ export type Database = {
           reference_id: string | null
           restore_campaign_id: string | null
           restore_email: Json | null
+          restore_push: Json | null
           restore_version: string | null
           run_id: string
           sample_draft: boolean
@@ -3344,6 +3345,7 @@ export type Database = {
           reference_id?: string | null
           restore_campaign_id?: string | null
           restore_email?: Json | null
+          restore_push?: Json | null
           restore_version?: string | null
           run_id: string
           sample_draft?: boolean
@@ -3372,6 +3374,7 @@ export type Database = {
           reference_id?: string | null
           restore_campaign_id?: string | null
           restore_email?: Json | null
+          restore_push?: Json | null
           restore_version?: string | null
           run_id?: string
           sample_draft?: boolean

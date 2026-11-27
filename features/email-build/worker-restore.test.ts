@@ -10,7 +10,7 @@ import {
 } from '@/lib/providers/klaviyo-draft'
 import { buildEmail, type BuiltEmail, type PlannedEmail } from './build'
 import { sampleOffers, sampleStoreSource } from './ports'
-import { realDraftOf, runEmailBuilds } from './worker'
+import { pushFactsOf, runEmailBuilds } from './worker'
 
 /**
  * PICK-106: a restored email goes through the worker's push step like any
@@ -47,7 +47,7 @@ const built = async (): Promise<BuiltEmail> => {
 }
 
 type Call = { fn: string; args: Record<string, unknown> }
-/** One push-queued build to claim; the tables `realDraftOf` reads. */
+/** One push-queued build to claim; the tables `pushFactsOf` reads. */
 function fakeDb(
   email: BuiltEmail,
   tables: {
@@ -99,11 +99,16 @@ function fakeDb(
   }
   return { db: { rpc, from } as never, calls }
 }
-const run = (db: never, pusher: DraftPusher) =>
+const run = (
+  db: never,
+  pusher: DraftPusher,
+  restoreCheck: () => Promise<string | null> = async () => null
+) =>
   runEmailBuilds(db, {
     pusher,
     fallbacks: memoryFallbackLog(),
-    klaviyoState: async () => null
+    klaviyoState: async () => null,
+    restoreCheck
   })
 
 describe('a restored email’s push (PICK-106)', () => {
@@ -144,7 +149,7 @@ describe('a restored email’s push (PICK-106)', () => {
       // A restore of a real draft.
       { email_builds: [{ sample_draft: false, restore_version: 'v3' }] },
       // A key the live pusher wrote (any build of the planned email).
-      { klaviyo_draft_pushes: [{ push_key: 'key-1' }] }
+      { klaviyo_draft_pushes: [{ campaign_id: 'Cmp1' }] }
     ]) {
       const { db, calls } = fakeDb(email, tables)
       const fake = fakeDraftPusher()
@@ -177,9 +182,51 @@ describe('a restored email’s push (PICK-106)', () => {
     }
   })
 
+  it('checks a restore again before it is pushed, and leaves the draft on a refusal', async () => {
+    const email = await built()
+    const { db, calls } = fakeDb(email, {
+      email_builds: [{ sample_draft: false, restore_version: 'v3' }]
+    })
+    const pusher = { createDraft: vi.fn() }
+    const check = vi.fn(
+      async () => 'This version no longer passes the email checks: x'
+    )
+    await run(db, pusher, check)
+    expect(check).toHaveBeenCalledWith(
+      expect.objectContaining({ tenant_id: tenant, push_key: 'key-1' }),
+      expect.objectContaining({ subject: email.subject })
+    )
+    expect(pusher.createDraft).not.toHaveBeenCalled()
+    expect(calls.find((c) => c.fn === 'fail_email_step')?.args).toMatchObject({
+      code: 'restore_unsafe',
+      final: true
+    })
+    // Not a restore: not checked again.
+    const plain = fakeDb(email)
+    const other = vi.fn(async () => 'x')
+    await run(
+      plain.db,
+      {
+        createDraft: async () => ({ ok: true, campaignId: 'C', sample: false })
+      },
+      other
+    )
+    expect(other).not.toHaveBeenCalled()
+  })
+
   it('reads whether Klaviyo holds it in the build’s own workspace', async () => {
     const { db, calls } = fakeDb(await built())
-    expect(await realDraftOf(db)(tenant, 'key-1', 'build-1')).toBe(false)
+    expect(await pushFactsOf(db)(tenant, 'key-1', 'build-1')).toEqual({
+      realDraft: false,
+      restore: false
+    })
+    // A push row that never made a campaign: Klaviyo holds no draft.
+    const none = fakeDb(await built(), {
+      klaviyo_draft_pushes: [{ campaign_id: null }]
+    })
+    expect(
+      (await pushFactsOf(none.db)(tenant, 'key-1', 'build-1')).realDraft
+    ).toBe(false)
     expect(calls.map((c) => [c.fn, c.args.args])).toEqual([
       ['klaviyo_draft_pushes.eq', ['tenant_id', tenant]],
       ['klaviyo_draft_pushes.eq', ['push_key', 'key-1']],

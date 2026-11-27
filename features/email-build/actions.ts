@@ -518,7 +518,7 @@ export async function restoreEmailVersion(
       .maybeSingle(),
     db
       .from('klaviyo_draft_pushes')
-      .select('push_key')
+      .select('campaign_id')
       .eq('tenant_id', context.tenantId)
       .eq('push_key', build.data.push_key)
   ])
@@ -537,7 +537,7 @@ export async function restoreEmailVersion(
   const route = restoreRoute({
     route: pushRoute(process.env, email.sample),
     sampleDraft: build.data.sample_draft,
-    pushRow: (pushes.data ?? []).length > 0
+    pushRow: (pushes.data ?? []).some((p) => p.campaign_id !== null)
   })
   if (route === 'off') return { error: restoreRouteWords.off }
   const refused = await restoreRefusal(service, {

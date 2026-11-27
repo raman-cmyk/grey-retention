@@ -16,7 +16,7 @@ import type {
   KlaviyoLink,
   VersionsPanel
 } from './email-screen'
-import { restoreRouteWords, versionsKept } from './versions'
+import { restoreRouteWords, unconfirmedWords, versionsKept } from './versions'
 import { EmailViews } from './email-views'
 
 /**
@@ -330,6 +330,9 @@ function Versions({ panel, owner }: { panel: VersionsPanel; owner: boolean }) {
         <h2 id="versions-title" className="type-heading">
           Versions
         </h2>
+        {panel.unconfirmed && (
+          <p className="type-body mt-[var(--space-5)]">{unconfirmedWords}</p>
+        )}
         <ul className="mt-[var(--space-5)] flex flex-col gap-[var(--space-2)]">
           {panel.lines.map((line) => (
             <li key={line.number}>
@@ -351,7 +354,7 @@ function Versions({ panel, owner }: { panel: VersionsPanel; owner: boolean }) {
                 </span>
                 {line.failure && (
                   <span className="type-caption text-[var(--stone)]">
-                    {`Your draft kept the version it had. ${line.failure}`}
+                    {line.failure}
                   </span>
                 )}
               </Link>

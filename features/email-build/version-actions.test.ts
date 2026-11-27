@@ -103,7 +103,7 @@ beforeEach(() => {
     email_builds: draft(),
     email_versions: { data: { email: email() }, error: null },
     strategy_runs: { data: { start_on: '2026-11-18' }, error: null },
-    klaviyo_draft_pushes: { data: [{ push_key: key }], error: null }
+    klaviyo_draft_pushes: { data: [{ campaign_id: 'CmpV01' }], error: null }
   }
   pushers.draftPusherFor.mockReturnValue({ createDraft: vi.fn() })
   env({
@@ -206,7 +206,8 @@ describe('Use this version (PICK-106)', () => {
 
   it('puts back a sample draft with the switches off, and a sample store’s email', async () => {
     env({ KLAVIYO_DRAFT_PUSH: undefined, KLAVIYO_WRITE_LOCK: undefined })
-    rows.klaviyo_draft_pushes = { data: [], error: null }
+    // A push row that never made a campaign: Klaviyo holds no draft.
+    rows.klaviyo_draft_pushes = { data: [{ campaign_id: null }], error: null }
     rows.email_builds = draft({ sample_draft: true })
     expect(await restore()).toBeUndefined()
     rows.email_versions = {

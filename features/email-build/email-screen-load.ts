@@ -228,7 +228,7 @@ async function versionsPanel(
           .maybeSingle(),
         db
           .from('klaviyo_draft_pushes')
-          .select('push_key')
+          .select('campaign_id')
           .eq('tenant_id', tenantId)
           .eq('push_key', row.push_key)
       ])
@@ -247,7 +247,10 @@ async function versionsPanel(
       route: pushRoute(env, sampleStore),
       sampleDraft: row.sample_draft,
       // Unread: as if Klaviyo holds it (never offered while it may).
-      pushRow: !pushes || !!pushes.error || (pushes.data ?? []).length > 0
+      pushRow:
+        !pushes ||
+        !!pushes.error ||
+        (pushes.data ?? []).some((p) => p.campaign_id !== null)
     })
   }
 }

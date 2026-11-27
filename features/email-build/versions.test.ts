@@ -146,6 +146,58 @@ describe('an email’s versions (PICK-106)', () => {
     expect(view?.lines[1]?.failure).toMatch(/no longer a draft in Klaviyo/)
   })
 
+  it('confirms nothing when a restore stopped part way, and lets any version be used', () => {
+    const view = versionsView(
+      [
+        row(1),
+        row(2, { how: 'try_again' }),
+        row(3, {
+          how: 'restore',
+          restoredFrom: 1,
+          outcome: 'unknown',
+          failure: 'step_timed_out'
+        }),
+        row(4, {
+          how: 'restore',
+          restoredFrom: 2,
+          outcome: 'failed',
+          failure: 'klaviyo_refused_not_a_draft'
+        })
+      ],
+      { timezone: 'UTC', now }
+    )
+    expect(view?.current).toBeNull()
+    expect(view?.unconfirmed).toBe(true)
+    expect(view?.lines.map((l) => l.current)).toEqual([
+      false,
+      false,
+      false,
+      false
+    ])
+    expect(view?.lines[1]).toMatchObject({
+      state: 'unknown',
+      shown: true,
+      label:
+        'Version 3 · Today 10:40 · Version 1 brought back · Not confirmed in Klaviyo',
+      failure:
+        'We could not confirm what is in Klaviyo; open it there to check.'
+    })
+    // A later restore that reached the draft confirms it again.
+    const later = versionsView(
+      [
+        row(3, {
+          how: 'restore',
+          restoredFrom: 1,
+          outcome: 'unknown',
+          failure: 'x_y'
+        }),
+        row(5, { how: 'restore', restoredFrom: 1, outcome: 'applied' })
+      ],
+      { timezone: 'UTC', now }
+    )
+    expect(later).toMatchObject({ current: 5, unconfirmed: false })
+  })
+
   it('routes a restore exactly as the push would', () => {
     const route = (
       r: 'fake' | 'live' | 'locked',

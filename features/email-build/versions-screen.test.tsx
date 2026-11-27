@@ -212,6 +212,37 @@ describe('the versions on an email’s page (PICK-106)', () => {
     expect(links[2]).toHaveTextContent(/· Current/)
   })
 
+  it('says to check Klaviyo when a restore stopped part way, and offers it again', () => {
+    const more: VersionRow[] = [
+      {
+        number: 3,
+        how: 'restore',
+        restoredFrom: 1,
+        outcome: 'unknown',
+        failure: 'klaviyo_unavailable',
+        subject: 'Cedar, for cold nights',
+        createdAt: '2026-11-27T10:50:00Z'
+      },
+      ...rows
+    ]
+    render(
+      <EmailScreen
+        view={view()}
+        versions={panel({ rows: more, shown: 3 })}
+        owner
+      />
+    )
+    expect(
+      screen.getAllByText(
+        'We could not confirm what is in Klaviyo; open it there to check.'
+      ).length
+    ).toBeGreaterThan(0)
+    expect(screen.queryByText(/· Current/)).toBeNull()
+    expect(
+      screen.getByRole('button', { name: 'Use this version' })
+    ).toBeInTheDocument()
+  })
+
   it('says when the version a restore brought back is no longer kept', () => {
     const view = versionsView(
       [
@@ -388,7 +419,9 @@ describe('loading the versions (PICK-106)', () => {
           { ...list },
           { data: { email: email({ subject: 'Old' }) }, error: null }
         ],
-        klaviyo_draft_pushes: [{ data: [{ push_key: 'k' }], error: null }]
+        klaviyo_draft_pushes: [
+          { data: [{ campaign_id: 'CmpV01' }], error: null }
+        ]
       })
       const out = await loadEmailScreen(db, tenant, buildId, 'UTC', shown, env)
       return { out, eqs }

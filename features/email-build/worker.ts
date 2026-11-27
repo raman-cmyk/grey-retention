@@ -18,10 +18,12 @@ import {
   builtEmail,
   codeWorksNow,
   plannedEmail,
-  type BuildAgents
+  type BuildAgents,
+  type BuiltEmail
 } from './build'
 import { buildAgentsFor, emailAgentsReady } from './agents'
 import { fittedEmail } from './reasons'
+import { restoreRefusal } from './restore-checks'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { libraryCopyOn } from './library-copy'
 import { libraryPortsFor } from './library-copy-live'
@@ -142,14 +144,29 @@ export async function runEmailBuilds(
       pushKey: string
     ) => Promise<KlaviyoRefusal | null>
     /**
-     * PICK-106: Klaviyo holds this planned email already (a push row of its
-     * key, or a restore of a real draft). Default: `realDraftOf(db)`.
+     * PICK-106: whether Klaviyo holds this planned email already (a push
+     * row of its key with a campaign, or a restore of a real draft) and
+     * whether the push is a restore. Default: `pushFactsOf(db)`.
      */
-    realDraft?: (
+    pushFacts?: (
       tenantId: string,
       pushKey: string,
       build: string
-    ) => Promise<boolean>
+    ) => Promise<PushFacts>
+    /**
+     * PICK-106: a restore's own checks, run here so no caller can skip
+     * them (`restoreRefusal`: never-overwrite, the code, the hard checks
+     * under today's rules, the owner's never-words). Null: it may go.
+     */
+    restoreCheck?: (
+      job: {
+        tenant_id: string
+        run_id: string
+        start_on: string
+        push_key: string
+      },
+      email: BuiltEmail
+    ) => Promise<string | null>
   } = {}
 ) {
   const pusher = deps.pusher ?? fakeDraftPusher()
@@ -602,18 +619,25 @@ export async function runEmailBuilds(
           lease: { build: job.id, token: job.lease_token }
         }
         // PICK-106: a planned email Klaviyo already holds (a real draft, or
-        // a key the live pusher wrote) never goes to the fake pusher, which
-        // would leave that draft as it is and call this a sample draft: the
-        // push switch was turned off. A restore goes back to its draft.
-        if (
-          pusher.fake?.(input) &&
-          (await (deps.realDraft ?? realDraftOf(db))(
-            job.tenant_id,
-            job.push_key,
-            job.id
-          ))
-        ) {
+        // a key the live pusher put in Klaviyo) never goes to the fake
+        // pusher, which would leave that draft as it is and call this a
+        // sample draft: the push switch was turned off. A restore is
+        // checked here again, whoever queued it. Either refusal comes
+        // before anything is written: a restore goes back to its draft.
+        const facts = await (deps.pushFacts ?? pushFactsOf(db))(
+          job.tenant_id,
+          job.push_key,
+          job.id
+        )
+        if (pusher.fake?.(input) && facts.realDraft) {
           await fail('push_switched_off', true)
+          continue
+        }
+        if (
+          facts.restore &&
+          (await (deps.restoreCheck ?? restoreCheckOf(db))(job, email.data))
+        ) {
+          await fail('restore_unsafe', true)
           continue
         }
         const pushed = await pusher.createDraft(input)
@@ -688,17 +712,31 @@ export async function runEmailBuilds(
   return { ran }
 }
 
+/** PICK-106: what the push step knows of a planned email's draft. */
+export type PushFacts = {
+  /** Klaviyo holds it: a push row with a campaign, or a restore of a real draft. */
+  realDraft: boolean
+  /** This push is a restore ("Use this version"). */
+  restore: boolean
+}
+
 /**
- * PICK-106: whether Klaviyo already holds this planned email: the live
- * pusher wrote a push row for its key, or the build is a restore of a real
- * draft. A read that fails throws (the push waits for its next try).
+ * PICK-106: whether Klaviyo already holds this planned email (the live
+ * pusher made a campaign for its key, or the build is a restore of a real
+ * draft), and whether the push is a restore. A read that fails throws (the
+ * push waits for its next try).
  */
-export const realDraftOf =
-  (db: Db) => async (tenantId: string, pushKey: string, build: string) => {
+export const pushFactsOf =
+  (db: Db) =>
+  async (
+    tenantId: string,
+    pushKey: string,
+    build: string
+  ): Promise<PushFacts> => {
     const [pushes, builds] = await Promise.all([
       db
         .from('klaviyo_draft_pushes')
-        .select('push_key')
+        .select('campaign_id')
         .eq('tenant_id', tenantId)
         .eq('push_key', pushKey),
       db
@@ -711,11 +749,36 @@ export const realDraftOf =
     if (builds.error) throw builds.error
     const b = (builds.data ?? [])[0] as
       { sample_draft: boolean; restore_version: string | null } | undefined
-    return (
-      (pushes.data ?? []).length > 0 ||
-      (!!b && b.restore_version !== null && !b.sample_draft)
-    )
+    const restore = !!b && b.restore_version !== null
+    return {
+      realDraft:
+        (pushes.data ?? []).some(
+          (p) => (p as { campaign_id: string | null }).campaign_id !== null
+        ) ||
+        (restore && !b!.sample_draft),
+      restore
+    }
   }
+
+/** PICK-106: a restore's checks, with the worker's own client and sources. */
+export const restoreCheckOf =
+  (db: Db) =>
+  (
+    job: {
+      tenant_id: string
+      run_id: string
+      start_on: string
+      push_key: string
+    },
+    email: BuiltEmail
+  ) =>
+    restoreRefusal(db, {
+      tenantId: job.tenant_id,
+      runId: job.run_id,
+      startOn: job.start_on,
+      pushKey: job.push_key,
+      email
+    })
 
 type ReferenceLoader = (
   tenantId: string,

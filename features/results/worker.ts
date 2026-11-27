@@ -2,7 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
-import { fingerprints } from '@/features/klaviyo-push/fingerprints'
+import { fingerprints, seen } from '@/features/klaviyo-push/fingerprints'
 import {
   designEdited,
   type DesignMismatch
@@ -232,12 +232,18 @@ async function checkDesign(
   }
 }
 
+/** A push row's fingerprint list as a set (PSH-001). */
+const setOf = (s: string | null) => new Set(s ? s.split(',') : [])
+
 /**
- * PICK-99, PICK-106: the draft's subject or preview differs from what our
- * last push wrote. Unknown (false) while a push is under way (its `target`
- * set, as the pusher's own check reads it) or when the push's record
- * changed while we looked (a push ran meanwhile): a restore's own write is
- * never taken for the owner's edit, which would stay seen for good.
+ * PICK-99, PICK-106: the draft's subject or preview was changed outside the
+ * app, by the pusher's own rule (PSH-001): a variation showing a fingerprint
+ * that is neither what our last push wrote nor where a push under way (or
+ * one that stopped part way) was taking it is a certain edit; with no push
+ * under way, anything but exactly what we wrote is too. A draft that shows
+ * only what we wrote or were writing is not (a restore's own write is never
+ * taken for the owner's edit, which would stay seen for good), nor one whose
+ * push record changed while we looked (a push ran meanwhile).
  */
 async function wordsEdited(
   db: Db,
@@ -245,8 +251,14 @@ async function wordsEdited(
   draft: DraftRead | null,
   ctx: Context
 ): Promise<boolean> {
-  if (!draft || ctx.written === null || ctx.target !== null) return false
-  if (fingerprints(draft.variations) === ctx.written) return false
+  if (!draft || (ctx.written === null && ctx.target === null)) return false
+  const allowed = new Set([...setOf(ctx.written), ...setOf(ctx.target)])
+  const changed =
+    draft.variations.some((v) => !allowed.has(seen(v))) ||
+    (ctx.target === null &&
+      ctx.written !== null &&
+      fingerprints(draft.variations) !== ctx.written)
+  if (!changed) return false
   if (!ctx.pushKey) return true
   const again = await db
     .from('klaviyo_draft_pushes')
@@ -258,7 +270,7 @@ async function wordsEdited(
     !again.error &&
     !!again.data &&
     again.data.written === ctx.written &&
-    again.data.target === null
+    again.data.target === ctx.target
   )
 }
 

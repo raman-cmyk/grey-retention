@@ -30,7 +30,7 @@ export type VersionRow = {
   number: number
   how: string
   restoredFrom: number | null
-  /** A restore's push: pending, applied or failed (null: made by GROS). */
+  /** A restore's push: pending, applied, failed or unknown (null: made by GROS). */
   outcome?: string | null
   /** A failed restore's code (`buildReason` words). */
   failure?: string | null
@@ -43,13 +43,19 @@ export type VersionLine = {
   number: number
   label: string
   subject: string
-  /** What the email is now: the newest not pending or failed restore. */
+  /**
+   * What the email is now: the newest not pending or failed restore, unless
+   * that one is an unknown restore (then none is).
+   */
   current: boolean
   /** The one whose preview is shown. */
   shown: boolean
-  /** A restore still being put on the draft, or one that did not get there (and why). */
-  state: 'pending' | 'failed' | null
-  /** Why a failed restore did not get there, in the owner's words. */
+  /**
+   * A restore still being put on the draft, one that did not get there, or
+   * one whose push stopped part way (what Klaviyo holds is not known).
+   */
+  state: 'pending' | 'failed' | 'unknown' | null
+  /** Why, in the owner's words (a failed or unknown restore). */
   failure: string | null
 }
 
@@ -57,8 +63,13 @@ export type VersionsView = {
   lines: VersionLine[]
   /** The newest version's number: the page sends it with "Use this version". */
   newest: number
-  /** The current version's number (null: none, all pending or failed). */
+  /** The current version's number (null: none confirmed). */
   current: number | null
+  /**
+   * The newest restore that ended may be in Klaviyo only in part: the
+   * page says to check the draft there.
+   */
+  unconfirmed: boolean
   /** True when as many are kept as the limit: older ones were let go. */
   full: boolean
 }
@@ -129,20 +140,27 @@ export function versionsView(
   if (!rows.length) return null
   const sorted = [...rows].sort((a, b) => b.number - a.number)
   const newest = sorted[0]!.number
-  const current =
-    sorted.find((r) => r.outcome !== 'pending' && r.outcome !== 'failed')
-      ?.number ?? null
+  const settled = sorted.find(
+    (r) => r.outcome !== 'pending' && r.outcome !== 'failed'
+  )
+  const unconfirmed = settled?.outcome === 'unknown'
+  const current = settled && !unconfirmed ? settled.number : null
   const kept = new Set(sorted.map((r) => r.number))
   const shown = kept.has(options.shown ?? -1)
     ? options.shown!
-    : (current ?? newest)
+    : (current ?? settled?.number ?? newest)
   return {
     newest,
     current,
+    unconfirmed,
     full: sorted.length >= versionsKept,
     lines: sorted.map((r) => {
       const state =
-        r.outcome === 'pending' || r.outcome === 'failed' ? r.outcome : null
+        r.outcome === 'pending' ||
+        r.outcome === 'failed' ||
+        r.outcome === 'unknown'
+          ? r.outcome
+          : null
       return {
         number: r.number,
         label: [
@@ -155,7 +173,9 @@ export function versionsView(
               ? 'Being put on your draft'
               : state === 'failed'
                 ? 'Not used'
-                : null
+                : state === 'unknown'
+                  ? 'Not confirmed in Klaviyo'
+                  : null
         ]
           .filter(Boolean)
           .join(' · '),
@@ -163,7 +183,12 @@ export function versionsView(
         current: r.number === current,
         shown: r.number === shown,
         state,
-        failure: state === 'failed' ? buildReason(r.failure ?? null) : null
+        failure:
+          state === 'failed'
+            ? `Your draft kept the version it had. ${buildReason(r.failure ?? null)}`
+            : state === 'unknown'
+              ? unconfirmedWords
+              : null
       }
     })
   }
@@ -181,6 +206,10 @@ export function usableVersion(email: unknown) {
     return null
   return parsed.data
 }
+
+/** A restore whose push stopped part way: what Klaviyo holds is not known. */
+export const unconfirmedWords =
+  'We could not confirm what is in Klaviyo; open it there to check.'
 
 /** The restore's refusals, by the command's stable hints, in plain words. */
 export const restoreWords: Record<string, string> = {

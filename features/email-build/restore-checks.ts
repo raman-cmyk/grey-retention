@@ -114,6 +114,7 @@ export async function restoreRefusal(
         email.subjectB ?? '',
         email.preheader,
         drawnText(email.html),
+        email.designA ? drawnText(email.designA) : '',
         email.text ?? ''
       ].join(' \n '),
       {
