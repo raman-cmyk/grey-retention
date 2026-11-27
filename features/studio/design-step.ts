@@ -11,6 +11,7 @@ import type { EmailViewPorts } from './email-check'
 import type { BuildRender } from './waits'
 import { isPicturePath, plannedReference } from './reference'
 import { heroPicture, studioRound, type StudioPorts } from './rounds'
+import { maxSectionFonts, sectionProblems } from './section'
 import {
   codeStoryboard,
   designable,
@@ -43,6 +44,12 @@ export type StudioStepInput = {
   /** The copy step's draft blocks, one per section. */
   blocks: readonly Block[]
   brand: BlockBrand
+  /**
+   * Pick #3: the brand's own web fonts as the Site reader kept them
+   * (`brandFonts`), heading fonts first; missing or empty, the studio
+   * designs with the brand font from the reader's system, as before.
+   */
+  fonts?: readonly WebFont[]
   /** The design step's saved work (`progress.work.design`), if any. */
   saved: unknown
   /**
@@ -123,6 +130,67 @@ const https = (url: unknown): url is string => {
   }
 }
 
+/** A web font of the brand, as `brandFonts` gives it (pick #3). */
+export type WebFont = {
+  family: string
+  roles: readonly ('heading' | 'body')[]
+  faces: readonly NonNullable<SectionBrief['fonts']>[number][]
+}
+
+/**
+ * Pick #3: the faces a designed section may load, from the brand's web
+ * fonts: its heading font and its body font (the first family with each
+ * role; else the first two), their faces taken in turn in the Site
+ * reader's order (upright and the weights the site uses first), at most
+ * `maxSectionFonts`. A face the section format would refuse (its name,
+ * its link or its weight) is left out, so a bad font never stops a
+ * section from being designed (the brief would be refused whole). Pure.
+ */
+export function studioFonts(
+  fonts: readonly WebFont[] | undefined
+): SectionBrief['fonts'] {
+  const list = fonts ?? []
+  const heading = list.find((f) => f.roles.includes('heading'))
+  const body = list.find((f) => f !== heading && f.roles.includes('body'))
+  const families = [
+    ...new Set(
+      [heading, body, ...list].filter((f): f is WebFont => f !== undefined)
+    )
+  ].slice(0, 2)
+  const usable = families.map((f) =>
+    f.faces.filter(
+      (face) =>
+        face.family === f.family &&
+        sectionProblems(
+          { id: 's1', html: '', css: '', height: 100, fonts: [face] },
+          hostOf(face.url)
+        ).length === 0
+    )
+  )
+  const out: NonNullable<SectionBrief['fonts']> = []
+  for (let i = 0; out.length < maxSectionFonts; i++) {
+    const turn = usable.flatMap((faces) => (faces[i] ? [faces[i]!] : []))
+    if (!turn.length) break
+    for (const face of turn)
+      if (out.length < maxSectionFonts)
+        out.push({
+          family: face.family,
+          url: face.url,
+          ...(face.weight !== undefined ? { weight: face.weight } : {}),
+          ...(face.italic !== undefined ? { italic: face.italic } : {})
+        })
+  }
+  return out
+}
+
+const hostOf = (url: string) => {
+  try {
+    return [new URL(url).hostname.toLowerCase()]
+  } catch {
+    return []
+  }
+}
+
 /** The brief for one designed hero, in a fixed shape (its digest is its JSON). */
 function briefFor(
   input: StudioStepInput,
@@ -179,7 +247,8 @@ function briefFor(
       dark: b.dark,
       radius: b.radius
     },
-    fonts: [],
+    // Pick #3: the brand's real web fonts, when the Site reader kept any.
+    fonts: studioFonts(input.fonts),
     ...(kept
       ? {
           reference: {

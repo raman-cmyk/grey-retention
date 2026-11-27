@@ -265,11 +265,21 @@ describe('the Settings read model', () => {
     // Every table read is for the signed-in workspace only.
     const tenants = filters.filter(([, c]) => c === 'tenant_id')
     expect(tenants.map(([t]) => t).sort()).toEqual([
+      // #33: the store's currency and this and next month's goals.
+      'catalog_status',
       'klaviyo_credentials',
+      'revenue_goals',
       'workspace_connections',
       'workspace_events'
     ])
     expect(new Set(tenants.map(([, , v]) => v))).toEqual(new Set([tenant]))
+    // No goal saved: both months, empty, at revision 0.
+    expect(
+      model.goal?.months.map((m) => [m.month, m.goal, m.revision])
+    ).toEqual([
+      [expect.stringMatching(/^\d{4}-\d{2}-01$/), null, 0],
+      [expect.stringMatching(/^\d{4}-\d{2}-01$/), null, 0]
+    ])
   })
 
   it('does not count or list invites for staff, who do not see them', async () => {

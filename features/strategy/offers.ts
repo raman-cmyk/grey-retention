@@ -22,7 +22,12 @@ import type { StoredPulse } from './stored'
  * no offers, never the sample. So the plan only picks a code the email will
  * be allowed to use, within the owner's max, on a day it still works.
  */
-export type PlanOffers = { maxDiscountPercent: number; codes: DiscountCode[] }
+export type PlanOffers = {
+  maxDiscountPercent: number
+  codes: DiscountCode[]
+  /** PLN-039b: set when the margin floor, not the owner's max, sets the cap. */
+  limitedBy?: 'margin_floor'
+}
 
 /** Nothing saved: no discount and no codes. */
 const noOffers: OfferSource = {
@@ -69,7 +74,12 @@ export async function readPlanOffers(
     throw Object.assign(new Error('offers_unreadable'), {
       code: 'offers_unreadable'
     })
-  return offersAt({ offers: async () => read }, tenantId, at)
+  const offers = await offersAt({ offers: async () => read }, tenantId, at)
+  // PLN-039b: say which setting set the cap, so a left-out code is named
+  // for the margin floor rather than the owner's own max.
+  return read.limitedBy === 'margin_floor' && read.maxDiscountPercent !== null
+    ? { ...offers, limitedBy: 'margin_floor' }
+    : offers
 }
 
 /**

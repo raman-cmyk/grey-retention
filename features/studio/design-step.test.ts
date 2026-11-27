@@ -11,7 +11,12 @@ import { sampleBlocks, sampleBrand } from '@/features/blocks/samples'
 import { renderEmail } from '@/features/blocks/render'
 import type { Block } from '@/features/blocks/catalog'
 import type { RenderedSection } from './renderer'
-import { studioDesignStep, type StudioStepPorts } from './design-step'
+import { briefHosts } from './designer'
+import {
+  studioDesignStep,
+  studioFonts,
+  type StudioStepPorts
+} from './design-step'
 import type { Storyboard } from './storyboard'
 import type { BuildRender } from './waits'
 
@@ -486,5 +491,84 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
     )
     expect(out).toEqual({ blocks, pictures: 0 })
     expect(p.storyboard).not.toHaveBeenCalled()
+  })
+})
+
+describe('the brand’s web fonts in the studio (pick #3)', () => {
+  const g = 'https://fonts.gstatic.com/s'
+  const face = (family: string, weight: number, italic = false) => ({
+    family,
+    url: `${g}/${family.toLowerCase().replace(/ /g, '')}/${weight}${italic ? 'i' : ''}.woff2`,
+    weight,
+    italic
+  })
+  const fraunces = {
+    family: 'Fraunces',
+    roles: ['heading' as const],
+    faces: [face('Fraunces', 600), face('Fraunces', 400), face('Fraunces', 700)]
+  }
+  const inter = {
+    family: 'Inter',
+    roles: ['body' as const],
+    faces: [face('Inter', 400), face('Inter', 700), face('Inter', 400, true)]
+  }
+
+  it('gives the designer the heading and body fonts’ faces in turn, at most four', () => {
+    expect(studioFonts([fraunces, inter])).toEqual([
+      face('Fraunces', 600),
+      face('Inter', 400),
+      face('Fraunces', 400),
+      face('Inter', 700)
+    ])
+    // Heading first, wherever the reader listed it; a third family waits.
+    const loaded = {
+      family: 'Caveat',
+      roles: [] as ('heading' | 'body')[],
+      faces: [face('Caveat', 400)]
+    }
+    expect(
+      studioFonts([loaded, inter, fraunces])!.map((f) => f.family)
+    ).toEqual(['Fraunces', 'Inter', 'Fraunces', 'Inter'])
+    // One family: its own faces, up to four.
+    expect(studioFonts([fraunces])).toEqual(fraunces.faces)
+    // None kept: none, as before.
+    expect(studioFonts([])).toEqual([])
+    expect(studioFonts(undefined)).toEqual([])
+  })
+
+  it('leaves out a face the section format would refuse, never the whole brief', () => {
+    const odd = {
+      family: 'Inter',
+      roles: ['body' as const],
+      faces: [
+        { ...face('Inter', 400), url: 'http://fonts.example/inter.woff2' },
+        {
+          ...face('Inter', 400),
+          url: 'https://fonts.example:8443/inter.woff2'
+        },
+        { ...face('Inter', 400), weight: 950 },
+        { ...face('Inter', 400), family: 'Other' },
+        face('Inter', 500)
+      ]
+    }
+    const bad = {
+      family: 'Bad"Font',
+      roles: ['heading' as const],
+      faces: [face('Bad"Font', 400)]
+    }
+    expect(studioFonts([bad, odd])).toEqual([face('Inter', 500)])
+  })
+
+  it('sends the brand’s faces with the hero’s brief, and its hosts are the font’s own', async () => {
+    const p = ports()
+    await studioDesignStep({ ...input(), fonts: [fraunces, inter] }, p)
+    const brief = vi.mocked(p.design).mock.calls[0]![0]
+    expect(brief.fonts).toEqual([
+      face('Fraunces', 600),
+      face('Inter', 400),
+      face('Fraunces', 400),
+      face('Inter', 700)
+    ])
+    expect(briefHosts(brief)).toEqual(['cdn.shop.example', 'fonts.gstatic.com'])
   })
 })

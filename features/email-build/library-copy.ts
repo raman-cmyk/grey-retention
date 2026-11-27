@@ -8,6 +8,7 @@ import type {
   SwapProduct
 } from '@/features/design-engine/swap'
 import type { WordPools, WordRules } from '@/features/design-engine/words'
+import type { WebFont } from '@/features/studio/design-step'
 import type { Store } from './ports'
 
 /**
@@ -279,10 +280,35 @@ const photoOf = (src: string | undefined, alt: string): SwapPicture | null =>
     ? { src, width: 0, height: 0, alt: alt.slice(0, 300) }
     : null
 
+/** A family name the swap and the email may carry (the studio's own rule). */
+const familyName = /^[A-Za-z0-9][A-Za-z0-9 -]{0,59}$/
+
+/**
+ * Pick #3: the swap's heading and body fonts. The brand's own web fonts
+ * (`Store.fonts`) win: the first with the heading role for headings, the
+ * first with the body role for the rest (each the other's stand-in when
+ * the site gave only one); otherwise the brand kit's font for both. The
+ * drawing code adds the email-safe fonts after them (`safeFontStack`), as
+ * most inboxes never load a web font.
+ */
+export function swapFontsOf(
+  brand: Pick<BlockBrand, 'font'>,
+  fonts: readonly Pick<WebFont, 'family' | 'roles'>[] = []
+): { headingFont: string; bodyFont: string } {
+  const named = fonts.filter((f) => familyName.test(f.family))
+  const heading = named.find((f) => f.roles.includes('heading'))?.family
+  const body = named.find((f) => f.roles.includes('body'))?.family
+  return {
+    headingFont: heading ?? body ?? brand.font,
+    bodyFont: body ?? heading ?? brand.font
+  }
+}
+
 /** The brand as the swap reads it (sizes are read by the browser job). */
 export function swapBrandOf(
   brand: BlockBrand,
-  lifestyle?: { image: string; alt: string }
+  lifestyle?: { image: string; alt: string },
+  fonts?: readonly Pick<WebFont, 'family' | 'roles'>[]
 ): SwapBrand {
   const own = lifestyle ? photoOf(lifestyle.image, lifestyle.alt) : null
   return {
@@ -292,8 +318,7 @@ export function swapBrandOf(
     background: brand.background,
     accent: brand.accent,
     dark: brand.dark,
-    headingFont: brand.font,
-    bodyFont: brand.font,
+    ...swapFontsOf(brand, fonts),
     logo: photoOf(brand.logo, brand.name),
     logoOnDark: photoOf(brand.logoOnDark, brand.name),
     photos: own ? [own] : [],
@@ -311,7 +336,7 @@ export function swapBrandOf(
  * the brand's content says, for the leak check.
  */
 export function copyInput(input: {
-  store: Pick<Store, 'brand' | 'products' | 'facts' | 'confirmed'>
+  store: Pick<Store, 'brand' | 'products' | 'facts' | 'confirmed' | 'fonts'>
   draft: Draft
   rules: {
     maxDiscountPercent: number
@@ -342,7 +367,11 @@ export function copyInput(input: {
       ? [String(store.facts.freeShipping.over)]
       : []
   const words = wordsFromDraft(draft)
-  const brand = swapBrandOf(store.brand, store.confirmed?.lifestylePhoto)
+  const brand = swapBrandOf(
+    store.brand,
+    store.confirmed?.lifestylePhoto,
+    store.fonts
+  )
   const claims = store.facts.approvedClaims.slice(0, 40)
   return {
     brand,

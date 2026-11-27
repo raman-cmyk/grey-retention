@@ -61,7 +61,12 @@ export const pulseInput = z.object({
     industry: z.string().trim().min(1).max(60),
     timezone: z.string().min(1).max(60),
     currency: z.string().regex(/^[A-Z]{3}$/),
-    maxDiscountPercent: z.number().int().min(0).max(100)
+    maxDiscountPercent: z.number().int().min(0).max(100),
+    /**
+     * PLN-039b: which owner setting sets `maxDiscountPercent` (the margin
+     * floor's cap can be lower than the biggest discount); missing: the max.
+     */
+    limitedBy: z.enum(['max_discount', 'margin_floor']).nullable().optional()
   }),
   /** The first day of the 15 days, in the store's timezone. */
   start: isoDate,
@@ -172,7 +177,10 @@ export function gatherEvidence(input: PulseInput) {
     if (c.percent > max)
       leftOut.push({
         code: c.code,
-        why: `It is ${c.percent}% off, above your ${max}% maximum.`
+        why:
+          input.brand.limitedBy === 'margin_floor'
+            ? `It is ${c.percent}% off, above the ${max}% your margin floor allows.`
+            : `It is ${c.percent}% off, above your ${max}% maximum.`
       })
     else if (c.expiresOn !== null && c.expiresOn < input.start)
       leftOut.push({ code: c.code, why: `It expired on ${c.expiresOn}.` })
