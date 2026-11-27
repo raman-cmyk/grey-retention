@@ -447,6 +447,32 @@ describe('the live pusher leaves the hygiene segment out of the draft', () => {
     return { drafts, segments, pusher, memory }
   }
 
+  it('a restore re-push keeps the draft’s audience and exclusion as they are', async () => {
+    // PICK-106: "Use this version" pushes the same key again with another
+    // email. The campaign exists, so hygiene is not asked again and the
+    // audience (with its exclusion) is never rewritten.
+    const { drafts, segments, pusher, memory } = setup()
+    expect((await pusher.createDraft(draft(keyA))).ok).toBe(true)
+    const calls = segments.calls.length
+    const restored = {
+      ...draft(keyA),
+      subject: 'Back to the first version',
+      html: draft(keyA).html.replace('<h1>A</h1>', '<h1>A again</h1>')
+    }
+    expect((await pusher.createDraft(restored)).ok).toBe(true)
+    expect(drafts.campaigns.size).toBe(1)
+    expect([...drafts.campaigns.values()][0]!.excluded).toEqual(['SegHyg001'])
+    expect(segments.calls.slice(calls)).toEqual([])
+    // Hygiene turned on only after a draft was made: a restore does not add it.
+    const late = setup({ enabled: false, days: 180 })
+    expect((await late.pusher.createDraft(draft(keyA))).ok).toBe(true)
+    late.memory.state.settings = { enabled: true, days: 180 }
+    expect((await late.pusher.createDraft(restored)).ok).toBe(true)
+    expect([...late.drafts.campaigns.values()][0]!.excluded).toEqual([])
+    expect(late.segments.segments.size).toBe(0)
+    expect(memory.rows.get('v1-180')!.state).toBe('ready')
+  })
+
   it('two emails: one segment made, both drafts leave it out', async () => {
     const { drafts, segments, pusher } = setup()
     const a = await pusher.createDraft(draft(keyA))
