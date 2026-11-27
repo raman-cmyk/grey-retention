@@ -97,8 +97,14 @@ jobs:
           copies=$(jq -r '(.waiting | numbers) // 0' peek.json)
           call '/api/internal/design/uploads?peek=1' uploads.json 30 || exit 1
           uploads=$(jq -r '(.waiting | numbers) // 0' uploads.json)
-          call '/api/internal/design/blocks?peek=1' blocks.json 30 || exit 1
-          blocks=$(jq -r '(.waiting | numbers) // 0' blocks.json)
+          # DES-ENGINE-004: a blocks peek that fails never stops the copies
+          # and uploads: it counts as nothing waiting.
+          if call '/api/internal/design/blocks?peek=1' blocks.json 30; then
+            blocks=$(jq -r '(.waiting | numbers) // 0' blocks.json)
+          else
+            echo "::warning::The library blocks could not be peeked at; they wait for the next run."
+            blocks=0
+          fi
           echo "Copies waiting: $copies. Uploads waiting: $uploads. Block sources waiting: $blocks."
           echo "copies=$copies" >> "$GITHUB_OUTPUT"
           echo "uploads=$uploads" >> "$GITHUB_OUTPUT"

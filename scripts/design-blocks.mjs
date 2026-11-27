@@ -23,6 +23,12 @@ import { launch } from '../lib/sandbox/browser.mjs'
 export const perRun = 30
 /** A run's time, after the copies and the uploads (each lease is 5 minutes). */
 export const runBudgetMs = 4 * 60_000
+/**
+ * The lease is renewed this often while a long email is drawn (it runs 5
+ * minutes from each renewal); a renewal refused (the lease lost, or held
+ * 30 minutes) stops the email, and its job is tried again later.
+ */
+export const renewEveryMs = 2 * 60_000
 
 async function call(base, secret, init = {}, query = '') {
   const response = await fetch(`${base}/api/internal/design/blocks${query}`, {
@@ -86,7 +92,16 @@ export async function run({
         }).catch(() => null)
       const checks = []
       let broken = false
+      let lost = false
+      let renewed = now()
       for (const c of job.checks ?? []) {
+        if (now() - renewed >= renewEveryMs) {
+          if (!(await report({ renew: true }))) {
+            lost = true
+            break
+          }
+          renewed = now()
+        }
         let got
         try {
           got = await checkFor(browser, c.blueprint)
@@ -101,6 +116,10 @@ export async function run({
         )
         if (got.pass) counts.passed++
         else counts.failed++
+      }
+      if (lost) {
+        counts.retry++
+        continue
       }
       if (broken) {
         counts.retry++

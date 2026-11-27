@@ -11,9 +11,10 @@
 --   one section's blueprint with no picture address, no link
 --   (`private.blueprint_is_bare`) and every letter and digit blanked by the
 --   app; its colours and fonts stay for the brand swap and are never shown.
---   `uses` counts the sections that have this structure (the de-dup count:
---   "this layout is used a lot"), `brands` the different inbox brands that
---   sent it. `quality` is the gate: 'passed' (a safe size, and drawn back on
+--   `uses` counts the different emails (inbox emails or uploads) that have
+--   this structure, so an email that repeats a layout counts once (the
+--   de-dup count: "this layout is used a lot"); `brands` the different inbox
+--   brands that sent it, the stronger signal. `quality` is the gate: 'passed' (a safe size, and drawn back on
 --   its own it looks like its source section) or 'failed' with its code.
 --   Written only through record_library_blocks (the block browser job,
 --   service role). Platform operators read every row; members of a
@@ -22,8 +23,8 @@
 --   section, or an upload's), once per section: a retry records nothing
 --   twice. Operators only: a workspace never learns which competitor email
 --   a shared block came from, or anything of another workspace's uploads.
---   A deleted upload takes its uses with it, and a private block left with
---   no use is removed.
+--   An upload being deleted (`deleting`) loses its uses at once, under its
+--   workspace's lock, and a private block left with no use is removed.
 -- * Job kind `design.blocks`, subject `inbox:<message>` or
 --   `upload:<upload>`: queued when a blueprint is stored ready, when an
 --   upload is measured ready, and for every ready one already stored (the
@@ -31,6 +32,9 @@
 --   (scripts/design-blocks.mjs) claims one through claim_library_blocks (5
 --   minutes), draws the new structures back and reports; the app recomputes
 --   every block from the stored blueprint itself and records it.
+-- * release_library_blocks: a job handed back without counting a try (the
+--   browser ran another engine version, or the app could not read now);
+--   renew_library_blocks: the browser keeps its lease while it draws.
 -- * library_block_counts(): the count the Admin shows (operators).
 -- * Merging starts production work where the scheduled jobs are on
 --   (SCHEDULED_JOBS_ENABLED): the design copies job checks the backfill's
@@ -97,7 +101,7 @@ create index library_block_sources_block on public.library_block_sources (block_
 alter table public.library_blocks enable row level security;
 alter table public.library_block_sources enable row level security;
 create policy library_blocks_read on public.library_blocks for select to authenticated
-  using ((select private.is_operator()) or (tenant_id is not null and private.is_active_member(tenant_id)));
+  using ((select private.is_operator()) or (tenant_id is not null and (select private.is_active_member(tenant_id))));
 create policy library_block_sources_operator_read on public.library_block_sources for select to authenticated
   using ((select private.is_operator()));
 revoke all on public.library_blocks, public.library_block_sources from public, anon, authenticated, service_role;
@@ -155,7 +159,8 @@ create or replace function private.library_block_source_gone()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
   update public.library_blocks b
-    set uses = (select count(*) from public.library_block_sources s where s.block_id = b.id),
+    set uses = (select count(distinct coalesce(s.inbox_message_id, s.upload_id)) from public.library_block_sources s
+                where s.block_id = b.id),
         brands = (select count(distinct s.brand) from public.library_block_sources s where s.block_id = b.id),
         updated_at = now()
     where b.id = old.block_id;
@@ -167,6 +172,20 @@ end $$;
 revoke all on function private.library_block_source_gone() from public, anon, authenticated, service_role;
 create trigger library_block_source_gone after delete on public.library_block_sources
   for each row execute function private.library_block_source_gone();
+
+-- An upload being deleted loses its uses at once (its private blocks are
+-- never read or used again), inside delete_email_upload, which holds its
+-- workspace's lock: the block rows are only ever written tenant first.
+create or replace function private.upload_blocks_gone()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  delete from public.library_block_sources where upload_id = new.id;
+  return null;
+end $$;
+revoke all on function private.upload_blocks_gone() from public, anon, authenticated, service_role;
+create trigger library_blocks_upload_gone after update of state on public.email_uploads
+  for each row when (new.state = 'deleting' and old.state is distinct from 'deleting')
+  execute function private.upload_blocks_gone();
 
 -- The browser job's claim: one source whose blueprint is ready, leased for
 -- 5 minutes, with that blueprint. A job whose source is gone or no longer
@@ -290,45 +309,58 @@ begin
     end if;
     t := u.tenant_id;
   end if;
-  for b in select * from jsonb_array_elements(blocks) loop
+  -- Blocks are locked in fingerprint order (two jobs never wait on each
+  -- other in opposite orders).
+  for b in select x from jsonb_array_elements(blocks) x order by x->>'fingerprint', (x->>'ordinal')::integer loop
     if exists (select 1 from public.library_block_sources s
                where (is_inbox and s.inbox_message_id = src or not is_inbox and s.upload_id = src)
                  and s.ordinal = (b->>'ordinal')::integer) then
       continue;
     end if;
     blk := null;
-    if t is null then
-      insert into public.library_blocks(tenant_id, source, version, fingerprint, kind, roles, facts, blueprint, quality, failure)
-        values (null, 'inbox', 1, b->>'fingerprint', b->>'kind',
-          array(select jsonb_array_elements_text(b->'roles')), b->'facts', b->'blueprint', b->>'quality', b->>'failure')
-        on conflict (version, fingerprint) where tenant_id is null do nothing
-        returning id into blk;
-    else
-      insert into public.library_blocks(tenant_id, source, version, fingerprint, kind, roles, facts, blueprint, quality, failure)
-        values (t, 'upload', 1, b->>'fingerprint', b->>'kind',
-          array(select jsonb_array_elements_text(b->'roles')), b->'facts', b->'blueprint', b->>'quality', b->>'failure')
-        on conflict (tenant_id, version, fingerprint) where tenant_id is not null do nothing
-        returning id into blk;
-    end if;
-    if blk is not null then
-      created := created + 1;
-    else
+    -- Insert, or join the block of this structure; tried twice when the
+    -- block went between the two (its last use removed meanwhile).
+    for try_n in 1..2 loop
+      if t is null then
+        insert into public.library_blocks(tenant_id, source, version, fingerprint, kind, roles, facts, blueprint, quality, failure)
+          values (null, 'inbox', 1, b->>'fingerprint', b->>'kind',
+            array(select jsonb_array_elements_text(b->'roles')), b->'facts', b->'blueprint', b->>'quality', b->>'failure')
+          on conflict (version, fingerprint) where tenant_id is null do nothing
+          returning id into blk;
+      else
+        insert into public.library_blocks(tenant_id, source, version, fingerprint, kind, roles, facts, blueprint, quality, failure)
+          values (t, 'upload', 1, b->>'fingerprint', b->>'kind',
+            array(select jsonb_array_elements_text(b->'roles')), b->'facts', b->'blueprint', b->>'quality', b->>'failure')
+          on conflict (tenant_id, version, fingerprint) where tenant_id is not null do nothing
+          returning id into blk;
+      end if;
+      if blk is not null then
+        created := created + 1;
+        exit;
+      end if;
       select x.id into blk from public.library_blocks x
         where x.version = 1 and x.fingerprint = b->>'fingerprint' and x.tenant_id is not distinct from t
         for update;
-      -- A structure that failed once and now draws back alike is kept.
-      if (b->>'quality') = 'passed' then
-        update public.library_blocks x set quality = 'passed', failure = null, blueprint = b->'blueprint',
-            facts = b->'facts', updated_at = now()
-          where x.id = blk and x.quality = 'failed';
+      if blk is not null then
+        -- A structure that failed once and now draws back alike is kept.
+        if (b->>'quality') = 'passed' then
+          update public.library_blocks x set quality = 'passed', failure = null, blueprint = b->'blueprint',
+              facts = b->'facts', updated_at = now()
+            where x.id = blk and x.quality = 'failed';
+        end if;
+        joined := joined + 1;
+        exit;
       end if;
-      joined := joined + 1;
+    end loop;
+    if blk is null then
+      raise exception 'Library block busy' using errcode = 'PT409';
     end if;
     insert into public.library_block_sources(block_id, inbox_message_id, upload_id, ordinal, brand)
       values (blk, case when is_inbox then src end, case when is_inbox then null else src end,
         (b->>'ordinal')::integer, case when is_inbox then m.capture_id end);
     update public.library_blocks x
-      set uses = x.uses + 1,
+      set uses = (select count(distinct coalesce(s.inbox_message_id, s.upload_id)) from public.library_block_sources s
+                  where s.block_id = x.id),
           brands = (select count(distinct s.brand) from public.library_block_sources s where s.block_id = x.id),
           email_types = case when is_inbox and m.labels_state = 'tagged' and m.email_type is not null
                                and not m.email_type = any(x.email_types) and cardinality(x.email_types) < 20
@@ -359,6 +391,47 @@ end $$;
 revoke all on function public.record_library_blocks(uuid, uuid, jsonb) from public, anon, authenticated;
 grant execute on function public.record_library_blocks(uuid, uuid, jsonb) to service_role;
 
+-- A job handed back without counting a try: the browser ran another
+-- engine version than the app, or the app could not read the library just
+-- now. It waits 10 minutes; nothing is recorded.
+create or replace function public.release_library_blocks(job uuid, lease uuid, code text default 'version_skew')
+returns void language plpgsql security definer set search_path = '' as $$
+declare j public.platform_jobs;
+begin
+  perform private.blocks_job_role();
+  if code is null or code not in ('version_skew', 'read_failed') then
+    raise exception 'Invalid code' using errcode = '23514';
+  end if;
+  j := private.platform_lease(job, lease);
+  if j.kind <> 'design.blocks' then raise exception 'Not a blocks job' using errcode = '23514'; end if;
+  update public.platform_jobs
+    set status = 'retry_wait', lease_token = null, lease_expires_at = null,
+        attempt = greatest(0, j.attempt - 1), last_error_code = code,
+        available_at = now() + interval '10 minutes', updated_at = now()
+    where id = j.id;
+end $$;
+revoke all on function public.release_library_blocks(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.release_library_blocks(uuid, uuid, text) to service_role;
+
+-- The browser keeps its lease while it draws a long email: 5 more
+-- minutes, at most 30 minutes after the claim.
+create or replace function public.renew_library_blocks(job uuid, lease uuid)
+returns timestamptz language plpgsql security definer set search_path = '' as $$
+declare j public.platform_jobs;
+begin
+  perform private.blocks_job_role();
+  j := private.platform_lease(job, lease);
+  if j.kind <> 'design.blocks' then raise exception 'Not a blocks job' using errcode = '23514'; end if;
+  if j.updated_at < now() - interval '30 minutes' then
+    raise exception 'Lease held too long' using errcode = 'PT409';
+  end if;
+  update public.platform_jobs set lease_expires_at = now() + interval '5 minutes'
+    where id = j.id;
+  return now() + interval '5 minutes';
+end $$;
+revoke all on function public.renew_library_blocks(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.renew_library_blocks(uuid, uuid) to service_role;
+
 -- The Admin's count (platform operators and jobs): blocks by source, kind
 -- and quality, with their uses (the sections behind them) and how many are
 -- used more than once or by two brands or more.
@@ -383,8 +456,12 @@ create or replace function public.library_block_jobs_waiting()
 returns integer language plpgsql stable security definer set search_path = '' as $$
 begin
   perform private.blocks_job_role();
+  -- An upload of a paused or closed workspace waits without calling the
+  -- browser in: it is not counted.
   return (select count(*) from public.platform_jobs p
-    where p.kind = 'design.blocks' and p.status in ('queued', 'retry_wait') and p.available_at <= now());
+    where p.kind = 'design.blocks' and p.status in ('queued', 'retry_wait') and p.available_at <= now()
+      and not exists (select 1 from public.email_uploads x join public.tenants w on w.id = x.tenant_id
+                      where p.subject_key = 'upload:' || x.id and w.status <> 'active'));
 end $$;
 revoke all on function public.library_block_jobs_waiting() from public, anon, authenticated;
 grant execute on function public.library_block_jobs_waiting() to service_role;

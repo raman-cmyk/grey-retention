@@ -402,9 +402,15 @@ describe('CI workflows', () => {
     // No token left on the runner the browser draws on.
     expect(text).toContain('persist-credentials: false')
     // DES-ENGINE-004: the library blocks are peeked at and checked too.
+    // A failed blocks peek counts as nothing waiting: it never stops the
+    // copies and the uploads.
     expect(text).toContain(
+      "if call '/api/internal/design/blocks?peek=1' blocks.json 30; then"
+    )
+    expect(text).not.toContain(
       "call '/api/internal/design/blocks?peek=1' blocks.json 30 || exit 1"
     )
+    expect(text).toMatch(/else\n.*\n\s+blocks=0\n/)
     expect(text).toContain(
       'run: node --import ./scripts/ts-register.mjs scripts/design-blocks.mjs'
     )

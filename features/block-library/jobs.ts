@@ -52,6 +52,24 @@ type Claimed = {
   blueprint: unknown
 }
 
+/**
+ * A job handed back without counting a try (another engine version, or a
+ * read that failed just now): it waits 10 minutes (`release_library_blocks`).
+ */
+async function release(
+  db: Db,
+  job: string,
+  lease: string,
+  code: 'version_skew' | 'read_failed'
+) {
+  const done = await db.rpc('release_library_blocks', { job, lease, code })
+  if (done.error)
+    logger.warn('Block job not handed back', {
+      code: done.error.code ?? 'unknown',
+      reason: code
+    })
+}
+
 async function retry(db: Db, job: string, lease: string, code: string) {
   const failed = await db.rpc('fail_platform_job', {
     job,
@@ -111,7 +129,7 @@ export async function blockJobs(
     ? await known(db, job.tenant_id, cut.blocks)
     : new Set<string>()
   if (!have) {
-    await retry(db, job.id, job.lease_token, 'blocks_read_failed')
+    await release(db, job.id, job.lease_token, 'read_failed')
     return { jobs: [], skew: false }
   }
   const checks = (cut?.blocks ?? []).filter(
@@ -159,7 +177,9 @@ export const blockResult = z.union([
     job: z.uuid(),
     lease: z.uuid(),
     retry: z.enum(['timeout', 'engine_error'])
-  })
+  }),
+  // The browser keeps its lease while it draws a long email.
+  z.object({ job: z.uuid(), lease: z.uuid(), renew: z.literal(true) })
 ])
 export type BlockResult = z.infer<typeof blockResult>
 
@@ -229,13 +249,27 @@ export async function finishBlocks(
   db: Db,
   result: BlockResult
 ): Promise<{ ok: true; state: string } | { ok: false; code: string }> {
+  if ('renew' in result) {
+    const renewed = await db.rpc('renew_library_blocks', {
+      job: result.job,
+      lease: result.lease
+    })
+    if (renewed.error) return { ok: false, code: renewed.error.code ?? 'error' }
+    return { ok: true, state: 'renewed' }
+  }
   if ('retry' in result) {
     await retry(db, result.job, result.lease, result.retry)
     return { ok: true, state: 'retry' }
   }
+  // Another engine version: handed back, its try given back.
   if (result.engine !== ENGINE_VERSION) {
-    await retry(db, result.job, result.lease, 'version_skew')
+    await release(db, result.job, result.lease, 'version_skew')
     return { ok: true, state: 'retry' }
+  }
+  // A read that fails here is the app's, not the email's: handed back.
+  const readFailed = async () => {
+    await release(db, result.job, result.lease, 'read_failed')
+    return { ok: true as const, state: 'retry' }
   }
   const job = await db
     .from('platform_jobs')
@@ -243,7 +277,7 @@ export async function finishBlocks(
     .eq('id', result.job)
     .eq('kind', 'design.blocks')
     .maybeSingle()
-  if (job.error) return { ok: false, code: job.error.code ?? 'error' }
+  if (job.error) return readFailed()
   if (!job.data) return { ok: false, code: 'PT409' }
   const [what, id] = job.data.subject_key.split(':')
   let blueprint: unknown = null
@@ -256,7 +290,7 @@ export async function finishBlocks(
       .eq('version', 1)
       .eq('state', 'ready')
       .maybeSingle()
-    if (row.error) return { ok: false, code: row.error.code ?? 'error' }
+    if (row.error) return readFailed()
     blueprint = row.data?.blueprint ?? null
   } else {
     const row = await db
@@ -265,13 +299,13 @@ export async function finishBlocks(
       .eq('id', id!)
       .eq('state', 'ready')
       .maybeSingle()
-    if (row.error) return { ok: false, code: row.error.code ?? 'error' }
+    if (row.error) return readFailed()
     blueprint = row.data?.blueprint ?? null
     tenant = row.data?.tenant_id ?? null
   }
   const parsed = parseBlueprint(blueprint)
   const cut = parsed.ok ? cutBlocks(parsed.blueprint) : null
   const have = cut ? await known(db, tenant, cut.blocks) : new Set<string>()
-  if (!have) return { ok: false, code: 'blocks_read_failed' }
+  if (!have) return readFailed()
   return record(db, result.job, result.lease, cut, have, result.checks)
 }

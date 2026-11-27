@@ -4,6 +4,7 @@ import type { BlockCheck } from '../features/design-engine/blocks'
 
 export const perRun: number
 export const runBudgetMs: number
+export const renewEveryMs: number
 export function run(options: {
   base: string
   secret: string

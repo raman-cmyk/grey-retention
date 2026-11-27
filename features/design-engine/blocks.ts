@@ -153,11 +153,17 @@ export type BlockCut = {
   skipped: { ordinal: number; kind: SectionKind; why: BlockSkip }[]
 }
 
-/** Letters to `x`/`X`, digits to `0`; spaces, line breaks and signs stay. */
+/**
+ * Letters to `x`/`X`, digits to `0`, emoji and pictographs to `x`; the
+ * marks a letter carries (accents) go; spaces, line breaks and signs stay.
+ */
 export function blankWords(words: string): string {
-  return words.replace(/\p{L}|\p{N}/gu, (c) =>
-    /\p{N}/u.test(c) ? '0' : c !== c.toLowerCase() ? 'X' : 'x'
-  )
+  return words
+    .replace(/\p{M}/gu, '')
+    .replace(/\p{Extended_Pictographic}/gu, 'x')
+    .replace(/\p{L}|\p{N}/gu, (c) =>
+      /\p{N}/u.test(c) ? '0' : c !== c.toLowerCase() ? 'X' : 'x'
+    )
 }
 
 const wordless = (items: readonly Item[]): Item[] =>

@@ -38,15 +38,15 @@ export type BlockLibraryCount = {
   /** Seeds plus the inbox blocks that pass: what counts toward the target. */
   counted: number
   progress: number
-  /** Sections that became blocks (the uses of every block that passes). */
+  /** Inspiration emails' uses of the shared blocks that pass (an email counts once per block). */
   sections: number
-  /** Sections folded into a block that already had their structure. */
+  /** Uses folded into a shared block that already had their structure. */
   merged: number
   /** Inbox blocks used by two brands or more: BLK-S001's stricter "useful" count. */
   twoBrands: number
-  /** Blocks used more than once ("this layout is used a lot"). */
+  /** Shared blocks used by more than one email ("this layout is used a lot"). */
   reused: number
-  /** Blocks that did not pass the quality gate (kept out of Scratch). */
+  /** Shared blocks that did not pass the quality gate (kept out of Scratch). */
   failed: number
   byKind: {
     kind: BlockKind
@@ -68,8 +68,9 @@ export function blockLibraryCount(
   const inboxRows = passed.filter((r) => r.source === 'inbox')
   const privateRows = passed.filter((r) => r.source === 'upload')
   const inbox = sum(inboxRows, 'blocks')
-  const sections = sum(passed, 'uses')
-  const blocks = sum(passed, 'blocks')
+  // Only the shared library's numbers: a workspace's private blocks are
+  // counted apart (`private`) and never in the uses, folds or kinds.
+  const sections = sum(inboxRows, 'uses')
   const counted = seeds + inbox
   return {
     target: libraryTarget,
@@ -79,11 +80,11 @@ export function blockLibraryCount(
     counted,
     progress: Math.round((counted / libraryTarget) * 1000) / 1000,
     sections,
-    merged: Math.max(0, sections - blocks),
+    merged: Math.max(0, sections - inbox),
     twoBrands: sum(inboxRows, 'two_brands'),
-    reused: sum(passed, 'reused'),
+    reused: sum(inboxRows, 'reused'),
     failed: sum(
-      rows.filter((r) => r.quality === 'failed'),
+      rows.filter((r) => r.quality === 'failed' && r.source === 'inbox'),
       'blocks'
     ),
     byKind: blockKinds
@@ -98,7 +99,7 @@ export function blockLibraryCount(
           'blocks'
         ),
         uses: sum(
-          passed.filter((r) => r.kind === kind),
+          inboxRows.filter((r) => r.kind === kind),
           'uses'
         )
       }))

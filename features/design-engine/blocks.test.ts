@@ -26,6 +26,8 @@ describe('library blocks from a blueprint (DES-ENGINE-004)', () => {
       'Xxxx xxx XXX xxxxx\n00% xxx · $00.00'
     )
     expect(blankWords('Café Ödön')).toBe('Xxxx Xxxx')
+    // Combining marks go; emoji are blanked too.
+    expect(blankWords('Cafe\u0301 🌿 new')).toBe('Xxxx x xxx')
   })
 
   it('cuts every section into a block: one section, words blanked, no picture or link', () => {

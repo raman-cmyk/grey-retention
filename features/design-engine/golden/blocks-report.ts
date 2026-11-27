@@ -54,7 +54,7 @@ export type BlockGate = {
   passed: number
   failed: number
   byKind: { kind: BlockKind; blocks: number; passed: number; uses: number }[]
-  /** The most used layouts (uses ≥ 2): the "used a lot" signal. */
+  /** Layouts used by two emails or more: the "used a lot" signal. */
   reused: number
   rows: BlockRow[]
   errors: string[]
@@ -96,22 +96,24 @@ export async function runBlockGate(
   }
   const library = dedupe(all)
   const rows: BlockRow[] = []
-  for (const { block, uses } of library) {
+  for (const { block } of library) {
     const check = block.unsafe
       ? ({ pass: false, failure: block.unsafe, problems: [] } as const)
       : await checkBlock(browser, block.check)
+    const emails = [
+      ...new Set(
+        all
+          .filter((c) => c.fingerprint === block.fingerprint)
+          .map((c) => c.email)
+      )
+    ]
     const row: BlockRow = {
       fingerprint: block.fingerprint,
       kind: block.kind,
       first: `${block.email}#${block.ordinal}`,
-      uses,
-      emails: [
-        ...new Set(
-          all
-            .filter((c) => c.fingerprint === block.fingerprint)
-            .map((c) => c.email)
-        )
-      ],
+      // An email that repeats a layout counts once (as the library counts).
+      uses: emails.length,
+      emails,
       pass: check.pass,
       failure: check.pass ? null : check.failure,
       problems: check.pass ? [] : [...check.problems]
@@ -162,7 +164,7 @@ function writeReport(out: string, gate: BlockGate) {
   const lines = [
     `# Block library from the ${gate.emails} golden emails: ${gate.blocks} blocks, ${gate.passed} pass the quality check`,
     '',
-    `${gate.sections} sections were read. ${gate.candidates} became block candidates (${gate.skipped.glue} were space or a line between sections, ${gate.skipped.cannot_copy} cannot be drawn, ${gate.skipped.empty} were empty). Near-identical sections share one structural fingerprint: ${gate.merged} candidates were folded into a block that already had their layout, so the library holds **${gate.blocks} distinct blocks** (one block per distinct structure: this is how GROS counts a block until the owner decides BLK-SCALE-001). ${gate.reused} layouts are used more than once.`,
+    `${gate.sections} sections were read. ${gate.candidates} became block candidates (${gate.skipped.glue} were space or a line between sections, ${gate.skipped.cannot_copy} cannot be drawn, ${gate.skipped.empty} were empty). Near-identical sections share one structural fingerprint: ${gate.merged} candidates were folded into a block that already had their layout, so the library holds **${gate.blocks} distinct blocks** (one block per distinct structure: this is how GROS counts a block until the owner decides BLK-SCALE-001). ${gate.reused} layouts are used by more than one email.`,
     '',
     `Quality check: each distinct block is drawn back on its own and compared with its source section (likeness: same parts, columns within 2 px, heights within 5 %, sizes within 1 px, grey boxes 90 % alike, fits a phone). ${gate.passed} pass, ${gate.failed} do not (they stay out of Scratch).`,
     '',

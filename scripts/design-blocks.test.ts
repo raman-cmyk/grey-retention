@@ -102,4 +102,60 @@ describe('the block library browser (DES-ENGINE-004)', () => {
     expect(counts).toMatchObject({ retry: 1, skew: true })
     expect(posts).toEqual([{ job: 'j1', lease: 'l1', retry: 'engine_error' }])
   })
+
+  it('renews the lease while it draws a long email, and stops the email when the renewal is refused', async () => {
+    const posts: Record<string, unknown>[] = []
+    let clock = 0
+    const queue = [
+      {
+        jobs: [
+          {
+            job: 'j1',
+            lease: 'l1',
+            checks: [1, 2, 3].map((ordinal) => ({
+              ordinal,
+              blueprint: blueprint()
+            }))
+          }
+        ]
+      },
+      { jobs: [] }
+    ]
+    let renewals = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          const body = JSON.parse(String(init.body))
+          posts.push(body)
+          if (body.renew) {
+            renewals++
+            return renewals > 1
+              ? new Response('{}', { status: 409 })
+              : new Response('{"ok":true}')
+          }
+          return new Response('{"ok":true}')
+        }
+        if (url.includes('peek=1')) return new Response('{"waiting":0}')
+        return new Response(JSON.stringify(queue.shift() ?? { jobs: [] }))
+      })
+    )
+    const counts = await run({
+      base: 'https://app.test',
+      secret: 's'.repeat(40),
+      browser: {} as Browser,
+      engine: 'v1',
+      log: () => {},
+      now: () => clock,
+      check: async () => {
+        clock += 3 * 60_000
+        return { pass: true as const }
+      }
+    })
+    // Renewed before the second section; refused before the third: the
+    // email stops with nothing recorded (its job is tried again later).
+    expect(posts.filter((p) => p.renew)).toHaveLength(2)
+    expect(posts.some((p) => 'checks' in p)).toBe(false)
+    expect(counts).toMatchObject({ sources: 0, retry: 1 })
+  })
 })

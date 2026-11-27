@@ -32,10 +32,11 @@ export function BlockLibraryCard({
             </p>
             <p className="type-body">
               {n(count.seeds)} coded seed blocks and {n(count.inbox)} blocks
-              from the Inspiration inbox. {n(count.sections)} sections were
-              read; {n(count.merged)} of them had a layout the library already
-              had, so they count as uses of that block, not as new blocks.{' '}
-              {n(count.reused)} layouts are used more than once and{' '}
+              from the Inspiration inbox. Across the inbox&rsquo;s emails these
+              layouts are used {n(count.sections)} times (an email counts once
+              per layout); {n(count.merged)} of those uses were a layout the
+              library already had, so they count as uses, not as new blocks.{' '}
+              {n(count.reused)} layouts are used by more than one email and{' '}
               {n(count.twoBrands)} by two brands or more.
             </p>
             <p className="type-body text-[var(--stone)]">
@@ -57,7 +58,7 @@ export function BlockLibraryCard({
                     details={[
                       `${n(k.inbox)} from the inbox`,
                       `${n(k.private)} private`,
-                      `${n(k.uses)} sections`
+                      `used ${n(k.uses)} times`
                     ]}
                     end={null}
                   />
