@@ -7,6 +7,7 @@ import { sampleStore } from '@/features/strategy/sample'
 import { builtEmail, plannedEmail, type PlannedEmail } from './build'
 import { sampleOffersFrom, sampleStoreFrom } from './ports'
 import {
+  fittedEmail,
   maxReasons,
   reasonLines,
   reasonsFor,
@@ -65,7 +66,7 @@ describe('a product reason (the plan’s own fact about it)', () => {
     expect(reasons).toEqual([
       {
         kind: 'product',
-        text: 'Cedar candle is in this email because it is one of your bestsellers: it sold 118 in the last 30 days.',
+        text: 'Cedar candle is in this email because it is one of your bestsellers: it sold 118 in the 30 days before this plan.',
         facts: [{ from: 'plan', key: 'evidence:bestseller:p1' }]
       }
     ])
@@ -86,7 +87,7 @@ describe('a product reason (the plan’s own fact about it)', () => {
       progress
     })
     expect(hero!.text).toBe(
-      'The hero shows Cedar candle because it is one of your bestsellers: it sold 118 in the last 30 days.'
+      'The hero shows Cedar candle because it is one of your bestsellers: it sold 118 in the 30 days before this plan.'
     )
     // A copied design's sections are another email's: no hero claim.
     const [copied] = reasonsFor({
@@ -141,7 +142,7 @@ describe('a product reason (the plan’s own fact about it)', () => {
       progress: {}
     })
     expect(reasons.map((r) => r.text)).toEqual([
-      'Cedar candle is in this email because it is one of your bestsellers: it sold 118 in the last 30 days.',
+      'Cedar candle is in this email because it is one of your bestsellers: it sold 118 in the 30 days before this plan.',
       'Oak tray is in this email because it is new: it launches on 6 Mar.'
     ])
   })
@@ -203,7 +204,7 @@ describe('an offer reason (the offer ladder, #40)', () => {
         ladder: { step: 1, steps: 2, before: null, lowest: true }
       })
     ).toBe(
-      'The offer is 10% off with SMALL10, the first of 2 offer emails in this plan: a sale starts with your smallest discount code of at least 10% and steps up from there.'
+      'The offer is 10% off with SMALL10, on the first of 2 offer days in this plan: a sale starts with your smallest discount code of at least 10% and steps up from there.'
     )
     expect(
       text(
@@ -214,7 +215,7 @@ describe('an offer reason (the offer ladder, #40)', () => {
         offerEmail({ code: 'MID15', offer: { percent: 15, expiresAt: null } })
       )
     ).toBe(
-      'The offer is 15% off with MID15, the second of 2 offer emails in this plan: a sale steps up, so it goes up from 10% in the offer email before it.'
+      'The offer is 15% off with MID15, on the second of 2 offer days in this plan: a sale steps up, so it goes up from 10% in the offer email before it.'
     )
     expect(
       text({ offer, ladder: { step: 1, steps: 1, before: 10, lowest: true } })
@@ -466,7 +467,8 @@ describe('stored with the email (the design step)', () => {
           planned: parsed,
           store: await sampleStoreFrom(start).read(tenantId),
           offers: sampleOffersFrom(start),
-          progress
+          progress,
+          planStart: start
         },
         ctx
       )
@@ -481,7 +483,7 @@ describe('stored with the email (the design step)', () => {
   it('keeps the reasons the plan’s facts give, as the worker stores them', async () => {
     const made = await build(slot)
     expect(made.reasons?.map((r) => r.text)).toEqual([
-      'The hero shows Cedar candle because it is one of your bestsellers: it sold 118 in the last 30 days.',
+      'The hero shows Cedar candle because it is one of your bestsellers: it sold 118 in the 30 days before the plan starting 2 Mar.',
       'The suggested send time for “Engaged subscribers (sample)” is 10:00 am: not enough history yet; your usual send time.'
     ])
   })
@@ -538,5 +540,102 @@ describe('the ladder’s place for each offer email (ladderPlaces)', () => {
     expect(
       ladderPlaces([{ date: '2026-11-16', percent: 5 }], [offers[0]!], null)
     ).toEqual([{ step: 1, steps: 1, before: null, lowest: true }])
+  })
+})
+
+describe('the review fixes (PICK-104)', () => {
+  it('dates the sales figure to the plan, never as if it were today', () => {
+    const at = (planStart?: string) =>
+      reasonsFor({
+        planned: planned({ evidence: [sold('p1', 'Cedar candle', 118)] }),
+        email: email(),
+        progress: {},
+        ...(planStart !== undefined ? { planStart } : {})
+      })[0]!.text
+    expect(at('2026-11-16')).toBe(
+      'Cedar candle is in this email because it is one of your bestsellers: it sold 118 in the 30 days before the plan starting 16 Nov.'
+    )
+    // A day it cannot read is left out, never shown wrong.
+    for (const odd of ['2026-02-30', 'soon', ''])
+      expect(at(odd)).toMatch(/in the 30 days before this plan\.$/)
+  })
+
+  it('gives no launch reason for a date that is not a real day, and never throws', () => {
+    expect(
+      reasonsFor({
+        planned: planned({
+          evidence: [
+            { id: 'launch:p1', fact: 'Cedar candle launches on 2026-13-45.' },
+            {
+              id: 'launch:p2',
+              fact: 'Linen throw is new (launched 2026-02-30).'
+            }
+          ]
+        }),
+        email: email(),
+        progress: {}
+      })
+    ).toEqual([])
+  })
+
+  it('says “steps up from there” only when the plan has more offer days', () => {
+    const [one] = reasonsFor({
+      planned: planned({
+        offer: { id: 'offer:SMALL10', code: 'SMALL10', percent: 10 },
+        ladder: { step: 1, steps: 1, before: null, lowest: true }
+      }),
+      email: email({
+        code: 'SMALL10',
+        offer: { percent: 10, expiresAt: null }
+      }),
+      progress: {}
+    })
+    expect(one!.text).toBe(
+      'The offer is 10% off with SMALL10: a sale starts with your smallest discount code of at least 10%.'
+    )
+  })
+
+  it('gives no “We copy …” reason when the library copy fell back to coded blocks', () => {
+    const reference = (mode: 'copy' | 'remix') => ({
+      sections: {
+        reference: {
+          emailId: 'e1',
+          mode,
+          reason: `We ${mode} Glow Co’s email “Edit” (2 Nov 2026).`
+        }
+      }
+    })
+    const layout = (mode: 'copy' | 'remix', copyFellBack: boolean) =>
+      reasonsFor({
+        planned: planned(),
+        email: email(),
+        progress: reference(mode),
+        copyFellBack
+      }).map((r) => r.kind)
+    expect(layout('copy', true)).toEqual([])
+    expect(layout('copy', false)).toEqual(['layout'])
+    // A remix is never a library copy: its reason stands.
+    expect(layout('remix', true)).toEqual(['layout'])
+  })
+
+  it('drops the reasons, never the email, when they would make it too large', () => {
+    const reasons = [
+      {
+        kind: 'product' as const,
+        text: 'Cedar candle is in this email because it sold 118.',
+        facts: [{ from: 'plan' as const, key: 'evidence:bestseller:p1' }]
+      }
+    ]
+    const made = email({ reasons })
+    const size = (e: object) =>
+      new TextEncoder().encode(JSON.stringify(e)).length
+    const bare = email()
+    expect(fittedEmail(made, size(made))).toBe(made)
+    const fitted = fittedEmail(made, size(made) - 1)
+    expect(fitted).toEqual(bare)
+    expect(fitted).not.toHaveProperty('reasons')
+    // Too large on its own: still refused, as before.
+    expect(fittedEmail(made, size(bare) - 1)).toBeNull()
+    expect(fittedEmail(bare, size(bare) - 1)).toBeNull()
   })
 })

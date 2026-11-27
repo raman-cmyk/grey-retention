@@ -70,8 +70,14 @@ const dayWords = new Intl.DateTimeFormat('en-GB', {
   month: 'short',
   timeZone: 'UTC'
 })
-/** "20 Nov" for "2026-11-20". */
-const day = (date: string) => dayWords.format(new Date(`${date}T00:00:00Z`))
+/** "20 Nov" for "2026-11-20"; null for anything that is not a real day. */
+function day(date: string | undefined) {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+  const at = new Date(`${date}T00:00:00Z`)
+  if (Number.isNaN(at.getTime()) || at.toISOString().slice(0, 10) !== date)
+    return null
+  return dayWords.format(at)
+}
 
 /** One line of stored text, short enough to read. */
 const oneLine = (text: string, max: number) => {
@@ -122,6 +128,17 @@ type Input = {
   email: Omit<BuiltEmail, 'reasons'>
   /** The build's saved steps (`email_builds.progress`). */
   progress: unknown
+  /**
+   * The plan's first day (`strategy_runs.start_on`): the pulse's "last 30
+   * days" are the days before it. Missing: said without the day.
+   */
+  planStart?: string
+  /**
+   * A Copy whose library copy did not pass and was drawn with its coded
+   * blocks instead: the design is not the inspiration email's, so the
+   * "We copy …" reason is not given (the run log says why, below it).
+   */
+  copyFellBack?: boolean
 }
 
 /** Why a featured product was chosen: the plan's own fact about it. */
@@ -129,25 +146,29 @@ function productReason(
   id: string,
   title: string,
   hero: boolean,
-  evidence: ReadonlyMap<string, string>
+  evidence: ReadonlyMap<string, string>,
+  planStart: string | undefined
 ): DesignReason | null {
   const lead = hero ? `The hero shows ${title}` : `${title} is in this email`
   const sold = evidence.get(`bestseller:${id}`)?.match(soldFact)
   if (sold)
     return {
       kind: 'product',
-      text: `${lead} because it is one of your bestsellers: it sold ${sold[2]} in the last 30 days.`,
+      // The pulse counted the 30 days before the plan, not before today.
+      text: `${lead} because it is one of your bestsellers: it sold ${sold[2]} in the 30 days before ${
+        day(planStart) ? `the plan starting ${day(planStart)}` : 'this plan'
+      }.`,
       facts: [{ from: 'plan', key: `evidence:bestseller:${id}` }]
     }
   const launch = evidence.get(`launch:${id}`)
-  const soon = launch?.match(launchesFact)
-  const fresh = launch?.match(launchedFact)
+  const soon = day(launch?.match(launchesFact)?.[2])
+  const fresh = day(launch?.match(launchedFact)?.[2])
   if (soon || fresh)
     return {
       kind: 'product',
       text: soon
-        ? `${lead} because it is new: it launches on ${day(soon[2]!)}.`
-        : `${lead} because it is new: it launched on ${day(fresh![2]!)}.`,
+        ? `${lead} because it is new: it launches on ${soon}.`
+        : `${lead} because it is new: it launched on ${fresh}.`,
       facts: [{ from: 'plan', key: `evidence:launch:${id}` }]
     }
   return null
@@ -159,9 +180,10 @@ function offerReason(
   ladder: LadderPlace
 ): DesignReason | null {
   const lead = `The offer is ${offer.percent}% off with ${offer.code}`
+  // Counted in offer days: emails on one day share the same code.
   const of =
     ladder.steps > 1
-      ? `, the ${nth(ladder.step)} of ${ladder.steps} offer emails in this plan`
+      ? `, on the ${nth(ladder.step)} of ${ladder.steps} offer days in this plan`
       : ''
   const text =
     ladder.before !== null && offer.percent > ladder.before
@@ -169,7 +191,7 @@ function offerReason(
       : ladder.before !== null && offer.percent === ladder.before
         ? `${lead}${of}: a sale never steps down, so it stays at ${ladder.before}% like the offer email before it.`
         : ladder.before === null && ladder.lowest
-          ? `${lead}${of}: a sale starts with your smallest discount code${offer.percent >= 10 ? ' of at least 10%' : ''} and steps up from there.`
+          ? `${lead}${of}: a sale starts with your smallest discount code${offer.percent >= 10 ? ' of at least 10%' : ''}${ladder.steps > 1 ? ' and steps up from there' : ''}.`
           : null
   return text
     ? {
@@ -210,7 +232,9 @@ function timeReason(
 export function reasonsFor({
   planned,
   email,
-  progress
+  progress,
+  planStart,
+  copyFellBack
 }: Input): DesignReason[] {
   const saved = savedSteps.safeParse(progress ?? {})
   const steps = saved.success ? saved.data : {}
@@ -219,7 +243,7 @@ export function reasonsFor({
 
   // The inspiration email the sections step followed, and why (DST-002b).
   const reference = designed ? steps.sections?.reference : undefined
-  if (reference)
+  if (reference && !(reference.mode === 'copy' && copyFellBack))
     reasons.push({
       kind: 'layout',
       text: oneLine(reference.reason, 600),
@@ -241,7 +265,13 @@ export function reasonsFor({
     if (!title) return []
     // A copied design's sections are another email's: no "hero" claim.
     const hero = designed && !email.library && heroIds.has(id)
-    const reason = productReason(id, oneLine(title, 120), hero, evidence)
+    const reason = productReason(
+      id,
+      oneLine(title, 120),
+      hero,
+      evidence,
+      planStart
+    )
     return reason ? [reason] : []
   })
   if (products[0]) reasons.push(products[0])
@@ -260,7 +290,8 @@ export function reasonsFor({
     if (offer) reasons.push(offer)
   }
 
-  // The suggested send time, for the audience it goes to (PICK-97).
+  // The suggested send time, for the audience it goes to (PICK-97). The
+  // audience check is a guard only: the build always sends to the slot's.
   if (planned.timing && email.audienceId === planned.audience.id)
     reasons.push(
       timeReason(planned.time, planned.audience.label, planned.timing)
@@ -268,6 +299,24 @@ export function reasonsFor({
 
   if (products[1]) reasons.push(products[1])
   return reasons.slice(0, maxReasons)
+}
+
+/**
+ * The email as stored: with its reasons while it fits `maxBytes` (the
+ * worker's `maxEmailBytes`), else without them (an email is never refused
+ * for its reasons), else null (too large on its own).
+ */
+export function fittedEmail<E extends { reasons?: unknown }>(
+  email: E,
+  maxBytes: number
+): E | null {
+  const fits = (e: object) =>
+    new TextEncoder().encode(JSON.stringify(e)).length <= maxBytes
+  if (fits(email)) return email
+  if (email.reasons === undefined) return null
+  const bare = { ...email }
+  delete bare.reasons
+  return fits(bare) ? bare : null
 }
 
 /** The stored reasons as the page shows them: the sentences, at most five. */

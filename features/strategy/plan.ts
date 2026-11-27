@@ -1618,6 +1618,35 @@ export function unusedOffersNote(
   return note(shown).slice(0, 600)
 }
 
+/**
+ * PICK-104: the ladder places `planOutput` gave (`PlannedSlot.ladder`) stay
+ * true only while the plan's offer emails are the ones it placed. When a
+ * guard after it (the worker's `slotsInWindow`, `withoutUnusableOffers`)
+ * drops an offer email or turns one into a story, the places of the others
+ * would be off by one ("the second of 3"): every place is removed, so no
+ * offer reason is said rather than a wrong one. `planned` are the slots as
+ * planned, `kept` the same slots after the guards (unchanged ones by
+ * reference, as the guards keep them).
+ */
+export function ladderKept(
+  planned: readonly PlannedSlot[],
+  kept: readonly PlannedSlot[]
+): PlannedSlot[] {
+  const placed = (s: PlannedSlot) =>
+    s.emailType === 'offer' && s.offer !== null && s.ladder !== undefined
+  const before = planned.filter(placed)
+  const after = kept.filter(placed)
+  const same =
+    before.length === after.length && after.every((s) => before.includes(s))
+  const strip = (s: PlannedSlot): PlannedSlot => {
+    if (!s.ladder) return s
+    const rest = { ...s }
+    delete rest.ladder
+    return rest
+  }
+  return kept.map((s) => (same && placed(s) ? s : strip(s)))
+}
+
 /** The plan as it is saved and shown: facts, prices and codes from code. */
 function planOutput(
   input: PlanInput,

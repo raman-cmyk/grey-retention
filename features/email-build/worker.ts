@@ -20,6 +20,7 @@ import {
   type BuildAgents
 } from './build'
 import { buildAgentsFor, emailAgentsReady } from './agents'
+import { fittedEmail } from './reasons'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { libraryCopyOn } from './library-copy'
 import { libraryPortsFor } from './library-copy-live'
@@ -289,7 +290,9 @@ export async function runEmailBuilds(
             store,
             offers,
             progress: job.progress,
-            taken
+            taken,
+            // PICK-104: the plan's first day, for the design reasons.
+            planStart: job.start_on
           },
           {
             tenantId: job.tenant_id,
@@ -469,19 +472,27 @@ export async function runEmailBuilds(
           ran++
           continue
         }
+        if ('reasonsFailed' in step && step.reasonsFailed)
+          logger.warn('Email design reasons not made', { build: job.id })
         const email = builtEmail.safeParse(step.email)
         if (!email.success) {
           await fail('built_email_invalid', true)
           continue
         }
-        if (Buffer.byteLength(JSON.stringify(email.data)) > maxEmailBytes) {
+        // PICK-104: an email too large with its reasons is kept without them.
+        const fitted = fittedEmail(email.data, maxEmailBytes)
+        if (!fitted) {
           await fail('email_too_large', true)
           continue
         }
+        if (fitted !== email.data)
+          logger.warn('Email design reasons dropped for size', {
+            build: job.id
+          })
         const done = await db.rpc('finish_email_build', {
           build: job.id,
           lease: job.lease_token,
-          result: email.data as never
+          result: fitted as never
         })
         if (done.error) {
           if (refused(done.error)) {
