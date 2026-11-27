@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { copiedSection } from './library-copy'
+import { designReasons, ladderPlace } from './reasons'
 import { emailFormats, type EmailFormat } from '@/features/strategy/plan'
+import { sendTimeBases, timeStrengths } from '@/features/strategy/send-times'
 import { InMemoryMemoryStore, type MemoryStore } from '@/features/agents/memory'
 import {
   InMemoryRunLog,
@@ -102,7 +104,28 @@ export const plannedEmail = z.object({
    */
   format: z.enum(emailFormats).optional(),
   /** DST-PIC #24: a text email's kind (missing: a short note of no kind). */
-  letterKind: z.enum(letterKinds).optional().catch(undefined)
+  letterKind: z.enum(letterKinds).optional().catch(undefined),
+  /**
+   * PICK-104: the facts the plan rests on for this email (STR-003), why it
+   * has its send time (PICK-97) and its place on the offer ladder (#40),
+   * read only for its design reasons. Missing or odd: no reason from them.
+   */
+  evidence: z
+    .array(z.object({ id: z.string().max(160), fact: z.string().max(600) }))
+    .max(6)
+    .optional()
+    .catch(undefined),
+  timing: z
+    .object({
+      basis: z.enum(sendTimeBases),
+      strength: z.enum(timeStrengths),
+      othersTried: z.boolean(),
+      best: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+      moved: z.boolean()
+    })
+    .optional()
+    .catch(undefined),
+  ladder: ladderPlace.optional().catch(undefined)
 })
 export type PlannedEmail = z.infer<typeof plannedEmail>
 
@@ -172,7 +195,14 @@ export const builtEmail = z.object({
       sections: z.array(copiedSection).max(41),
       footerAdded: z.boolean()
     })
-    .optional()
+    .optional(),
+  /**
+   * PICK-104: why its main choices were made, one sentence each from the
+   * facts used then (`reasonsFor`, the design step). Missing on emails
+   * built before it and when no choice has a recorded fact; an odd list is
+   * dropped, never the email.
+   */
+  reasons: designReasons.optional().catch(undefined)
 })
 export type BuiltEmail = z.infer<typeof builtEmail>
 

@@ -40,6 +40,7 @@ import {
 import type { Store } from './ports'
 import type { LibraryCopyPort } from './library-copy'
 import { libraryStep } from './library-step'
+import { reasonsFor } from './reasons'
 import { buildSteps, type BuildStep, type RoundStep } from './step-names'
 
 /**
@@ -329,8 +330,27 @@ export function storeFingerprint(store: Store) {
  * Settings, and a store that changed between sample and real data starts
  * over ("Try again"), as does one read again with other data since the
  * first step (REL-STO, `storeFingerprint`). Never throws for bad data.
+ *
+ * PICK-104: the email the design step made, whichever way it was drawn
+ * (coded, the studio, a library or upload copy, a letter), keeps its
+ * design reasons (`reasonsFor`): from the planned slot's facts and the
+ * saved steps, at the moment the choices are final.
  */
 export async function runBuildStep(
+  ...args: Parameters<typeof runStep>
+): Promise<StepResult> {
+  const made = await runStep(...args)
+  if (!made.ok || !('email' in made)) return made
+  const [, input] = args
+  const reasons = reasonsFor({
+    planned: input.planned,
+    email: made.email,
+    progress: input.progress
+  })
+  return reasons.length ? { ...made, email: { ...made.email, reasons } } : made
+}
+
+async function runStep(
   step: string,
   input: {
     planned: PlannedEmail
