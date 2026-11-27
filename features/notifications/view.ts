@@ -3,7 +3,7 @@ import { formatBrandDateTime } from '@/lib/brand-time'
 
 /**
  * PICK-107: the notices the GROS shell lists. The database writes them
- * (migrations 20260914090109 and 090110: a ready plan, drafts in Klaviyo, first
+ * (migrations 20260914090108 and 090109: a ready plan, drafts in Klaviyo, first
  * results), one row per person with its own read time; the app only reads
  * them and marks them read.
  */
